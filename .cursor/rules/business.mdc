@@ -1,0 +1,37 @@
+---
+description: Business rules and ROI decision framework for RE-OS
+globs: "**/*.{ts,tsx,md}"
+alwaysApply: true
+---
+
+# Business Rules
+
+## Purpose
+Align features with revenue, conversion, retention per `docs/BUSINESS_RULES.md` and CEO framework in `docs/PLAN.md`.
+
+## Requirements
+- Enforce domain rules in service layer with coded rule IDs (BR-*).
+- Before new features: pass ROI checklist (revenue, conversion, productivity, retention, SEO).
+- MVP scope: Phases 1-4 + partial 5; defer AI/Chat/Billing until post-MVP unless blocking sale.
+- Indian market defaults: INR, +91 phone, Asia/Kolkata timezone, TRAI considerations for AI.
+
+## Restrictions
+- No feature shipping without corresponding BUSINESS_RULES or PRD update.
+- No custom one-off logic for single tenant in core codebase.
+
+## Best Practices
+- Reference rule ID in exception messages for support (`BUSINESS_RULE_VIOLATION: BR-C03`).
+- Unit test each BR-* rule in module tests.
+- Reject scope that fails all six CEO questions.
+
+## Anti-Patterns
+- "Quick hack" bypassing duplicate detection or quota limits.
+- Building MLS integrations before core pipeline works.
+
+## Examples
+
+```typescript
+if (dto.stage.is_won && !inquiry.properties.length && !dto.no_property_reason) {
+  throw new BusinessRuleViolationException('BR-C03', 'Closed Won requires linked property or reason');
+}
+```

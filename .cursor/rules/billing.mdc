@@ -1,0 +1,40 @@
+---
+description: Billing and subscription implementation rules
+globs: "backend/**/billing/**/*.ts"
+alwaysApply: false
+---
+
+# Billing Rules
+
+## Purpose
+Razorpay subscriptions per `docs/BILLING_SPEC.md` and BR-B* business rules.
+
+## Requirements
+- Plans: basic, pro, enterprise with limits enforced at API layer.
+- Webhook HMAC verification; idempotent by `razorpay_event_id`.
+- Subscription states: trialing, active, past_due, suspended, cancelled.
+- past_due > 7 days triggers org suspended read-only mode.
+- Invoices generated async; PDF to S3; email billing_email.
+- Upgrade immediate with proration; downgrade at period end.
+
+## Restrictions
+- No storing Razorpay secret in code or logs.
+- No activating tenant without confirmed webhook or verified checkout.
+- No manual SQL subscription edits without audit.
+
+## Best Practices
+- Dedicated `billing-webhooks` queue concurrency 1 per tenant.
+- Expose upgrade CTA in `QUOTA_EXCEEDED` error payload.
+- Test mode keys only in dev/staging.
+
+## Anti-Patterns
+- Trusting client-reported payment success without webhook.
+- Double-charging on webhook retry without idempotency.
+
+## Examples
+
+```typescript
+if (await this.webhookRepo.exists(eventId)) return { ok: true };
+await this.subscriptionService.activateFromWebhook(payload);
+await this.webhookRepo.markProcessed(eventId);
+```

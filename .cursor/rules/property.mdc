@@ -1,0 +1,42 @@
+---
+description: Property management rules
+globs: "**/*.{ts,tsx}"
+alwaysApply: false
+---
+
+# Property Rules
+
+## Purpose
+Property inventory, media, SEO per `docs/PRD.md` 4.3, BR-P*, `docs/SEO_STRATEGY.md`.
+
+## Requirements
+- Slug unique per tenant; auto-generate from title BR-P01.
+- Public listing: status=available, is_public=true, ≥1 image BR-P02.
+- On sold/rented: remove from ES within 60s BR-P03.
+- S3 presigned upload flow; WebP thumbnails async.
+- Elasticsearch sync via BullMQ on publish/update.
+- Public API exposes slug-based URLs only for client role.
+- Bulk CSV max 500 rows with error report BR-P05.
+
+## Restrictions
+- Archived properties reject new inquiries BR-P07.
+- Sales executive cannot delete properties.
+- No public index for draft/sold listings.
+
+## Best Practices
+- SSR/ISR public pages with schema.org RealEstateListing.
+- Primary assignment max one per property BR-P06.
+- INR price formatting; store decimal in DB.
+
+## Anti-Patterns
+- Sync ES in HTTP request handler.
+- UUID in public URL path.
+
+## Examples
+
+```typescript
+if (dto.is_public) {
+  await this.validatePublicReady(property); // images + status
+  await this.searchQueue.add('index_property', { tenantId, propertyId });
+}
+```

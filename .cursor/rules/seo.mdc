@@ -1,0 +1,45 @@
+---
+description: SEO implementation rules for public property pages
+globs: "frontend/**/*.{ts,tsx}"
+alwaysApply: false
+---
+
+# SEO Rules
+
+## Purpose
+Organic growth per `docs/SEO_STRATEGY.md`.
+
+## Requirements
+- Public property routes: `/buy/{city}/{slug}` and `/rent/{city}/{slug}`.
+- SSR or ISR with revalidate 300s; on-demand revalidate on publish.
+- Meta title, description, OG, Twitter cards, JSON-LD RealEstateListing.
+- Sitemap.xml per tenant; robots.txt disallow admin routes.
+- Canonical URLs HTTPS; noindex draft/sold BR-S03.
+- Programmatic city/area pages only if listing threshold met BR-S01.
+- Core Web Vitals: next/image with dimensions, priority LCP image.
+
+## Restrictions
+- No UUID in public URLs.
+- No indexing thin pages with zero listings.
+- No cloaking different content for bots.
+
+## Best Practices
+- generateMetadata() in Next.js for each public page type.
+- Structured data validated with Google Rich Results test in CI optional.
+- hreflang ready for future i18n.
+
+## Anti-Patterns
+- Client-only render for property detail (bad for SEO).
+- Duplicate meta titles across all listings.
+
+## Examples
+
+```tsx
+export async function generateMetadata({ params }): Promise<Metadata> {
+  const property = await getPublicProperty(params.slug);
+  return {
+    title: `${property.bhk}BHK ${property.category} in ${property.area} | ${property.orgName}`,
+    openGraph: { images: [property.heroImage] },
+  };
+}
+```

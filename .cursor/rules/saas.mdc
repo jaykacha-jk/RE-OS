@@ -1,0 +1,37 @@
+---
+description: Multi-tenant SaaS patterns for RE-OS
+globs: "**/*.{ts,tsx,md}"
+alwaysApply: true
+---
+
+# SaaS Rules
+
+## Purpose
+Venture-scale SaaS: billing, quotas, onboarding, retention per `docs/BILLING_SPEC.md` and `docs/GROWTH_STRATEGY.md`.
+
+## Requirements
+- Enforce plan limits on create (properties, employees, AI minutes) — BR-T04.
+- Trial 14 days; suspended org read-only mode BR-T02.
+- Usage counters in `organization_usage` kept in sync via events or transactional increments.
+- Onboarding empty states guide activation (5 properties, 2 employees).
+- Feature availability gated by plan tier and feature flags.
+
+## Restrictions
+- No unlimited free tier bypassing billing checks.
+- No hard-coded tenant exceptions in code — use feature flags or support tools with audit.
+
+## Best Practices
+- Cache plan limits Redis 5m; invalidate on subscription webhook.
+- Grace period messaging in UI for past_due.
+- Metrics hooks for activation funnel events.
+
+## Anti-Patterns
+- Checking billing in frontend only.
+- Silent failure when quota exceeded — return 422 `QUOTA_EXCEEDED`.
+
+## Examples
+
+```typescript
+await this.quotaService.assertCanCreateProperty(ctx.tenantId);
+// throws QuotaExceededException with upgrade CTA payload
+```

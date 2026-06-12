@@ -1,0 +1,47 @@
+---
+description: REST API design rules for RE-OS
+globs: "backend/**/*.ts"
+alwaysApply: false
+---
+
+# API Rules
+
+## Purpose
+Consistent REST API per `docs/API_SPEC.md`.
+
+## Requirements
+- Base path `/api/v1`; JSON envelope `{ data, meta }` or `{ error }`.
+- Pagination: `page`, `per_page` (max 100), `sort`, `filter[field]`.
+- Validate all inputs via DTOs; whitelist unknown properties.
+- Return 404 (not 403) for cross-tenant resource access.
+- Document new endpoints in `docs/API_SPEC.md` before merge.
+- Rate limits per SECURITY.md.
+
+## Restrictions
+- No breaking changes without version bump.
+- No GraphQL in MVP without architecture approval.
+- No exposing stack traces in error responses.
+
+## Best Practices
+- Use 201 + Location header on create.
+- 204 on delete success.
+- ETag on heavy reads (optional Phase 4+).
+- OpenAPI examples match real payloads.
+
+## Anti-Patterns
+- Inconsistent naming (`/getProperties` vs REST nouns).
+- Returning arrays without pagination meta.
+- Different error shapes per module.
+
+## Examples
+
+```json
+{
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "Invalid input",
+    "details": [{ "field": "email", "message": "Invalid email" }],
+    "request_id": "uuid"
+  }
+}
+```

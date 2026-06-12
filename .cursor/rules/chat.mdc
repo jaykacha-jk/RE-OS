@@ -1,0 +1,41 @@
+---
+description: Live chat system rules
+globs: "**/*.{ts,tsx}"
+alwaysApply: false
+---
+
+# Chat Rules
+
+## Purpose
+Realtime chat per PRD 4.7 and BR-CH* in BUSINESS_RULES.
+
+## Requirements
+- Socket.io namespace per tenant; JWT auth on handshake.
+- Conversations link tenant_id, optional inquiry_id, property_id.
+- Auto-assign unassigned after 5 min round-robin BR-CH01.
+- Manager sees all; executive assigned only BR-CH04.
+- Sanitize message HTML (DOMPurify) before store/display.
+- Emit `chat.message` to room participants.
+
+## Restrictions
+- No cross-tenant socket rooms.
+- Client cannot access other users' conversations.
+
+## Best Practices
+- Redis adapter for horizontal scale.
+- Link new website chat to inquiry if phone/email captured.
+- Typing indicators optional Phase 6 stretch.
+
+## Anti-Patterns
+- Storing messages without tenant_id.
+- Polling-only chat without websockets for agent inbox.
+
+## Examples
+
+```typescript
+@SubscribeMessage('message')
+async handleMessage(@ConnectedSocket() client, @MessageBody() dto: SendMessageDto) {
+  await this.chatService.assertAccess(client.user, dto.conversationId);
+  return this.chatService.sendMessage(dto, client.user);
+}
+```

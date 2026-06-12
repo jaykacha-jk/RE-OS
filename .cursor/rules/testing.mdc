@@ -1,0 +1,41 @@
+---
+description: Testing standards for RE-OS
+globs: "**/*.{spec,test}.{ts,tsx}"
+alwaysApply: false
+---
+
+# Testing Rules
+
+## Purpose
+80%+ coverage on critical modules; prevent tenant leaks and regressions.
+
+## Requirements
+- Jest unit tests for services; mock repositories.
+- Integration tests with testcontainers (Postgres, Redis) for API + repos.
+- Playwright E2E: login, create property, inquiry pipeline, billing smoke.
+- Every new repository method: tenant isolation negative test.
+- Every new endpoint: RBAC forbidden test for unauthorized role.
+- CI blocks merge on test failure.
+
+## Restrictions
+- No tests that depend on production DB.
+- No skipped tests without ticket reference.
+- No asserting implementation details over behavior.
+
+## Best Practices
+- Factory helpers for org, user, property, inquiry fixtures.
+- Snapshot tests only for stable DTO serializers.
+- Name tests: `should reject cross-tenant access when...`
+
+## Anti-Patterns
+- Testing controllers without guards enabled.
+- 100% coverage on trivial getters with zero business tests.
+
+## Examples
+
+```typescript
+it('should return 404 when inquiry belongs to other tenant', async () => {
+  const other = await createInquiry(otherTenant);
+  await expect(service.find(other.id, myTenantCtx)).rejects.toBeNotFound();
+});
+```

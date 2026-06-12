@@ -1,0 +1,42 @@
+---
+description: PostgreSQL schema and migration rules for RE-OS
+globs: "**/*.{sql,prisma,ts}"
+alwaysApply: false
+---
+
+# Database Rules
+
+## Purpose
+Enforce multi-tenant schema conventions in `docs/DB_SCHEMA.md`.
+
+## Requirements
+- Every business table: `id`, `tenant_id`, `created_by`, `updated_by`, `created_at`, `updated_at`, `deleted_at`.
+- FK `tenant_id` → `organizations.id` NOT NULL on business tables.
+- Unique constraints include `tenant_id` where scoped.
+- Index `(tenant_id, ...)` on all list query patterns.
+- Soft delete: queries default `deleted_at IS NULL`.
+- Migrations backward-compatible for zero-downtime deploys.
+
+## Restrictions
+- No CASCADE DELETE on tenant-scoped FKs without explicit design doc.
+- No cross-tenant JOINs in application code.
+- No storing files in DB — S3 URLs only.
+
+## Best Practices
+- Partial unique indexes: `WHERE deleted_at IS NULL`.
+- Partition large tables (`audit_logs`, `analytics_events`) by month.
+- Use timestamptz everywhere.
+- Seed roles/permissions via migration idempotent scripts.
+
+## Anti-Patterns
+- Missing tenant_id on new table "we'll add later".
+- Hard delete as default.
+- Serial integer primary keys exposed in API.
+
+## Examples
+
+```sql
+CREATE INDEX idx_properties_tenant_status
+  ON properties (tenant_id, status)
+  WHERE deleted_at IS NULL;
+```

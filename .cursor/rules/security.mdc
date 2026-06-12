@@ -1,0 +1,43 @@
+---
+description: Security requirements for RE-OS
+globs: "**/*.{ts,tsx,env*}"
+alwaysApply: true
+---
+
+# Security Rules
+
+## Purpose
+Implement controls in `docs/SECURITY.md` — tenant isolation, auth, OWASP mitigations.
+
+## Requirements
+- JWT RS256 access tokens 15min; refresh rotation with reuse detection.
+- bcrypt cost 12 for passwords; lockout after 5 failed attempts.
+- RBAC on every protected route; field-level DTO stripping by role.
+- Rate limiting on auth and public endpoints.
+- Razorpay webhooks: HMAC verify + idempotency.
+- Secrets in AWS Secrets Manager only — never commit `.env` secrets.
+- Audit log for auth events, deletes, impersonation, billing changes.
+
+## Restrictions
+- No `eval`, no dynamic SQL concatenation.
+- No logging passwords, tokens, full PAN/Aadhaar.
+- No CORS `*` in production.
+- No disabling CSRF protections on cookie auth routes without review.
+
+## Best Practices
+- Security headers via middleware (HSTS, CSP, X-Frame-Options).
+- Dependabot + npm audit in CI.
+- Tenant isolation integration tests on every repo-touching PR.
+
+## Anti-Patterns
+- Trusting `tenant_id` from client body.
+- Returning 403 with "exists in other tenant" messages.
+- Storing refresh tokens plaintext in DB.
+
+## Examples
+
+```typescript
+// GOOD: Tenant scoped lookup
+const property = await repo.findOne({ id, tenantId: ctx.tenantId });
+if (!property) throw new NotFoundException();
+```

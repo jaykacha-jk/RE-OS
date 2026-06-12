@@ -1,0 +1,40 @@
+---
+description: RBAC implementation rules for RE-OS
+globs: "**/*.{ts,tsx}"
+alwaysApply: false
+---
+
+# RBAC Rules
+
+## Purpose
+Enforce role and permission model in `docs/RBAC.md` at API and UI layers.
+
+## Requirements
+- Permission codes: `{module}.{resource}.{action}` seeded in DB.
+- Roles: super_admin, org_owner, org_admin, sales_manager, sales_executive, telecaller, marketing_user, client.
+- `@RequirePermissions()` decorator matches API_SPEC authorization column.
+- Data scope filters in services (assigned-only for sales_executive).
+- Field-level: use serialization groups / response mappers per role.
+- Update RBAC.md when adding permissions.
+
+## Restrictions
+- No role checks via hardcoded email lists.
+- Client role cannot call internal `/employees` routes.
+- Telecaller cannot `properties.delete` or `employees.delete`.
+
+## Best Practices
+- `/auth/me` returns `permissions: string[]` for frontend gating.
+- Integration test matrix: role × endpoint × expected status.
+- Super Admin impersonation requires audit log entry.
+
+## Anti-Patterns
+- Single `isAdmin` boolean for all authorization.
+- Checking role name strings in 20 places — use permission codes.
+
+## Examples
+
+```typescript
+@RequirePermissions('inquiries.assign')
+@Patch(':id/assign')
+assign(@Param('id') id: string, @Body() dto: AssignDto) { ... }
+```

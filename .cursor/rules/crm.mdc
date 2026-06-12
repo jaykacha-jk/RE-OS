@@ -1,0 +1,40 @@
+---
+description: CRM and inquiry pipeline rules
+globs: "**/*.{ts,tsx}"
+alwaysApply: false
+---
+
+# CRM Rules
+
+## Purpose
+Inquiry pipeline per `docs/PRD.md` section 4.4 and `docs/BUSINESS_RULES.md` BR-C*.
+
+## Requirements
+- Default pipeline stages seeded per tenant on org create.
+- Kanban API groups by stage_id; respect data scope by role.
+- Duplicate phone warning within 30 days for open inquiries BR-C01.
+- Closed Won requires property link or reason BR-C03.
+- Closed Lost requires lost_reason BR-C04.
+- Follow-ups: overdue escalation to manager after 48h BR-C06.
+- Activities timeline append-only for audit types.
+
+## Restrictions
+- Sales executive cannot delete inquiries.
+- Marketing role no CRM access.
+- No stage skip without manager role or logged override.
+
+## Best Practices
+- Emit `inquiry.stage_changed` for notifications.
+- Round-robin assignment configurable in org settings.
+- Phone normalize to E.164 on write.
+
+## Anti-Patterns
+- Updating inquiry without activity log for stage changes.
+- Global inquiry list without tenant filter.
+
+## Examples
+
+```typescript
+await this.activityService.logStageChange(inquiry, fromStage, toStage, ctx.userId);
+await this.eventEmitter.emit('inquiry.stage_changed', { inquiryId, tenantId });
+```

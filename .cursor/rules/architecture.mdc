@@ -1,0 +1,54 @@
+---
+description: RE-OS architecture — modular monolith, DDD, tenant isolation, event-driven patterns
+globs: "**/*.{ts,tsx,md}"
+alwaysApply: true
+---
+
+# Architecture Rules
+
+## Purpose
+Ensure all code aligns with RE-OS modular monolith architecture, tenant isolation, and future microservice extraction seams documented in `docs/SYSTEM_DESIGN.md`.
+
+## Requirements
+- Organize backend as NestJS modules matching bounded contexts (auth, tenant, properties, crm, etc.).
+- Use Controller → Service → Repository layering; no business logic in controllers.
+- Every business DB query MUST scope by `tenant_id` from `TenantContext`.
+- Emit domain events for cross-module side effects; use BullMQ for async work.
+- Use UUID v7 for external IDs; never expose sequential IDs.
+- Document architectural changes in `docs/SYSTEM_DESIGN.md` before implementation.
+
+## Restrictions
+- No direct cross-module repository imports — call public service interface or use events.
+- No monolithic `utils.ts` for domain logic — belongs in module services.
+- No shared mutable global state for tenant context.
+- Do not introduce microservices until extraction criteria in SYSTEM_DESIGN are met.
+
+## Best Practices
+- Keep modules cohesive; shared code only in `common/` (guards, pipes, base repository).
+- Design APIs versioned under `/api/v1`.
+- Use outbox pattern preparation for future event bus migration.
+- Feature flags for risky rollouts (Phase 9 table ready).
+
+## Anti-Patterns
+- God module importing everything.
+- Fat controllers with validation + DB + email in one method.
+- Bypassing tenant guard "just for admin scripts".
+- Circular module dependencies.
+
+## Examples
+
+```typescript
+// GOOD: Service enforces tenant + business rule
+async updateInquiry(id: string, dto: UpdateInquiryDto, ctx: TenantContext) {
+  const inquiry = await this.repo.findById(id, ctx.tenantId);
+  if (!inquiry) throw new NotFoundException();
+  this.pipelineService.validateTransition(inquiry.stageId, dto.stageId);
+  return this.repo.update(id, dto, ctx);
+}
+
+// BAD: Controller queries DB directly
+@Patch(':id')
+update(@Param('id') id: string, @Body() body: any) {
+  return this.prisma.inquiry.update({ where: { id }, data: body });
+}
+```

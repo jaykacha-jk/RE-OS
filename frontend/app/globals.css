@@ -1,0 +1,181 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* =========================================================================
+   RE-OS Design Tokens
+   Single source of truth for color, typography, spacing, radius, elevation.
+   See DESIGN_SYSTEM.md for the full reference.
+   ========================================================================= */
+:root {
+  /* Type families */
+  --font-reos-sans: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+
+  /* Brand */
+  --reos-primary: #0f766e;
+  --reos-primary-strong: #115e59;
+  --reos-primary-soft: #ccfbf1;
+  --reos-gold: #b7791f;
+  --reos-gold-soft: #fef3c7;
+
+  /* Surfaces & ink */
+  --reos-bg: #f6f8f9;
+  --reos-surface: #ffffff;
+  --reos-surface-muted: #f1f5f4;
+  --reos-ink: #0f172a;
+  --reos-ink-muted: #5b6b7b;
+  --reos-border: #e3e9e7;
+  --reos-border-strong: #cbd6d2;
+
+  /* Sidebar (dark navy) */
+  --reos-sidebar: #0b1220;
+  --reos-sidebar-soft: #131c2e;
+
+  /* Elevation */
+  --reos-ring: rgba(15, 118, 110, 0.18);
+
+  /* Spacing scale (4px base) */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-12: 3rem;
+}
+
+html,
+body {
+  padding: 0;
+  margin: 0;
+  background: var(--reos-bg);
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+}
+
+/* Consistent, visible focus for keyboard users across the whole app. */
+:where(a, button, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--reos-primary);
+  outline-offset: 2px;
+  border-radius: 0.5rem;
+}
+
+::selection {
+  background: var(--reos-primary-soft);
+  color: var(--reos-primary-strong);
+}
+
+@layer components {
+  /* ---- Typography scale ------------------------------------------------ */
+  .text-display {
+    @apply text-3xl font-bold tracking-tight text-slate-950 sm:text-4xl;
+  }
+  .text-h1 {
+    @apply text-2xl font-bold tracking-tight text-slate-950;
+  }
+  .text-h2 {
+    @apply text-lg font-bold tracking-tight text-slate-900;
+  }
+  .text-h3 {
+    @apply text-base font-semibold text-slate-900;
+  }
+  .text-body {
+    @apply text-sm leading-6 text-slate-600;
+  }
+  .text-caption {
+    @apply text-xs leading-5 text-slate-500;
+  }
+  .text-overline {
+    @apply text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500;
+  }
+
+  /* ---- Surfaces -------------------------------------------------------- */
+  .panel {
+    @apply rounded-2xl border border-reos-border bg-white shadow-card;
+  }
+  .card {
+    @apply rounded-2xl border border-reos-border bg-white shadow-card;
+  }
+  .card-hover {
+    @apply transition duration-150 hover:-translate-y-0.5 hover:border-teal-200 hover:shadow-raised;
+  }
+  .section-gap {
+    @apply space-y-5;
+  }
+
+  /* ---- Inputs ---------------------------------------------------------- */
+  .input {
+    @apply w-full rounded-xl border border-reos-border bg-white px-3 py-2 text-sm text-slate-900 shadow-sm transition placeholder:text-slate-400 focus:border-reos-primary focus:outline-none focus:ring-4 focus:ring-teal-100;
+  }
+
+  /* ---- Buttons --------------------------------------------------------- */
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl bg-reos-primary px-4 py-2 text-sm font-semibold text-white shadow-card transition hover:bg-reos-primaryStrong focus:outline-none focus:ring-4 focus:ring-teal-100 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .btn-secondary {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl border border-reos-border bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-teal-200 hover:bg-teal-50 focus:outline-none focus:ring-4 focus:ring-teal-100 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 focus:outline-none focus:ring-4 focus:ring-teal-100;
+  }
+  .btn-danger {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl bg-rose-600 px-4 py-2 text-sm font-semibold text-white shadow-card transition hover:bg-rose-700 focus:outline-none focus:ring-4 focus:ring-rose-100 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  /* ---- Badges & chips -------------------------------------------------- */
+  .badge {
+    @apply inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold;
+  }
+  .badge-teal { @apply bg-teal-50 text-teal-700 ring-1 ring-inset ring-teal-200; }
+  .badge-green { @apply bg-emerald-50 text-emerald-700 ring-1 ring-inset ring-emerald-200; }
+  .badge-amber { @apply bg-amber-50 text-amber-700 ring-1 ring-inset ring-amber-200; }
+  .badge-rose { @apply bg-rose-50 text-rose-700 ring-1 ring-inset ring-rose-200; }
+  .badge-indigo { @apply bg-indigo-50 text-indigo-700 ring-1 ring-inset ring-indigo-200; }
+  .badge-slate { @apply bg-slate-100 text-slate-600 ring-1 ring-inset ring-slate-200; }
+
+  /* ---- Headings (legacy aliases kept for existing pages) --------------- */
+  .page-title {
+    @apply text-3xl font-bold tracking-tight text-slate-950;
+  }
+  .page-subtitle {
+    @apply mt-2 max-w-3xl text-sm leading-6 text-slate-600;
+  }
+  .eyebrow {
+    @apply text-xs font-bold uppercase tracking-[0.18em] text-teal-700;
+  }
+
+  /* ---- Sidebar links --------------------------------------------------- */
+  .sidebar-link {
+    @apply flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium text-slate-300 transition hover:bg-white/10 hover:text-white focus:outline-none focus:ring-2 focus:ring-teal-400/50;
+  }
+  .sidebar-link-active {
+    @apply bg-teal-500/15 text-white ring-1 ring-inset ring-teal-400/30;
+  }
+
+  /* ---- Keyboard hint --------------------------------------------------- */
+  .kbd {
+    @apply inline-flex h-5 min-w-5 items-center justify-center rounded border border-slate-300 bg-slate-50 px-1 font-mono text-[10px] font-semibold text-slate-500;
+  }
+
+  /* ---- Backgrounds ----------------------------------------------------- */
+  .premium-gradient {
+    background:
+      radial-gradient(circle at top left, rgba(15, 118, 110, 0.1), transparent 32rem),
+      radial-gradient(circle at top right, rgba(183, 121, 31, 0.08), transparent 28rem),
+      var(--reos-bg);
+  }
+}
+
+@layer utilities {
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: var(--reos-border-strong) transparent;
+  }
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background-color: var(--reos-border-strong);
+    border-radius: 9999px;
+  }
+}

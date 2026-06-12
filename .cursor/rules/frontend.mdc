@@ -1,0 +1,44 @@
+---
+description: Next.js frontend standards for RE-OS
+globs: "frontend/**/*.{ts,tsx}"
+alwaysApply: false
+---
+
+# Frontend Rules
+
+## Purpose
+Consistent Next.js App Router UI per `docs/UI_UX_GUIDELINES.md` and RBAC visibility.
+
+## Requirements
+- TypeScript strict; shadcn/ui + Tailwind for components.
+- Feature-based folders under `features/`.
+- TanStack Query for client data; server components for public SEO pages.
+- React Hook Form + Zod for all forms.
+- Permission-gate UI from `/auth/me` permissions — hide unauthorized actions.
+- INR currency formatting utility; E.164 phone display.
+
+## Restrictions
+- No secrets in `NEXT_PUBLIC_*`.
+- No storing JWT in localStorage (prefer httpOnly cookie pattern from API).
+- No inline styles except dynamic values.
+- Client role must not display internal IDs or commission fields.
+
+## Best Practices
+- Skeleton loaders for tables; optimistic updates for stage changes with rollback.
+- Error boundaries on feature routes.
+- Image `next/image` with dimensions for LCP.
+- i18n-ready strings (English MVP).
+
+## Anti-Patterns
+- Fetch in every component without query cache.
+- 500-line page components — split into features.
+- Hardcoded tenant slug.
+
+## Examples
+
+```tsx
+// GOOD: Permission-gated button
+{permissions.includes('properties.delete') && (
+  <Button variant="destructive" onClick={handleDelete}>Delete</Button>
+)}
+```

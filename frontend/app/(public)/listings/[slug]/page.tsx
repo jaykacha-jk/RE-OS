@@ -1,0 +1,58 @@
+import type { Metadata } from 'next';
+import { notFound } from 'next/navigation';
+
+import { PublicPropertyDetail } from '../../../../components/public/property-detail';
+import {
+  buildPropertyMetadata,
+  fetchPublicListings,
+  fetchPublicProperty,
+  propertyIntent,
+  propertyPath,
+} from '../../../../lib/public-site';
+
+export const revalidate = 300;
+
+export async function generateMetadata({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ slug: string }>;
+  searchParams: Promise<{ tenant?: string }>;
+}): Promise<Metadata> {
+  const { slug } = await params;
+  const { tenant } = await searchParams;
+  const property = await fetchPublicProperty(slug, tenant ?? 'demo');
+  if (!property) return { title: 'Property not found' };
+  return buildPropertyMetadata(property, propertyPath(property));
+}
+
+export default async function PublicPropertyDetailPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ slug: string }>;
+  searchParams: Promise<{ tenant?: string }>;
+}) {
+  const { slug } = await params;
+  const { tenant } = await searchParams;
+  const tenantSlug = tenant ?? 'demo';
+  const property = await fetchPublicProperty(slug, tenantSlug);
+  if (!property) notFound();
+
+  const { data: cityListings } = await fetchPublicListings({
+    tenant: tenantSlug,
+    city: property.city,
+    intent: propertyIntent(property),
+    perPage: 6,
+  });
+  const related = cityListings.filter((item) => item.slug !== property.slug).slice(0, 3);
+
+  return (
+    <PublicPropertyDetail
+      property={property}
+      tenant={tenantSlug}
+      canonicalUrl={propertyPath(property)}
+      related={related}
+    />
+  );
+}

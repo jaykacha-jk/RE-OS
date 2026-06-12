@@ -1,0 +1,41 @@
+---
+description: AI calling agent rules
+globs: "backend/**/ai*/**/*.ts"
+alwaysApply: false
+---
+
+# AI Agent Rules
+
+## Purpose
+AI calls per `docs/AI_AGENT_SPEC.md` and BR-AI*.
+
+## Requirements
+- Outbound requires consent_recorded or inquiry opt-in BR-AI01.
+- DND registry check before dial BR-AI05.
+- Recording disclosure in call script.
+- Whisper transcription + GPT extraction jobs async.
+- Apply inquiry auto-fill only if confidence >= 0.8 BR-AI04.
+- Deduct AI minutes on connect; track in organization_usage.
+- Store recordings S3 KMS encrypted.
+
+## Restrictions
+- No OpenAI keys in frontend.
+- Telecaller cannot export bulk transcripts without permission.
+- No outbound to numbers on org DND block list.
+
+## Best Practices
+- Lead score 0-100 persisted on call + sync to inquiry.
+- Retry transcription 3x then alert ops.
+- Quota check before initiating call.
+
+## Anti-Patterns
+- Synchronous wait for transcript in API request.
+- Auto-updating inquiry with low-confidence hallucinated budget.
+
+## Examples
+
+```typescript
+await this.complianceService.assertCanDial(dto.clientPhone, ctx);
+await this.quotaService.assertAiMinutesAvailable(ctx.tenantId);
+return this.callQueue.add('initiate_call', { ...dto, tenantId: ctx.tenantId });
+```

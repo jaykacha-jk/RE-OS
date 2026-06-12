@@ -1,0 +1,16 @@
+import { ApiProperty } from '@nestjs/swagger';
+import { IsString, Matches, MinLength } from 'class-validator';
+
+export class ResetPasswordDto {
+  @ApiProperty({ description: 'Password reset token from email link' })
+  @IsString()
+  token!: string;
+
+  @ApiProperty({ minLength: 8 })
+  @IsString()
+  @MinLength(8)
+  @Matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).+$/, {
+    message: 'password must include upper, lower, and digit',
+  })
+  password!: string;
+}

@@ -1,0 +1,46 @@
+---
+description: NestJS backend standards for RE-OS
+globs: "backend/**/*.ts"
+alwaysApply: false
+---
+
+# Backend Rules
+
+## Purpose
+Standardize NestJS implementation for RE-OS API and workers per `docs/CODING_STANDARDS.md`.
+
+## Requirements
+- TypeScript strict; DTOs with class-validator on all inputs.
+- `@RequirePermissions()` on every controller method.
+- `JwtAuthGuard`, `TenantGuard`, `PermissionsGuard` order enforced globally.
+- Services own transactions (`@Transactional()` or explicit query runner).
+- Map entities to response DTOs — never leak password_hash, internal fields.
+- Structured JSON logging with `tenant_id`, `user_id`, `trace_id`.
+
+## Restrictions
+- No `any` in service public methods.
+- No raw SQL without security review and parameterization.
+- No synchronous email/ES indexing in request path — queue jobs.
+- No business rules only in frontend.
+
+## Best Practices
+- Repository base class: `findManyScoped(tenantId, filters)`.
+- Idempotency keys on webhook and payment handlers.
+- Unit test services with mocked repositories.
+- OpenAPI decorators on all endpoints.
+
+## Anti-Patterns
+- Passing `tenant_id` from request body (use JWT/context only).
+- Catching all errors and returning 200.
+- Importing TypeORM/Prisma in controllers.
+
+## Examples
+
+```typescript
+@Post()
+@RequirePermissions('employees.create')
+async create(@Body() dto: CreateEmployeeDto, @CurrentUser() user: AuthUser) {
+  const data = await this.employeeService.create(dto, user);
+  return { data, meta: { request_id: user.requestId } };
+}
+```

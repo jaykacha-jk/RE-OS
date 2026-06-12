@@ -1,8 +1,28 @@
 import Link from 'next/link';
 
+import { EmptyState } from '../../../components/shared/EmptyState';
+import { ErrorState } from '../../../components/shared/ErrorState';
 import { fetchPublicListings, inr, propertyPath } from '../../../lib/public-site';
 
 export const revalidate = 300;
+
+export const metadata = {
+  title: 'Listings | RE-OS',
+  description:
+    'Search verified properties for sale, rent, and commercial use across tenant-managed public inventory.',
+  openGraph: {
+    title: 'Verified property listings | RE-OS',
+    description:
+      'Compare verified homes and workspaces, then request a callback from the local property team.',
+    url: '/listings',
+    type: 'website',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Verified property listings | RE-OS',
+    description: 'Search tenant-managed public inventory for sale, rent, and commercial use.',
+  },
+};
 
 export default async function PublicListingsPage({
   searchParams,
@@ -11,7 +31,7 @@ export default async function PublicListingsPage({
 }) {
   const sp = await searchParams;
   const tenant = sp.tenant ?? 'demo';
-  const { data } = await fetchPublicListings({ tenant, search: sp.search, city: sp.city });
+  const { data, error } = await fetchPublicListings({ tenant, search: sp.search, city: sp.city });
   const city = sp.city ?? 'Ahmedabad';
   const citySlug = city.toLowerCase().replace(/\s+/g, '-');
   const activeFilters = [sp.search, sp.city].filter(Boolean).length;
@@ -89,27 +109,39 @@ export default async function PublicListingsPage({
           ) : null}
         </div>
 
-        {data.length === 0 ? (
-          <div className="mt-8 rounded-3xl border border-dashed border-teal-200 bg-white p-10 text-center shadow-card">
-            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-teal-50 text-teal-700">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className="h-7 w-7">
-                <path d="M3 10.5 12 4l9 6.5" />
-                <path d="M5 9.5V20h14V9.5" />
-                <path d="M10 20v-5h4v5" />
-              </svg>
-            </div>
-            <h3 className="mt-4 text-lg font-bold text-slate-950">No listings found</h3>
-            <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-600">
-              Try a wider city search, remove filters, or contact the team for matching inventory that is not public yet.
-            </p>
-            <div className="mt-5 flex flex-wrap justify-center gap-3">
-              <Link href={`/listings?tenant=${encodeURIComponent(tenant)}`} className="btn-primary">
-                Reset search
-              </Link>
-              <Link href={`/contact?tenant=${encodeURIComponent(tenant)}`} className="btn-secondary">
-                Request help
-              </Link>
-            </div>
+        {error ? (
+          <div className="mt-8">
+            <ErrorState
+              title="Listings could not be loaded"
+              message={`${error}. Please try again or contact the team for matching inventory.`}
+              action={
+                <>
+                  <Link href={`/listings?tenant=${encodeURIComponent(tenant)}`} className="btn-primary">
+                    Try again
+                  </Link>
+                  <Link href={`/contact?tenant=${encodeURIComponent(tenant)}`} className="btn-secondary">
+                    Request help
+                  </Link>
+                </>
+              }
+            />
+          </div>
+        ) : data.length === 0 ? (
+          <div className="mt-8">
+            <EmptyState
+              title="No listings found"
+              description="Try a wider city search, remove filters, or contact the team for matching inventory that is not public yet."
+              action={
+                <>
+                  <Link href={`/listings?tenant=${encodeURIComponent(tenant)}`} className="btn-primary">
+                    Reset search
+                  </Link>
+                  <Link href={`/contact?tenant=${encodeURIComponent(tenant)}`} className="btn-secondary">
+                    Request help
+                  </Link>
+                </>
+              }
+            />
           </div>
         ) : (
           <div className="mt-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">

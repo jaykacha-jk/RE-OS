@@ -1,4 +1,10 @@
-import { ForbiddenException, Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { importPKCS8, SignJWT } from 'jose';
 import { createHash, randomBytes } from 'crypto';
 
@@ -7,24 +13,42 @@ import { AcceptInvitationDto } from './dto/accept-invitation.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { LoginDto } from './dto/login.dto';
 import { RefreshDto } from './dto/refresh.dto';
+import { RegisterDto } from './dto/register.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
+import { UpdateProfileDto } from './dto/update-profile.dto';
+import { VerifyEmailDto } from './dto/verify-email.dto';
 
 import bcrypt from 'bcrypt';
 import type { AuthUser } from '../../common/context/auth-user';
 import { getJwtPrivateKeyPem } from '../../config/jwt-keys';
+import { QUEUES } from '../../jobs/queue.constants';
+import { QueueService } from '../../jobs/queue.service';
 import { AuditService, type AuditRequestMeta } from '../audit/audit.service';
+import { EMAIL_JOB, type EmailJobData } from '../notifications/notifications.types';
 
 const ACCESS_TOKEN_TTL_SECONDS = 15 * 60;
 const REFRESH_TOKEN_TTL_DAYS = 7;
 const PASSWORD_RESET_TTL_MINUTES = 30;
+const EMAIL_VERIFICATION_TTL_HOURS = 24;
+const TRIAL_DAYS = 14;
 const MAX_FAILED_LOGINS = 5;
 const LOCKOUT_MINUTES = 15;
+const DEFAULT_LEAD_SOURCES = [
+  { name: 'Website', code: 'website' },
+  { name: 'Property Portal', code: 'property_portal' },
+  { name: 'WhatsApp', code: 'whatsapp' },
+  { name: 'Facebook', code: 'facebook' },
+  { name: 'Google Ads', code: 'google_ads' },
+  { name: 'Referral', code: 'referral' },
+  { name: 'Walk-in', code: 'walk_in' },
+];
 
 @Injectable()
 export class AuthService {
   constructor(
     private readonly authRepository: AuthRepository,
     private readonly auditService: AuditService,
+    private readonly queue: QueueService,
   ) {}
 
   private async signAccessToken(input: {
@@ -65,6 +89,30 @@ export class AuthService {
       [name]: token,
       url: `${base}${path}?token=${encodeURIComponent(token)}`,
     };
+  }
+
+  private slugify(value: string): string {
+    return value
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 63);
+  }
+
+  private splitName(fullName: string): { firstName: string; lastName: string | null } {
+    const parts = fullName.trim().replace(/\s+/g, ' ').split(' ');
+    const firstName = parts.shift() ?? fullName.trim();
+    const lastName = parts.length > 0 ? parts.join(' ') : null;
+    return { firstName, lastName };
+  }
+
+  private addDays(date: Date, days: number): Date {
+    return new Date(date.getTime() + days * 24 * 60 * 60 * 1000);
+  }
+
+  private addHours(date: Date, hours: number): Date {
+    return new Date(date.getTime() + hours * 60 * 60 * 1000);
   }
 
   async login(dto: LoginDto, meta?: AuditRequestMeta) {
@@ -128,6 +176,22 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials');
     }
 
+    if (
+      userTenantId &&
+      !user.email_verified_at &&
+      (await this.authRepository.hasPendingEmailVerification(user.id))
+    ) {
+      await this.auditService.record({
+        tenantId: userTenantId,
+        actorEmail: dto.email,
+        action: 'auth.login.email_unverified',
+        entityType: 'user',
+        entityId: user.id,
+        meta,
+      });
+      throw new ForbiddenException('Email verification required before login');
+    }
+
     await this.authRepository.resetLoginFailures(user.id);
 
     const { roles, permissions } = await this.authRepository.getRolesAndPermissions(
@@ -145,11 +209,13 @@ export class AuthService {
     const refresh_token_raw = randomBytes(32).toString('base64url');
     const refresh_token_hash = this.hashToken(refresh_token_raw);
     const refresh_jti = randomBytes(12).toString('hex');
+    const refresh_family_id = randomBytes(12).toString('hex');
     const expiresAt = new Date(Date.now() + REFRESH_TOKEN_TTL_DAYS * 24 * 60 * 60 * 1000);
 
     await this.authRepository.createRefreshToken({
       userId: user.id,
       jti: refresh_jti,
+      tokenFamilyId: refresh_family_id,
       tokenHash: refresh_token_hash,
       expiresAt,
       userAgent: meta?.userAgent,
@@ -180,14 +246,150 @@ export class AuthService {
     };
   }
 
+  async register(dto: RegisterDto, meta?: AuditRequestMeta) {
+    const email = dto.email.trim().toLowerCase();
+    const agencyName = dto.agency_name.trim().replace(/\s+/g, ' ');
+    const ownerName = dto.owner_name.trim().replace(/\s+/g, ' ');
+    const slug = dto.agency_slug?.trim() ?? this.slugify(agencyName);
+
+    if (!slug || slug.length < 3) {
+      throw new ConflictException('Agency name cannot produce a valid organization slug');
+    }
+
+    const [existingOrgBySlug, existingOrgByName, existingUser] = await Promise.all([
+      this.authRepository.findOrganizationBySlug(slug),
+      this.authRepository.findOrganizationByName(agencyName),
+      this.authRepository.findAnyUserByEmail(email),
+    ]);
+
+    if (existingOrgBySlug || existingOrgByName) {
+      throw new ConflictException('Organization already exists');
+    }
+    if (existingUser) {
+      throw new ConflictException('Email already exists');
+    }
+
+    const [ownerRole, starterPlan] = await Promise.all([
+      this.authRepository.findRoleByCode('org_owner'),
+      this.authRepository.findActivePlanByCode('starter'),
+    ]);
+    if (!ownerRole) throw new NotFoundException('org_owner role is not seeded');
+    if (!starterPlan) throw new NotFoundException('starter plan is not seeded');
+
+    const passwordHash = await bcrypt.hash(dto.password, 12);
+    const verificationToken = randomBytes(32).toString('base64url');
+    const verificationTokenHash = this.hashToken(verificationToken);
+    const now = new Date();
+    const verificationExpiresAt = this.addHours(now, EMAIL_VERIFICATION_TTL_HOURS);
+    const trialEndsAt = this.addDays(now, TRIAL_DAYS);
+    const { firstName, lastName } = this.splitName(ownerName);
+
+    const created = await this.authRepository.createRegisteredOrganization({
+      agencyName,
+      slug,
+      ownerEmail: email,
+      ownerPhone: dto.phone,
+      ownerFirstName: firstName,
+      ownerLastName: lastName,
+      passwordHash,
+      ownerRoleId: ownerRole.id,
+      planId: starterPlan.id,
+      verificationTokenHash,
+      verificationExpiresAt,
+      trialEndsAt,
+      leadSources: DEFAULT_LEAD_SOURCES,
+    });
+
+    await this.auditService.record({
+      actor: { userId: created.user.id, tenantId: created.organization.id },
+      tenantId: created.organization.id,
+      action: 'auth.register.completed',
+      entityType: 'organization',
+      entityId: created.organization.id,
+      afterState: {
+        organization_slug: created.organization.slug,
+        owner_email: created.user.email,
+        plan_code: created.subscription.plan.code,
+        trial_ends_at: created.subscription.trial_ends_at?.toISOString() ?? null,
+      },
+      meta,
+    });
+
+    await this.enqueueVerificationEmail({
+      userId: created.user.id,
+      tenantId: created.organization.id,
+      organizationName: created.organization.name,
+      token: verificationToken,
+      expiresAt: verificationExpiresAt,
+    });
+
+    return {
+      organization: {
+        id: created.organization.id,
+        name: created.organization.name,
+        slug: created.organization.slug,
+        status: created.organization.status,
+        tier: created.organization.tier,
+        trial_ends_at: created.subscription.trial_ends_at?.toISOString() ?? null,
+      },
+      owner: {
+        id: created.user.id,
+        email: created.user.email,
+        first_name: created.user.first_name,
+        last_name: created.user.last_name,
+        email_verified_at: created.user.email_verified_at?.toISOString() ?? null,
+      },
+      subscription: {
+        id: created.subscription.id,
+        status: created.subscription.status,
+        plan_code: created.subscription.plan.code,
+        billing_cycle: created.subscription.billing_cycle,
+        trial_ends_at: created.subscription.trial_ends_at?.toISOString() ?? null,
+      },
+      verification_email_sent: true,
+      ...this.devTokenHint(
+        'verification_token',
+        verificationToken,
+        '/verify-email',
+      ),
+    };
+  }
+
   async refresh(dto: RefreshDto, meta?: AuditRequestMeta) {
     const tokenHash = this.hashToken(dto.refresh_token);
     const existing = await this.authRepository.findRefreshTokenByHash(tokenHash);
-    if (!existing || existing.revoked_at || existing.expires_at.getTime() < Date.now()) {
+    if (!existing) {
       throw new UnauthorizedException('Invalid refresh token');
     }
 
-    await this.authRepository.revokeRefreshToken(tokenHash, new Date());
+    const now = new Date();
+    if (existing.revoked_at) {
+      const user = await this.authRepository.findUserById(existing.user_id);
+      await this.authRepository.revokeRefreshTokenFamily(
+        existing.user_id,
+        existing.token_family_id,
+        now,
+      );
+      await this.auditService.record({
+        actor: user ? { userId: user.id, tenantId: user.tenant_id ?? null } : null,
+        tenantId: user?.tenant_id ?? null,
+        action: 'auth.refresh.reuse_detected',
+        entityType: 'refresh_token',
+        entityId: existing.id,
+        afterState: {
+          token_family_id: existing.token_family_id,
+          reused_jti: existing.jti,
+        },
+        meta,
+      });
+      throw new UnauthorizedException('Invalid refresh token');
+    }
+
+    if (existing.expires_at.getTime() < Date.now()) {
+      throw new UnauthorizedException('Invalid refresh token');
+    }
+
+    await this.authRepository.revokeRefreshToken(tokenHash, now);
 
     // Load user + tenant-scoped roles.
     const user = await this.authRepository.findUserById(existing.user_id);
@@ -214,6 +416,7 @@ export class AuthService {
     await this.authRepository.createRefreshToken({
       userId: user.id,
       jti: refresh_jti,
+      tokenFamilyId: existing.token_family_id,
       tokenHash: refresh_token_hash,
       expiresAt,
       userAgent: meta?.userAgent,
@@ -262,9 +465,55 @@ export class AuthService {
   }
 
   async me(user: AuthUser) {
+    const current = await this.authRepository.findActiveUserById(user.userId);
+    if (!current) throw new NotFoundException('User not found');
     return {
       user_id: user.userId,
       tenant_id: user.tenantId,
+      email: current.email,
+      first_name: current.first_name,
+      last_name: current.last_name,
+      phone: current.phone,
+      roles: user.roles,
+      permissions: user.permissions,
+    };
+  }
+
+  async updateProfile(user: AuthUser, dto: UpdateProfileDto, meta?: AuditRequestMeta) {
+    const updated = await this.authRepository.updateProfile(user.userId, {
+      firstName: dto.first_name?.trim(),
+      lastName:
+        dto.last_name === undefined
+          ? undefined
+          : dto.last_name?.trim() || null,
+      phone:
+        dto.phone === undefined
+          ? undefined
+          : dto.phone?.trim() || null,
+    });
+    if (!updated) throw new NotFoundException('User not found');
+
+    await this.auditService.record({
+      actor: user,
+      tenantId: user.tenantId,
+      action: 'auth.profile.updated',
+      entityType: 'user',
+      entityId: user.userId,
+      afterState: {
+        first_name: updated.first_name,
+        last_name: updated.last_name,
+        phone: updated.phone,
+      },
+      meta,
+    });
+
+    return {
+      user_id: user.userId,
+      tenant_id: user.tenantId,
+      email: updated.email,
+      first_name: updated.first_name,
+      last_name: updated.last_name,
+      phone: updated.phone,
       roles: user.roles,
       permissions: user.permissions,
     };
@@ -278,14 +527,26 @@ export class AuthService {
       throw new UnauthorizedException('Invalid or expired invitation');
     }
 
-    const user = await this.authRepository.findInvitedUser(invitation.email, invitation.role_id);
+    const user = await this.authRepository.findInvitedUser(
+      invitation.tenant_id,
+      invitation.user_id,
+      invitation.email,
+      invitation.role_id,
+    );
     if (!user) {
       throw new UnauthorizedException('Invalid or expired invitation');
     }
 
     const passwordHash = await bcrypt.hash(dto.password, 12);
-    await this.authRepository.activateInvitedUser(user.id, passwordHash);
-    await this.authRepository.markInvitationAccepted(tokenHash);
+    const activatedUser = await this.authRepository.activateInvitedUser(
+      invitation.tenant_id,
+      user.id,
+      passwordHash,
+    );
+    if (!activatedUser) {
+      throw new UnauthorizedException('Invalid or expired invitation');
+    }
+    await this.authRepository.markInvitationAccepted(tokenHash, invitation.tenant_id, user.id);
 
     const tenantId = user.tenant_id ?? null;
     const { roles, permissions } = await this.authRepository.getRolesAndPermissions(
@@ -303,11 +564,13 @@ export class AuthService {
     const refresh_token_raw = randomBytes(32).toString('base64url');
     const refresh_token_hash = this.hashToken(refresh_token_raw);
     const refresh_jti = randomBytes(12).toString('hex');
+    const refresh_family_id = randomBytes(12).toString('hex');
     const expiresAt = new Date(Date.now() + REFRESH_TOKEN_TTL_DAYS * 24 * 60 * 60 * 1000);
 
     await this.authRepository.createRefreshToken({
       userId: user.id,
       jti: refresh_jti,
+      tokenFamilyId: refresh_family_id,
       tokenHash: refresh_token_hash,
       expiresAt,
       userAgent: meta?.userAgent,
@@ -354,6 +617,12 @@ export class AuthService {
         tokenHash,
         expiresAt,
       });
+      await this.enqueuePasswordResetEmail({
+        userId: user.id,
+        tenantId: user.tenant_id ?? tenantId,
+        token: resetToken,
+        expiresAt,
+      });
       devHint = this.devTokenHint('reset_token', resetToken, '/reset-password');
     }
 
@@ -393,6 +662,129 @@ export class AuthService {
     });
 
     return { message: 'Password has been reset. You can now sign in.' };
+  }
+
+  async verifyEmail(dto: VerifyEmailDto, meta?: AuditRequestMeta) {
+    const tokenHash = this.hashToken(dto.token);
+    const result = await this.authRepository.consumeEmailVerificationToken(tokenHash);
+
+    if (!result) {
+      throw new UnauthorizedException('Invalid or expired verification token');
+    }
+
+    await this.auditService.record({
+      actor: { userId: result.user.id, tenantId: result.user.tenant_id ?? null },
+      tenantId: result.user.tenant_id ?? null,
+      action: 'auth.email.verified',
+      entityType: 'user',
+      entityId: result.user.id,
+      afterState: {
+        email: result.user.email,
+        tenant_slug: result.user.tenant?.slug ?? null,
+      },
+      meta,
+    });
+
+    return {
+      message: 'Email verified. You can now sign in.',
+      user: {
+        id: result.user.id,
+        email: result.user.email,
+        email_verified_at: result.user.email_verified_at?.toISOString() ?? null,
+      },
+      organization: result.user.tenant
+        ? {
+            id: result.user.tenant.id,
+            name: result.user.tenant.name,
+            slug: result.user.tenant.slug,
+          }
+        : null,
+    };
+  }
+
+  private async enqueuePasswordResetEmail(input: {
+    userId: string;
+    tenantId: string | null;
+    token: string;
+    expiresAt: Date;
+  }): Promise<void> {
+    const resetUrl = this.buildAppUrl(
+      `/reset-password?token=${encodeURIComponent(input.token)}`,
+    );
+    await this.queue.enqueue<EmailJobData>(QUEUES.EMAIL, EMAIL_JOB, {
+      tenantId: input.tenantId,
+      userId: input.userId,
+      eventKey: 'auth.password_reset.requested',
+      context: {
+        resetUrl,
+        expiresAt: input.expiresAt.toISOString(),
+        expiresInMinutes: PASSWORD_RESET_TTL_MINUTES,
+      },
+      subject: 'Reset your RE-OS password',
+      body: [
+        'We received a request to reset your RE-OS password.',
+        '',
+        `Reset your password: ${resetUrl}`,
+        '',
+        `This link expires in ${PASSWORD_RESET_TTL_MINUTES} minutes. If you did not request this, you can ignore this email.`,
+      ].join('\n'),
+      html: [
+        '<p>We received a request to reset your RE-OS password.</p>',
+        `<p><a href="${resetUrl}">Reset your password</a></p>`,
+        `<p>This link expires in ${PASSWORD_RESET_TTL_MINUTES} minutes. If you did not request this, you can ignore this email.</p>`,
+      ].join(''),
+    });
+  }
+
+  private async enqueueVerificationEmail(input: {
+    userId: string;
+    tenantId: string;
+    organizationName: string;
+    token: string;
+    expiresAt: Date;
+  }): Promise<void> {
+    const verifyUrl = this.buildAppUrl(
+      `/verify-email?token=${encodeURIComponent(input.token)}`,
+    );
+    const organizationNameHtml = this.escapeHtml(input.organizationName);
+    await this.queue.enqueue<EmailJobData>(QUEUES.EMAIL, EMAIL_JOB, {
+      tenantId: input.tenantId,
+      userId: input.userId,
+      eventKey: 'auth.email_verification.requested',
+      context: {
+        organizationName: input.organizationName,
+        verifyUrl,
+        expiresAt: input.expiresAt.toISOString(),
+        expiresInHours: EMAIL_VERIFICATION_TTL_HOURS,
+      },
+      subject: 'Verify your RE-OS email',
+      body: [
+        `Welcome to RE-OS. Verify your email to activate ${input.organizationName}.`,
+        '',
+        `Verify email: ${verifyUrl}`,
+        '',
+        `This link expires in ${EMAIL_VERIFICATION_TTL_HOURS} hours.`,
+      ].join('\n'),
+      html: [
+        `<p>Welcome to RE-OS. Verify your email to activate ${organizationNameHtml}.</p>`,
+        `<p><a href="${verifyUrl}">Verify email</a></p>`,
+        `<p>This link expires in ${EMAIL_VERIFICATION_TTL_HOURS} hours.</p>`,
+      ].join(''),
+    });
+  }
+
+  private buildAppUrl(path: string): string {
+    const base = process.env.APP_URL ?? 'http://localhost:3000';
+    return `${base.replace(/\/$/, '')}${path}`;
+  }
+
+  private escapeHtml(value: string): string {
+    return value
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
   }
 }
 

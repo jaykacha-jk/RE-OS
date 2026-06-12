@@ -19,7 +19,6 @@ const PERFORMANCE_ROLES = [
   'super_admin',
   'org_owner',
   'org_admin',
-  'marketing_user',
   'sales_manager',
 ];
 

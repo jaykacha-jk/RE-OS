@@ -7,8 +7,8 @@ import { ProductionEmailProvider } from './production-email-provider';
 /**
  * Binds the `EMAIL_PROVIDER` token to a concrete implementation based on the
  * EMAIL_PROVIDER env var. Defaults to the dev provider so the pipeline works
- * out-of-the-box locally. Consumers depend only on the `EmailProvider`
- * interface (provider-agnostic).
+ * out-of-the-box locally. Set EMAIL_PROVIDER=production with RESEND_API_KEY
+ * and EMAIL_FROM to send through Resend.
  */
 @Module({
   providers: [

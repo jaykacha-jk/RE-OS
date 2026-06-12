@@ -18,10 +18,10 @@ import {
 type Tab = 'qualify' | 'match' | 'intelligence' | 'chat';
 
 const TABS: { id: Tab; label: string }[] = [
-  { id: 'qualify', label: 'Qualify' },
-  { id: 'match', label: 'Match' },
-  { id: 'intelligence', label: 'Intelligence' },
-  { id: 'chat', label: 'Chat' },
+  { id: 'qualify', label: 'Rule qualifier' },
+  { id: 'match', label: 'Rule matcher' },
+  { id: 'intelligence', label: 'Rule intelligence' },
+  { id: 'chat', label: 'LLM chat' },
 ];
 
 export default function AiPlaygroundPage() {
@@ -30,9 +30,9 @@ export default function AiPlaygroundPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold text-slate-900">AI assistant</h1>
+        <h1 className="text-2xl font-semibold text-slate-900">Assistant workbench</h1>
         <p className="text-sm text-slate-500">
-          Run lead qualification, property matching, conversation intelligence, and the chat assistant.
+          Qualification, matching, and intelligence use deterministic rules. Chat uses OpenAI only when configured; otherwise it uses mock replies.
         </p>
       </div>
 
@@ -267,7 +267,7 @@ function ChatTab() {
   return (
     <Panel>
       <div className="mb-3 h-80 space-y-2 overflow-y-auto rounded border bg-slate-50 p-3">
-        {messages.length === 0 && <p className="text-sm text-slate-400">Start a conversation with the AI assistant.</p>}
+        {messages.length === 0 && <p className="text-sm text-slate-400">Start a conversation with the assistant.</p>}
         {messages.map((m, i) => (
           <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
             <div

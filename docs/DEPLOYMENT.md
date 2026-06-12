@@ -46,18 +46,42 @@ Route53 → CloudFront (frontend + static)
 
 ### 4.1 Backend Dockerfile (multi-stage)
 
-- Stage 1: `npm ci` + build  
-- Stage 2: distroless/node production, non-root user  
-- `NODE_ENV=production`  
+- File: `backend/Dockerfile`
+- Build context: repository root
+- Stage 1: `npm ci`, `prisma generate`, Nest build, prune dev dependencies
+- Stage 2: production Node runtime, non-root `node` user, `/health` Docker healthcheck
+- Runtime command: `node backend/dist/main.js`
+- Release migration command: `npm --workspace backend run prisma:migrate:deploy`
+
+```bash
+docker build -f backend/Dockerfile -t re-os-backend:staging .
+```
 
 ### 4.2 Frontend Dockerfile
 
-- Next.js `output: 'standalone'`  
-- Non-root user  
+- File: `frontend/Dockerfile`
+- Build context: repository root
+- Uses Next.js `output: 'standalone'`
+- Non-root `node` runtime
+- Runtime command: `node frontend/server.js`
 
-### 4.3 Local Compose (`docker-compose.yml`)
+```bash
+docker build -f frontend/Dockerfile \
+  --build-arg NEXT_PUBLIC_API_URL=https://staging-api.reos.app \
+  -t re-os-frontend:staging .
+```
 
-Services: `postgres`, `redis`, `elasticsearch`, `api`, `worker`, `frontend` (dev only).
+### 4.3 Staging Compose (`docker-compose.staging.yml`)
+
+Services: `postgres`, `redis`, `migrate`, `api`, `frontend`.
+
+```bash
+cp .env.example .env
+# Fill required secrets before starting: POSTGRES_PASSWORD, JWT keys, email/payment secrets.
+docker compose -f docker-compose.staging.yml up --build
+```
+
+The `migrate` service runs Prisma migrations once after Postgres is healthy. The API waits for Postgres, Redis, and the migration step before serving traffic.
 
 ---
 
@@ -75,11 +99,13 @@ Services: `postgres`, `redis`, `elasticsearch`, `api`, `worker`, `frontend` (dev
 # Pipeline stages
 1. lint + typecheck (frontend, backend)
 2. unit tests
-3. integration tests (testcontainers postgres/redis)
-4. build docker images
-5. push to ECR
-6. deploy staging (auto on main)
-7. deploy production (manual approval)
+3. live Postgres tenant-isolation e2e
+4. build application artifacts
+5. build docker images
+6. broader API integration tests (auth, properties, CRM, billing webhook) [pending]
+7. push to ECR [pending]
+8. deploy staging (auto on main) [pending]
+9. deploy production (manual approval) [pending]
 ```
 
 **Branch protection:** main requires PR + 1 review + green CI.
@@ -109,13 +135,24 @@ Secrets sourced from AWS Secrets Manager; injected via ECS task definition.
 
 ## 8. Monitoring & Logging
 
-| Component | Tool |
-|-----------|------|
-| Metrics | Prometheus sidecar / ADOT → AMP |
-| Dashboards | Grafana |
-| Logs | Loki or CloudWatch Logs → Grafana |
-| APM/Errors | Sentry |
-| Uptime | Route53 health checks + external ping |
+| Component | Tool | Status |
+|-----------|------|--------|
+| Error tracking | Sentry (`@sentry/node`) | **Implemented** — set `SENTRY_DSN` to enable; 5xx faults forwarded with request context. Safe no-op when unset. |
+| Structured logs | Newline-delimited JSON to stdout | **Implemented** — set `LOG_FORMAT=json`. Each request logs method/url/status/duration/`request_id`/tenant. |
+| Request correlation | `x-request-id` header | **Implemented** — generated/propagated per request; echoed in responses and embedded in every error body (`error.request_id`). |
+| Log shipping | Loki / CloudWatch Logs / Datadog | Tail container stdout (JSON) with the platform's log driver/agent. |
+| Metrics | Prometheus sidecar / ADOT → AMP | Planned |
+| Dashboards | Grafana | Planned |
+| Uptime | Route53 health checks + external ping (`/health`) | Planned |
+
+**App configuration:**
+
+| Variable | Purpose | Default |
+|----------|---------|---------|
+| `LOG_FORMAT` | `json` for structured stdout logs (use outside dev); anything else = human-readable | `text` |
+| `SENTRY_DSN` | Enables Sentry error tracking when set | empty (disabled) |
+| `SENTRY_TRACES_SAMPLE_RATE` | Performance trace sampling (0–1) | `0` |
+| `APP_RELEASE` | Release/version tag attached to Sentry events | unset |
 
 **Alerts:** API 5xx > 1%, p95 latency > 1s, queue depth > 10k, RDS CPU > 80%.
 
@@ -123,11 +160,15 @@ Secrets sourced from AWS Secrets Manager; injected via ECS task definition.
 
 ## 9. Backup & DR
 
-| Asset | Backup |
-|-------|--------|
-| RDS | Automated daily, 7-day retention, PITR |
-| S3 | Versioning enabled |
-| Redis | AOF persistence; snapshot daily |
+| Asset | Backup | Status |
+|-------|--------|--------|
+| Postgres (app-level) | `scripts/db-backup.sh` — `pg_dump -Fc`, integrity-checked, retention-pruned, optional S3 mirror; compose `backup` service | **Implemented** — see `docs/BACKUP_RUNBOOK.md` |
+| Postgres (infra) | RDS automated daily, 7-day retention, PITR | Planned (enable on managed DB) |
+| S3 | Versioning enabled | Planned |
+| Redis | AOF persistence (`--appendonly yes` in compose); snapshot daily | Partial |
+
+Restore is via `scripts/db-restore.sh` (guarded by `CONFIRM_RESTORE=yes`). Run a
+**quarterly restore drill** per the runbook to validate RTO.
 
 **RTO:** 4 hours | **RPO:** 1 hour
 

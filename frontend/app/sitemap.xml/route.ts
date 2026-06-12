@@ -27,13 +27,41 @@ function baseUrl(request: NextRequest) {
   return `${proto}://${host}`;
 }
 
+function escapeXml(value: string) {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
+async function fetchAllProperties(tenant: string) {
+  const firstPage = await fetchPublicListings({ tenant, page: 1, perPage: 60 });
+  const properties = [...firstPage.data];
+  const totalPages = firstPage.meta?.total_pages ?? 1;
+
+  for (let page = 2; page <= totalPages; page += 1) {
+    const nextPage = await fetchPublicListings({ tenant, page, perPage: 60 });
+    properties.push(...nextPage.data);
+  }
+
+  return properties;
+}
+
 export async function GET(request: NextRequest) {
   const tenant = tenantFromRequest(request);
   const base = baseUrl(request);
-  const { data } = await fetchPublicListings({ tenant, perPage: 100 });
+  const data = await fetchAllProperties(tenant);
+  const tenantQuery = `?tenant=${encodeURIComponent(tenant)}`;
 
   const urls: SitemapUrl[] = [
     { loc: `${base}/`, priority: '1.0', changefreq: 'daily' },
+    { loc: `${base}/about${tenantQuery}`, priority: '0.6', changefreq: 'monthly' },
+    { loc: `${base}/contact${tenantQuery}`, priority: '0.6', changefreq: 'monthly' },
+    { loc: `${base}/privacy`, priority: '0.3', changefreq: 'yearly' },
+    { loc: `${base}/terms`, priority: '0.3', changefreq: 'yearly' },
+    { loc: `${base}/listings${tenantQuery}`, priority: '0.9', changefreq: 'daily' },
     ...data.map((property) => ({
       loc: `${base}${propertyPath(property)}?tenant=${encodeURIComponent(tenant)}`,
       priority: '0.8',
@@ -47,7 +75,7 @@ export async function GET(request: NextRequest) {
 ${urls
   .map(
     (url) => `  <url>
-    <loc>${url.loc}</loc>
+    <loc>${escapeXml(url.loc)}</loc>
     ${url.lastmod ? `<lastmod>${url.lastmod}</lastmod>` : ''}
     <changefreq>${url.changefreq}</changefreq>
     <priority>${url.priority}</priority>

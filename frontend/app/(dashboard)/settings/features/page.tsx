@@ -6,7 +6,7 @@ import { fetchFeatures, updateFeatures, type FeatureFlags } from '../../../../li
 
 const LABELS: Record<string, string> = {
   chat: 'Live chat',
-  ai: 'AI agent',
+  ai: 'Assistant automation',
   billing: 'Billing & subscriptions',
   crm: 'CRM pipeline',
   website: 'Public website',

@@ -10,15 +10,15 @@
 
 | ID | Module | Item | Est (h) | Business Impact | Technical Impact |
 |----|--------|------|:------:|-----------------|------------------|
-| P0-1 | DevOps | CI/CD pipeline: lint + test + build on every PR (GitHub Actions); block merge on failure | 16 | High — quality gate, prevents regressions | High |
-| P0-2 | DevOps | Backend + frontend **Dockerfiles**; deployable image; staging environment | 24 | High — cannot ship without it | High |
-| P0-3 | Billing | Razorpay webhook: verify HMAC over **raw body**, `crypto.timingSafeEqual`, mandatory secret, idempotency marks processed **only on success** | 16 | High — revenue integrity, prevents double-activation | High |
-| P0-4 | Auth/Notifications | Wire production transactional email (SES/SendGrid) → reset-password, invites, billing emails (provider currently throws) | 20 | High — onboarding & account recovery broken | Med |
-| P0-5 | Security/Testing | Cross-tenant isolation integration tests against live Postgres (per SECURITY.md) | 20 | High — prevents catastrophic data leak | High |
-| P0-6 | DevOps | Automated Postgres backups + restore runbook | 8 | High — data durability | Med |
+| ✅ P0-1 | DevOps | CI/CD pipeline: lint + test + build on every PR (GitHub Actions); block merge on failure | 0 | High — quality gate, prevents regressions | High |
+| ✅ P0-2 | DevOps | Backend + frontend **Dockerfiles**; deployable images; staging compose environment with Postgres/Redis/migrate/api/frontend services | 0 | High — cannot ship without it | High |
+| ✅ P0-3 | Billing | Razorpay webhook: verify HMAC over **raw body**, `crypto.timingSafeEqual`, mandatory secret, idempotency marks processed **only on success** | 0 | High — revenue integrity, prevents double-activation | High |
+| ✅ P0-4 | Auth/Notifications | Wire production transactional email (Resend) → reset-password, invites, billing emails | 0 | High — onboarding & account recovery broken | Med |
+| ✅ P0-5 | Security/Testing | Run cross-tenant isolation e2e tests against live Postgres in CI (`tenant-isolation.live-db.e2e-spec.ts`) | 0 | High — prevents catastrophic data leak | High |
+| ✅ P0-6 | DevOps | Automated Postgres backups + restore runbook (`scripts/db-backup.sh`, `scripts/db-restore.sh`, `docs/BACKUP_RUNBOOK.md`, compose `backup` service) | 0 | High — data durability | Med |
 | P0-7 | DevOps | Default to **Redis-backed** queue + cache outside tests/dev (jobs/caches currently lost on restart) | 12 | High — reliability | High |
-| P0-8 | DevOps | Monitoring/error tracking (Sentry or OTel) + structured log shipping | 12 | High — operability | Med |
-| | | **P0 subtotal** | **~128h (~3 wks)** | | |
+| ✅ P0-8 | DevOps | Monitoring/error tracking (Sentry, optional) + structured JSON request logs / request-id correlation | 0 | High — operability | Med |
+| | | **P0 remaining subtotal** | **~12h (P0-7 only)** | | |
 
 ---
 
@@ -29,14 +29,14 @@
 | P1-1 | Billing | Durable scheduler (`@nestjs/schedule`): trial→expire, past_due→suspended (BR-T02), missed-followup detection | 16 | High | High |
 | P1-2 | Security | Global suspended-org **read-only guard** on all write endpoints (currently only 3 read paths) | 10 | High | Med |
 | P1-3 | RBAC | Global auth/permissions guard strategy or lint rule forbidding endpoints without `@RequirePermissions` | 10 | High | Med |
-| P1-4 | Billing | Live Razorpay subscription creation (replace stub URL) | 20 | High | High |
+| ✅ P1-4 | Billing | Live Razorpay subscription creation (replace stub URL) | 0 | High | High |
 | P1-5 | Frontend | Access-token **refresh flow** (refresh_token stored but unused → sessions break on expiry) | 10 | High | Med |
 | P1-6 | Security | Move session token from `localStorage` to httpOnly cookie (XSS hardening) | 14 | Med | Med |
 | P1-7 | Testing | API integration/E2E suite (auth, properties, CRM, billing webhook) on live Postgres | 30 | High | High |
 | P1-8 | Tenant DB | Mutations use tenant-scoped `updateMany`/`deleteMany`; tenant-scope subordinate-employee lookups | 12 | Med | Med |
 | P1-9 | Billing | Invoice PDF generation worker → store + email | 14 | Med | Med |
 | P1-10 | Frontend | Toast/notification system + standardized error handling | 8 | Med | Low |
-| | | **P1 subtotal** | **~144h** | | |
+| | | **P1 remaining subtotal** | **~124h** | | |
 
 ---
 
@@ -48,7 +48,7 @@
 | P2-2 | Frontend | OpenAPI→TypeScript client generation from `/api/v1/openapi.json` | 10 | Med | Low |
 | P2-3 | White Label | Real DNS/SSL provisioning (ACME) + host→tenant routing middleware | 30 | Med | High |
 | P2-4 | Settings | Public website renders tenant branding/SEO end-to-end | 16 | Med | Med |
-| P2-5 | Chat | First-party public chat widget embed (HMAC token helpers exist) | 24 | Med | Med |
+| P2-5 | Chat | Public chat realtime socket auth + transcript polish (REST-backed widget exists) | 10 | Med | Med |
 | P2-6 | Public Web | Buyer accounts: registration/profile + saved properties/favorites | 30 | Med | Med |
 | P2-7 | DB | `audit_logs` indexes for action/entity/actor filters + export pagination | 6 | Med | Low |
 | P2-8 | Analytics/Settings | Swap in-memory caches → Redis (interface already shaped) | 8 | Med | Low |
@@ -92,8 +92,8 @@
 
 | Window | Focus | Items | Est |
 |--------|-------|-------|-----|
-| **30 days** | Production hardening (safe to charge 1 agency) | All P0 | ~128h |
-| **60 days** | Sustainable for 10–50 agencies | P1-1…P1-10 | ~144h |
+| **30 days** | Production hardening (safe to charge 1 agency) | Remaining P0 | ~40h |
+| **60 days** | Sustainable for 10–50 agencies | Remaining P1 | ~124h |
 | **90 days** | Scale & polish, buyer features | P2 + key P3 | ~190h |
 
-**Recommended next phase:** **Phase 11 — Production Hardening.** Freeze new product surface; close all P0 + top P1 before GA. Total to GA-safe ≈ **270h (~7 focused weeks)**.
+**Recommended next phase:** **Phase 11 — Production Hardening.** Freeze new product surface; close remaining P0 + top P1 before GA. Total to GA-safe ≈ **164h (~4 focused weeks)**.

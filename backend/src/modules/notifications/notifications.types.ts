@@ -31,6 +31,7 @@ export interface EmailJobData {
   /** Pre-rendered fallbacks if no template resolves. */
   subject?: string;
   body?: string;
+  html?: string;
 }
 
 export const DISPATCH_JOB = 'dispatch';

@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 
 import { PrismaService } from '../../common/database/prisma.service';
+import { TenantScopedRepository } from '../../common/database/tenant-scoped.repository';
 import { INQUIRY_ACTIVITY_TYPES, INQUIRY_HISTORY_TYPES } from './crm.constants';
 
 export type InquiryScope = { type: 'all' } | { type: 'employees'; employeeIds: string[] };
@@ -45,8 +46,10 @@ const inquiryDetailInclude = {
 } satisfies Prisma.inquiriesInclude;
 
 @Injectable()
-export class CrmRepository {
-  constructor(private readonly prisma: PrismaService) {}
+export class CrmRepository extends TenantScopedRepository {
+  constructor(private readonly prisma: PrismaService) {
+    super();
+  }
 
   // --- Employees (scope + assignment) ----------------------------------------
 
@@ -208,7 +211,7 @@ export class CrmRepository {
     filters: InquiryListFilters,
     scope: InquiryScope,
   ): Prisma.inquiriesWhereInput {
-    const where: Prisma.inquiriesWhereInput = { tenant_id: tenantId, deleted_at: null };
+    const where: Prisma.inquiriesWhereInput = this.tenantWhere(tenantId, { deleted_at: null });
 
     if (filters.stage) where.stage = filters.stage;
     if (filters.priority) where.priority = filters.priority;
@@ -254,6 +257,7 @@ export class CrmRepository {
     page: number;
     perPage: number;
   }) {
+    this.assertTenantWhere('CrmRepository.list', input.where as Record<string, unknown>);
     const orderBy: Prisma.inquiriesOrderByWithRelationInput = { [input.sortBy]: input.sortDir };
     const [rows, total] = await Promise.all([
       this.prisma.dbClient.inquiries.findMany({
@@ -280,7 +284,11 @@ export class CrmRepository {
     }[];
   }) {
     return this.prisma.dbClient.$transaction(async (tx) => {
-      await tx.inquiries.update({ where: { id: input.id }, data: input.data });
+      const updated = await tx.inquiries.updateMany({
+        where: { id: input.id, tenant_id: input.tenantId, deleted_at: null },
+        data: input.data,
+      });
+      if (updated.count !== 1) return false;
       for (const entry of input.historyEntries) {
         await tx.inquiry_history.create({
           data: {
@@ -293,6 +301,7 @@ export class CrmRepository {
           },
         });
       }
+      return true;
     });
   }
 
@@ -302,8 +311,8 @@ export class CrmRepository {
       select: { id: true },
     });
     if (!existing) return false;
-    await this.prisma.dbClient.inquiries.update({
-      where: { id },
+    await this.prisma.dbClient.inquiries.updateMany({
+      where: { id, tenant_id: tenantId, deleted_at: null },
       data: { deleted_at: new Date() },
     });
     return true;
@@ -322,7 +331,11 @@ export class CrmRepository {
     actorEmail?: string | null;
   }) {
     return this.prisma.dbClient.$transaction(async (tx) => {
-      await tx.inquiries.update({ where: { id: input.id }, data: input.data });
+      const updated = await tx.inquiries.updateMany({
+        where: { id: input.id, tenant_id: input.tenantId, deleted_at: null },
+        data: input.data,
+      });
+      if (updated.count !== 1) return false;
       await tx.inquiry_history.create({
         data: {
           tenant_id: input.tenantId,
@@ -344,6 +357,7 @@ export class CrmRepository {
           actor_email: input.actorEmail ?? null,
         },
       });
+      return true;
     });
   }
 
@@ -358,10 +372,11 @@ export class CrmRepository {
     actorEmail?: string | null;
   }) {
     return this.prisma.dbClient.$transaction(async (tx) => {
-      await tx.inquiries.update({
-        where: { id: input.id },
+      const updated = await tx.inquiries.updateMany({
+        where: { id: input.id, tenant_id: input.tenantId, deleted_at: null },
         data: { assigned_employee_id: input.employeeId, updated_by: input.actorId ?? null },
       });
+      if (updated.count !== 1) return false;
       await tx.inquiry_assignments.create({
         data: {
           tenant_id: input.tenantId,
@@ -394,6 +409,7 @@ export class CrmRepository {
           actor_email: input.actorEmail ?? null,
         },
       });
+      return true;
     });
   }
 
@@ -480,10 +496,19 @@ export class CrmRepository {
     });
   }
 
-  async updateFollowup(followupId: string, data: Prisma.inquiry_followupsUpdateInput) {
-    return this.prisma.dbClient.inquiry_followups.update({
-      where: { id: followupId },
+  async updateFollowup(
+    tenantId: string,
+    inquiryId: string,
+    followupId: string,
+    data: Prisma.inquiry_followupsUpdateInput,
+  ) {
+    const result = await this.prisma.dbClient.inquiry_followups.updateMany({
+      where: { id: followupId, tenant_id: tenantId, inquiry_id: inquiryId },
       data,
+    });
+    if (result.count !== 1) return null;
+    return this.prisma.dbClient.inquiry_followups.findFirst({
+      where: { id: followupId, tenant_id: tenantId, inquiry_id: inquiryId },
       include: { employee: { include: employeeUserSelect } },
     });
   }
@@ -544,9 +569,13 @@ export class CrmRepository {
     actorEmail?: string | null;
   }) {
     return this.prisma.dbClient.$transaction(async (tx) => {
-      const visit = await tx.site_visits.update({
-        where: { id: input.visitId },
+      const result = await tx.site_visits.updateMany({
+        where: { id: input.visitId, tenant_id: input.tenantId, inquiry_id: input.inquiryId },
         data: input.data,
+      });
+      if (result.count !== 1) return null;
+      const visit = await tx.site_visits.findFirst({
+        where: { id: input.visitId, tenant_id: input.tenantId, inquiry_id: input.inquiryId },
         include: {
           employee: { include: employeeUserSelect },
           property: { select: { id: true, property_code: true, title: true } },
@@ -622,8 +651,13 @@ export class CrmRepository {
     });
   }
 
-  async updateLeadSource(id: string, data: Prisma.lead_sourcesUpdateInput) {
-    return this.prisma.dbClient.lead_sources.update({ where: { id }, data });
+  async updateLeadSource(tenantId: string, id: string, data: Prisma.lead_sourcesUpdateInput) {
+    const result = await this.prisma.dbClient.lead_sources.updateMany({
+      where: { id, tenant_id: tenantId, deleted_at: null },
+      data,
+    });
+    if (result.count !== 1) return null;
+    return this.findLeadSourceById(tenantId, id);
   }
 
   // --- Metrics (dashboard-ready, reusable) -----------------------------------

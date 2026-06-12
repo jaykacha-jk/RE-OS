@@ -22,6 +22,36 @@ export class AuthRepository {
     });
   }
 
+  async findAnyUserByEmail(email: string) {
+    return this.prisma.dbClient.users.findFirst({
+      where: {
+        email,
+        deleted_at: null,
+      },
+    });
+  }
+
+  async findOrganizationByName(name: string) {
+    return this.prisma.dbClient.organizations.findFirst({
+      where: {
+        name: { equals: name, mode: 'insensitive' },
+        deleted_at: null,
+      },
+    });
+  }
+
+  async findRoleByCode(code: string) {
+    return this.prisma.dbClient.roles.findFirst({
+      where: { tenant_id: null, code, deleted_at: null },
+    });
+  }
+
+  async findActivePlanByCode(code: string) {
+    return this.prisma.dbClient.subscription_plans.findFirst({
+      where: { code, is_active: true },
+    });
+  }
+
   async updateLoginFailure(userId: string, failedLoginCount: number, lockedUntil?: Date | null) {
     return this.prisma.dbClient.users.update({
       where: { id: userId },
@@ -92,9 +122,32 @@ export class AuthRepository {
     });
   }
 
+  async findActiveUserById(userId: string) {
+    return this.prisma.dbClient.users.findFirst({
+      where: { id: userId, deleted_at: null },
+    });
+  }
+
+  async updateProfile(
+    userId: string,
+    data: { firstName?: string; lastName?: string | null; phone?: string | null },
+  ) {
+    const result = await this.prisma.dbClient.users.updateMany({
+      where: { id: userId, deleted_at: null },
+      data: {
+        ...(data.firstName !== undefined ? { first_name: data.firstName } : {}),
+        ...(data.lastName !== undefined ? { last_name: data.lastName } : {}),
+        ...(data.phone !== undefined ? { phone: data.phone } : {}),
+      },
+    });
+    if (result.count !== 1) return null;
+    return this.findActiveUserById(userId);
+  }
+
   async createRefreshToken(input: {
     userId: string;
     jti: string;
+    tokenFamilyId: string;
     tokenHash: string;
     expiresAt: Date;
     userAgent?: string;
@@ -104,6 +157,7 @@ export class AuthRepository {
       data: {
         user_id: input.userId,
         jti: input.jti,
+        token_family_id: input.tokenFamilyId,
         token_hash: input.tokenHash,
         expires_at: input.expiresAt,
         user_agent: input.userAgent,
@@ -119,6 +173,17 @@ export class AuthRepository {
     });
   }
 
+  async revokeRefreshTokenFamily(userId: string, tokenFamilyId: string, revokedAt: Date) {
+    return this.prisma.dbClient.refresh_tokens.updateMany({
+      where: {
+        user_id: userId,
+        token_family_id: tokenFamilyId,
+        revoked_at: null,
+      },
+      data: { revoked_at: revokedAt },
+    });
+  }
+
   async findInvitationByTokenHash(tokenHash: string) {
     return this.prisma.dbClient.user_invitations.findUnique({
       where: { token_hash: tokenHash },
@@ -126,31 +191,37 @@ export class AuthRepository {
     });
   }
 
-  async findInvitedUser(email: string, roleId: string) {
+  async findInvitedUser(tenantId: string, userId: string, email: string, roleId: string) {
     return this.prisma.dbClient.users.findFirst({
       where: {
+        id: userId,
+        tenant_id: tenantId,
         email,
         status: 'invited',
         deleted_at: null,
-        user_roles: { some: { role_id: roleId } },
+        user_roles: { some: { tenant_id: tenantId, role_id: roleId } },
       },
     });
   }
 
-  async activateInvitedUser(userId: string, passwordHash: string) {
-    return this.prisma.dbClient.users.update({
-      where: { id: userId },
+  async activateInvitedUser(tenantId: string, userId: string, passwordHash: string) {
+    const result = await this.prisma.dbClient.users.updateMany({
+      where: { id: userId, tenant_id: tenantId, status: 'invited', deleted_at: null },
       data: {
         password_hash: passwordHash,
         status: 'active',
         email_verified_at: new Date(),
       },
     });
+    if (result.count !== 1) return null;
+    return this.prisma.dbClient.users.findFirst({
+      where: { id: userId, tenant_id: tenantId, deleted_at: null },
+    });
   }
 
-  async markInvitationAccepted(tokenHash: string) {
-    return this.prisma.dbClient.user_invitations.update({
-      where: { token_hash: tokenHash },
+  async markInvitationAccepted(tokenHash: string, tenantId: string, userId: string) {
+    return this.prisma.dbClient.user_invitations.updateMany({
+      where: { token_hash: tokenHash, tenant_id: tenantId, user_id: userId },
       data: { accepted_at: new Date() },
     });
   }
@@ -166,6 +237,144 @@ export class AuthRepository {
         token_hash: input.tokenHash,
         expires_at: input.expiresAt,
       },
+    });
+  }
+
+  async createRegisteredOrganization(input: {
+    agencyName: string;
+    slug: string;
+    ownerEmail: string;
+    ownerPhone: string;
+    ownerFirstName: string;
+    ownerLastName: string | null;
+    passwordHash: string;
+    ownerRoleId: string;
+    planId: string;
+    verificationTokenHash: string;
+    verificationExpiresAt: Date;
+    trialEndsAt: Date;
+    leadSources: { name: string; code: string }[];
+  }) {
+    return this.prisma.dbClient.$transaction(async (tx) => {
+      const organization = await tx.organizations.create({
+        data: {
+          name: input.agencyName,
+          slug: input.slug,
+          billing_email: input.ownerEmail,
+          status: 'trial',
+          tier: 'starter',
+        },
+      });
+
+      const user = await tx.users.create({
+        data: {
+          tenant_id: organization.id,
+          email: input.ownerEmail,
+          phone: input.ownerPhone,
+          password_hash: input.passwordHash,
+          first_name: input.ownerFirstName,
+          last_name: input.ownerLastName,
+          user_type: 'internal',
+          status: 'active',
+        },
+      });
+
+      const employee = await tx.employees.create({
+        data: {
+          user_id: user.id,
+          department: 'Leadership',
+          status: 'active',
+          joined_at: new Date(),
+        },
+      });
+
+      await tx.user_roles.create({
+        data: {
+          user_id: user.id,
+          role_id: input.ownerRoleId,
+          tenant_id: organization.id,
+        },
+      });
+
+      await tx.organization_usage.create({
+        data: {
+          tenant_id: organization.id,
+          employees_count: 1,
+        },
+      });
+
+      await tx.lead_sources.createMany({
+        data: input.leadSources.map((source) => ({
+          tenant_id: organization.id,
+          name: source.name,
+          code: source.code,
+          is_active: true,
+          is_system: true,
+          created_by: user.id,
+        })),
+      });
+
+      const now = new Date();
+      const subscription = await tx.subscriptions.create({
+        data: {
+          tenant_id: organization.id,
+          plan_id: input.planId,
+          status: 'trial',
+          billing_cycle: 'monthly',
+          provider: 'trial',
+          current_period_start: now,
+          current_period_end: input.trialEndsAt,
+          trial_ends_at: input.trialEndsAt,
+          created_by: user.id,
+          updated_by: user.id,
+        },
+        include: { plan: true },
+      });
+
+      await tx.email_verification_tokens.create({
+        data: {
+          user_id: user.id,
+          token_hash: input.verificationTokenHash,
+          expires_at: input.verificationExpiresAt,
+        },
+      });
+
+      return { organization, user, employee, subscription };
+    });
+  }
+
+  async hasPendingEmailVerification(userId: string) {
+    const count = await this.prisma.dbClient.email_verification_tokens.count({
+      where: {
+        user_id: userId,
+        used_at: null,
+      },
+    });
+    return count > 0;
+  }
+
+  async consumeEmailVerificationToken(tokenHash: string) {
+    return this.prisma.dbClient.$transaction(async (tx) => {
+      const token = await tx.email_verification_tokens.findUnique({
+        where: { token_hash: tokenHash },
+        include: { user: { include: { tenant: true } } },
+      });
+      if (!token || token.used_at || token.expires_at.getTime() < Date.now()) return null;
+
+      await tx.email_verification_tokens.update({
+        where: { token_hash: tokenHash },
+        data: { used_at: new Date() },
+      });
+
+      const user = await tx.users.update({
+        where: { id: token.user_id },
+        data: {
+          email_verified_at: token.user.email_verified_at ?? new Date(),
+        },
+        include: { tenant: true },
+      });
+
+      return { token, user };
     });
   }
 

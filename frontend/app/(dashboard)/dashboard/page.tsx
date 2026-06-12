@@ -177,7 +177,7 @@ function OrgDashboard({ session }: { session: AuthSession }) {
         { label: 'CRM pipeline', detail: `${formatNumber(data.leads.qualified)} qualified in motion`, status: data.leads.total ? 'ok' : 'warn', icon: 'inquiries' },
         { label: 'Inventory', detail: `${formatNumber(data.properties.published)} published listings`, status: data.properties.published ? 'ok' : 'warn', icon: 'properties' },
         { label: 'Conversion', detail: `${formatPercent(data.leads.conversion_rate)} lead → won`, status: data.leads.conversion_rate >= 10 ? 'ok' : 'warn', icon: 'performance' },
-        { label: 'AI assistant', detail: 'Qualification & chat ready', status: 'ok', icon: 'ai' },
+        { label: 'Assistant automation', detail: 'Rule scoring & chat configured', status: 'ok', icon: 'ai' },
       ]
     : [];
 

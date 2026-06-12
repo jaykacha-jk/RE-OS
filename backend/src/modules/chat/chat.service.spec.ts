@@ -25,6 +25,8 @@ function build() {
     findMessageById: jest.fn(),
     updateConversation: jest.fn(),
     findInquiryById: jest.fn(),
+    findOrganizationBySlug: jest.fn(),
+    findPublicPropertyBySlug: jest.fn(),
     createConversation: jest.fn(),
     conversationCodeExists: jest.fn().mockResolvedValue(false),
     findPropertyById: jest.fn(),
@@ -75,6 +77,51 @@ const executive: AuthUser = {
   roles: ['sales_executive'],
   permissions: [],
 };
+
+function conversation(overrides: Record<string, unknown> = {}) {
+  const date = new Date('2026-01-01T00:00:00.000Z');
+  return {
+    id: 'conv-1',
+    conversation_code: 'CHT-ABC',
+    type: 'website',
+    status: 'open',
+    subject: 'Website inquiry',
+    property_id: null,
+    property_slug: null,
+    property: null,
+    inquiry_id: null,
+    inquiry: null,
+    client_name: 'Rahul',
+    client_email: null,
+    client_phone: null,
+    client_identifier: 'visitor-1',
+    assigned_employee_id: null,
+    assigned_employee: null,
+    last_message_at: null,
+    last_message_preview: null,
+    tags: [],
+    participants: [],
+    closed_at: null,
+    created_at: date,
+    updated_at: date,
+    ...overrides,
+  };
+}
+
+function message(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'msg-1',
+    sender_type: 'client',
+    sender_id: null,
+    sender_name: 'Rahul',
+    message_type: 'text',
+    content: 'Hello',
+    status: 'sent',
+    attachments: [],
+    created_at: new Date('2026-01-01T00:00:00.000Z'),
+    ...overrides,
+  };
+}
 
 describe('ChatService', () => {
   describe('resolveScope', () => {
@@ -193,6 +240,125 @@ describe('ChatService', () => {
       await expect(
         service.convertToInquiry('tenant-1', owner, 'conv-1', {}),
       ).rejects.toBeInstanceOf(UnprocessableEntityException);
+    });
+  });
+
+  describe('public widget', () => {
+    const originalEnv = process.env;
+
+    beforeEach(() => {
+      process.env = {
+        ...originalEnv,
+        NODE_ENV: 'production',
+        CHAT_CLIENT_TOKEN_SECRET: 'test-chat-secret',
+        JWT_PRIVATE_KEY: '',
+      };
+    });
+
+    afterEach(() => {
+      process.env = originalEnv;
+    });
+
+    it('starts a public conversation and returns a scoped visitor token', async () => {
+      const { service, repo, audit, events } = build();
+      repo.findOrganizationBySlug.mockResolvedValue({ id: 'tenant-1', slug: 'demo', status: 'active' });
+      repo.createConversation.mockResolvedValue('conv-1');
+      repo.findById.mockResolvedValue(conversation());
+
+      const result = await service.startPublicConversation({
+        tenant: 'demo',
+        client_identifier: 'visitor-1',
+        client_name: 'Rahul',
+        message: 'I need help',
+      });
+
+      expect(repo.createConversation).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tenantId: 'tenant-1',
+          initialMessage: expect.objectContaining({
+            sender_type: 'client',
+            content: 'I need help',
+          }),
+        }),
+      );
+      expect(service.verifyClientToken(result.token)).toEqual({
+        tenantId: 'tenant-1',
+        conversationId: 'conv-1',
+        clientIdentifier: 'visitor-1',
+      });
+      expect(audit.record).toHaveBeenCalledWith(expect.objectContaining({ actor: null }));
+      expect(events.emit).toHaveBeenCalled();
+    });
+
+    it('sends public visitor messages only with the matching conversation token', async () => {
+      const { service, repo, gateway } = build();
+      const token = service.issueClientToken('tenant-1', 'conv-1', 'visitor-1');
+      repo.findBasicById.mockResolvedValue(conversation());
+      repo.addMessage.mockResolvedValue(message({ content: 'Second message' }));
+      repo.listParticipantUserIds.mockResolvedValue(['agent-user-1']);
+
+      const result = await service.sendPublicMessage('conv-1', token, { content: 'Second message' });
+
+      expect(result.content).toBe('Second message');
+      expect(repo.addMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tenantId: 'tenant-1',
+          conversationId: 'conv-1',
+          sender: expect.objectContaining({ sender_type: 'client' }),
+        }),
+      );
+      expect(gateway.emitMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ recipientUserIds: ['agent-user-1'] }),
+      );
+    });
+
+    it('rejects public messages with a token for another conversation', async () => {
+      const { service } = build();
+      const token = service.issueClientToken('tenant-1', 'other-conv', 'visitor-1');
+
+      await expect(
+        service.sendPublicMessage('conv-1', token, { content: 'Hello' }),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+    });
+  });
+
+  describe('client token secret', () => {
+    const originalEnv = process.env;
+
+    afterEach(() => {
+      process.env = originalEnv;
+    });
+
+    it('requires an explicit secret in production', () => {
+      process.env = {
+        ...originalEnv,
+        NODE_ENV: 'production',
+        CHAT_CLIENT_TOKEN_SECRET: '',
+        JWT_PRIVATE_KEY: '',
+      };
+      const { service } = build();
+
+      expect(() => service.issueClientToken('tenant-1', 'conv-1', 'visitor-1')).toThrow(
+        'CHAT_CLIENT_TOKEN_SECRET is required in production',
+      );
+    });
+
+    it('issues and verifies tokens with the configured secret', () => {
+      process.env = {
+        ...originalEnv,
+        NODE_ENV: 'production',
+        CHAT_CLIENT_TOKEN_SECRET: 'test-chat-secret',
+        JWT_PRIVATE_KEY: '',
+      };
+      const { service } = build();
+
+      const token = service.issueClientToken('tenant-1', 'conv-1', 'visitor-1');
+
+      expect(service.verifyClientToken(token)).toEqual({
+        tenantId: 'tenant-1',
+        conversationId: 'conv-1',
+        clientIdentifier: 'visitor-1',
+      });
     });
   });
 });

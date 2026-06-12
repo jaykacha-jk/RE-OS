@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 
 import { PrismaService } from '../../common/database/prisma.service';
+import { TenantScopedRepository } from '../../common/database/tenant-scoped.repository';
 
 export type PropertyScope = { type: 'all' } | { type: 'employees'; employeeIds: string[] };
 
@@ -31,8 +32,10 @@ const propertyInclude = {
 } satisfies Prisma.propertiesInclude;
 
 @Injectable()
-export class PropertiesRepository {
-  constructor(private readonly prisma: PrismaService) {}
+export class PropertiesRepository extends TenantScopedRepository {
+  constructor(private readonly prisma: PrismaService) {
+    super();
+  }
 
   // --- Quota / org -----------------------------------------------------------
 
@@ -177,10 +180,9 @@ export class PropertiesRepository {
     filters: PropertyListFilters,
     scope: PropertyScope,
   ): Prisma.propertiesWhereInput {
-    const where: Prisma.propertiesWhereInput = {
-      tenant_id: tenantId,
+    const where: Prisma.propertiesWhereInput = this.tenantWhere(tenantId, {
       deleted_at: null,
-    };
+    });
 
     if (filters.type) where.type = filters.type;
     if (filters.category) where.category = filters.category;
@@ -232,6 +234,7 @@ export class PropertiesRepository {
     page: number;
     perPage: number;
   }) {
+    this.assertTenantWhere('PropertiesRepository.list', input.where as Record<string, unknown>);
     const orderBy: Prisma.propertiesOrderByWithRelationInput = {
       [input.sortBy]: input.sortDir,
     };
@@ -264,10 +267,16 @@ export class PropertiesRepository {
     }[];
   }) {
     return this.prisma.dbClient.$transaction(async (tx) => {
-      await tx.properties.update({ where: { id: input.id }, data: input.data });
+      const updated = await tx.properties.updateMany({
+        where: { id: input.id, tenant_id: input.tenantId, deleted_at: null },
+        data: input.data,
+      });
+      if (updated.count !== 1) return false;
 
       if (input.amenities) {
-        await tx.property_amenities.deleteMany({ where: { property_id: input.id } });
+        await tx.property_amenities.deleteMany({
+          where: { property_id: input.id, tenant_id: input.tenantId },
+        });
         if (input.amenities.length) {
           await tx.property_amenities.createMany({
             data: input.amenities.map((name) => ({
@@ -280,7 +289,9 @@ export class PropertiesRepository {
         }
       }
       if (input.tags) {
-        await tx.property_tags.deleteMany({ where: { property_id: input.id } });
+        await tx.property_tags.deleteMany({
+          where: { property_id: input.id, tenant_id: input.tenantId },
+        });
         if (input.tags.length) {
           await tx.property_tags.createMany({
             data: input.tags.map((tag) => ({
@@ -305,6 +316,7 @@ export class PropertiesRepository {
           },
         });
       }
+      return true;
     });
   }
 
@@ -316,8 +328,8 @@ export class PropertiesRepository {
       });
       if (!existing) return false;
 
-      await tx.properties.update({
-        where: { id },
+      await tx.properties.updateMany({
+        where: { id, tenant_id: tenantId, deleted_at: null },
         data: { deleted_at: new Date(), is_public: false },
       });
       await tx.organization_usage.update({
@@ -340,7 +352,9 @@ export class PropertiesRepository {
     changedFields: Prisma.InputJsonValue;
   }) {
     return this.prisma.dbClient.$transaction(async (tx) => {
-      await tx.property_assignments.deleteMany({ where: { property_id: input.propertyId } });
+      await tx.property_assignments.deleteMany({
+        where: { property_id: input.propertyId, tenant_id: input.tenantId },
+      });
       const now = new Date();
       for (const employeeId of input.employeeIds) {
         await tx.property_assignments.create({
@@ -384,8 +398,8 @@ export class PropertiesRepository {
     });
   }
 
-  async countImages(propertyId: string) {
-    return this.prisma.dbClient.property_images.count({ where: { property_id: propertyId } });
+  async countImages(tenantId: string, propertyId: string) {
+    return this.prisma.dbClient.property_images.count({ where: { property_id: propertyId, tenant_id: tenantId } });
   }
 
   async addImage(input: {
@@ -399,18 +413,18 @@ export class PropertiesRepository {
   }) {
     return this.prisma.dbClient.$transaction(async (tx) => {
       const max = await tx.property_images.aggregate({
-        where: { property_id: input.propertyId },
+        where: { property_id: input.propertyId, tenant_id: input.tenantId },
         _max: { sort_order: true },
       });
       const nextOrder = (max._max.sort_order ?? -1) + 1;
       const existingCount = await tx.property_images.count({
-        where: { property_id: input.propertyId },
+        where: { property_id: input.propertyId, tenant_id: input.tenantId },
       });
       const isCover = input.isCover || existingCount === 0;
 
       if (isCover) {
         await tx.property_images.updateMany({
-          where: { property_id: input.propertyId },
+          where: { property_id: input.propertyId, tenant_id: input.tenantId },
           data: { is_cover: false },
         });
       }
@@ -436,16 +450,19 @@ export class PropertiesRepository {
         where: { id: imageId, property_id: propertyId, tenant_id: tenantId },
       });
       if (!image) return null;
-      await tx.property_images.delete({ where: { id: imageId } });
+      await tx.property_images.deleteMany({ where: { id: imageId, property_id: propertyId, tenant_id: tenantId } });
 
       // Promote a new cover if we removed the cover image.
       if (image.is_cover) {
         const next = await tx.property_images.findFirst({
-          where: { property_id: propertyId },
+          where: { property_id: propertyId, tenant_id: tenantId },
           orderBy: { sort_order: 'asc' },
         });
         if (next) {
-          await tx.property_images.update({ where: { id: next.id }, data: { is_cover: true } });
+          await tx.property_images.updateMany({
+            where: { id: next.id, property_id: propertyId, tenant_id: tenantId },
+            data: { is_cover: true },
+          });
         }
       }
       return image;
@@ -463,8 +480,8 @@ export class PropertiesRepository {
         return false;
       }
       for (let i = 0; i < imageIds.length; i++) {
-        await tx.property_images.update({
-          where: { id: imageIds[i] },
+        await tx.property_images.updateMany({
+          where: { id: imageIds[i], property_id: propertyId, tenant_id: tenantId },
           data: { sort_order: i },
         });
       }
@@ -479,10 +496,13 @@ export class PropertiesRepository {
       });
       if (!image) return false;
       await tx.property_images.updateMany({
-        where: { property_id: propertyId },
+        where: { property_id: propertyId, tenant_id: tenantId },
         data: { is_cover: false },
       });
-      await tx.property_images.update({ where: { id: imageId }, data: { is_cover: true } });
+      await tx.property_images.updateMany({
+        where: { id: imageId, property_id: propertyId, tenant_id: tenantId },
+        data: { is_cover: true },
+      });
       return true;
     });
   }
@@ -518,7 +538,9 @@ export class PropertiesRepository {
   async deleteVideo(tenantId: string, propertyId: string, videoId: string) {
     const video = await this.findVideo(tenantId, propertyId, videoId);
     if (!video) return null;
-    await this.prisma.dbClient.property_videos.delete({ where: { id: videoId } });
+    await this.prisma.dbClient.property_videos.deleteMany({
+      where: { id: videoId, property_id: propertyId, tenant_id: tenantId },
+    });
     return video;
   }
 
@@ -551,7 +573,9 @@ export class PropertiesRepository {
   async deleteDocument(tenantId: string, propertyId: string, documentId: string) {
     const doc = await this.findDocument(tenantId, propertyId, documentId);
     if (!doc) return null;
-    await this.prisma.dbClient.property_documents.delete({ where: { id: documentId } });
+    await this.prisma.dbClient.property_documents.deleteMany({
+      where: { id: documentId, property_id: propertyId, tenant_id: tenantId },
+    });
     return doc;
   }
 
@@ -563,13 +587,12 @@ export class PropertiesRepository {
     page: number;
     perPage: number;
   }) {
-    const where: Prisma.propertiesWhereInput = {
-      tenant_id: input.tenantId,
+    const where: Prisma.propertiesWhereInput = this.tenantWhere(input.tenantId, {
       deleted_at: null,
       is_public: true,
       status: 'published',
       images: { some: {} }, // BR-P02: at least one image
-    };
+    });
     const f = input.filters;
     if (f.type) where.type = f.type;
     if (f.category) where.category = f.category;

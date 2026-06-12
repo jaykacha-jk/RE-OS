@@ -3,7 +3,7 @@ import { Module } from '@nestjs/common';
 import { AuditModule } from '../audit/audit.module';
 import { CrmModule } from '../crm/crm.module';
 import { StorageService } from '../properties/storage/storage.service';
-import { ChatController, ChatMessagesController } from './chat.controller';
+import { ChatController, ChatMessagesController, PublicChatController } from './chat.controller';
 import { ChatGateway } from './chat.gateway';
 import { ChatRepository } from './chat.repository';
 import { ChatService } from './chat.service';
@@ -18,7 +18,7 @@ import { ChatService } from './chat.service';
  */
 @Module({
   imports: [AuditModule, CrmModule],
-  controllers: [ChatController, ChatMessagesController],
+  controllers: [ChatController, ChatMessagesController, PublicChatController],
   providers: [ChatService, ChatRepository, ChatGateway, StorageService],
   exports: [ChatService],
 })

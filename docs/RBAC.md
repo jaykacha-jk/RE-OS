@@ -25,7 +25,6 @@
 | `sales_manager` | Sales Manager | Tenant | Team pipeline, assign leads, reports |
 | `sales_executive` | Sales Executive | Tenant | Assigned leads & properties |
 | `telecaller` | Telecaller | Tenant | Outbound calls, inquiry create/update |
-| `marketing_user` | Marketing User | Tenant | Properties, SEO, no CRM assign |
 | `client` | Client | Tenant + public | Browse, inquire, chat, profile |
 
 ---
@@ -63,55 +62,55 @@ Examples: `property.listing.create`, `inquiry.pipeline.update`, `billing.subscri
 
 ## 5. Permission Matrix (Granular)
 
-| Permission | super_admin | org_owner | org_admin | sales_manager | sales_executive | telecaller | marketing_user | client |
-|------------|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-| platform.organizations.create | ✓ | | | | | | | |
-| platform.organizations.read | ✓ | | | | | | | |
-| billing.plans.read | ✓ | ✓ | ✓ | | | | | |
-| billing.subscription.read | ✓ | ✓ | ✓ | | | | | |
-| billing.subscription.update | ✓ | ✓ | | | | | | |
-| billing.invoices.read | ✓ | ✓ | ✓ | | | | | |
-| billing.usage.read | ✓ | ✓ | ✓ | | | | | |
-| platform.billing.read | ✓ | | | | | | | |
-| employees.create | ✓ | ✓ | ✓ | | | | | |
-| employees.read | ✓ | ✓ | ✓ | ✓ | | | | |
-| employees.update | ✓ | ✓ | ✓ | | | | | |
-| employees.delete | ✓ | ✓ | ✓ | | | | | |
-| properties.create | ✓ | ✓ | ✓ | | | | ✓ | |
-| properties.read | ✓ | ✓ | ✓ | ✓ | ✓* | ✓ | ✓ | ✓ |
-| properties.update | ✓ | ✓ | ✓ | ✓ | ✓* | | ✓ | |
-| properties.delete | ✓ | ✓ | ✓ | | | | ✓ | |
-| properties.assign | ✓ | ✓ | ✓ | ✓ | | | | |
-| inquiries.create | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | | ✓ |
-| inquiries.read | ✓ | ✓ | ✓ | ✓ | ✓* | ✓ | | ✓* |
-| inquiries.update | ✓ | ✓ | ✓ | ✓ | ✓* | ✓ | | |
-| inquiries.delete | ✓ | ✓ | ✓ | | | | | |
-| inquiries.assign | ✓ | ✓ | ✓ | ✓ | | | | |
-| ai.calls.create | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | | |
-| ai.calls.read | ✓ | ✓ | ✓ | ✓ | ✓* | ✓* | | |
-| chat.read | ✓ | ✓ | ✓ | ✓ | ✓* | ✓* | | ✓* |
-| chat.respond | ✓ | ✓ | ✓ | ✓ | ✓* | ✓* | | ✓ |
-| dashboard.read | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| reports.read | ✓ | ✓ | ✓ | ✓ | | | ✓ | |
-| reports.export | ✓ | ✓ | ✓ | ✓ | | | | |
-| audit.read | ✓ | ✓ | ✓ | | | | | |
-| profile.update | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Permission | super_admin | org_owner | org_admin | sales_manager | sales_executive | telecaller | client |
+|------------|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| platform.organizations.create | ✓ | | | | | | |
+| platform.organizations.read | ✓ | | | | | | |
+| billing.plans.read | ✓ | ✓ | ✓ | | | | |
+| billing.subscription.read | ✓ | ✓ | ✓ | | | | |
+| billing.subscription.update | ✓ | ✓ | | | | | |
+| billing.invoices.read | ✓ | ✓ | ✓ | | | | |
+| billing.usage.read | ✓ | ✓ | ✓ | | | | |
+| platform.billing.read | ✓ | | | | | | |
+| employees.create | ✓ | ✓ | ✓ | | | | |
+| employees.read | ✓ | ✓ | ✓ | ✓ | | | |
+| employees.update | ✓ | ✓ | ✓ | | | | |
+| employees.delete | ✓ | ✓ | ✓ | | | | |
+| properties.create | ✓ | ✓ | ✓ | | | | |
+| properties.read | ✓ | ✓ | ✓ | ✓ | ✓* | ✓ | ✓ |
+| properties.update | ✓ | ✓ | ✓ | ✓ | ✓* | | |
+| properties.delete | ✓ | ✓ | ✓ | | | | |
+| properties.assign | ✓ | ✓ | ✓ | ✓ | | | |
+| inquiries.create | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| inquiries.read | ✓ | ✓ | ✓ | ✓ | ✓* | ✓ | ✓* |
+| inquiries.update | ✓ | ✓ | ✓ | ✓ | ✓* | ✓ | |
+| inquiries.delete | ✓ | ✓ | ✓ | | | | |
+| inquiries.assign | ✓ | ✓ | ✓ | ✓ | | | |
+| ai.calls.create | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | |
+| ai.calls.read | ✓ | ✓ | ✓ | ✓ | ✓* | ✓* | |
+| chat.read | ✓ | ✓ | ✓ | ✓ | ✓* | ✓* | ✓* |
+| chat.respond | ✓ | ✓ | ✓ | ✓ | ✓* | ✓* | ✓ |
+| dashboard.read | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| reports.read | ✓ | ✓ | ✓ | ✓ | | | |
+| reports.export | ✓ | ✓ | ✓ | ✓ | | | |
+| audit.read | ✓ | ✓ | ✓ | | | | |
+| profile.update | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 
 > **As-built (Phase 3 CRM).** The implemented permission keys are namespaced under `crm.*`
 > (the rows above are the conceptual model). Seeded keys and role grants:
 >
-> | Permission | super_admin | org_owner | org_admin | marketing_user | sales_manager | sales_executive | telecaller |
-> |------------|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-> | crm.inquiries.create | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | |
-> | crm.inquiries.read | ✓ | ✓ | ✓ | ✓ | ✓ (team) | ✓ (assigned) | ✓ (assigned) |
-> | crm.inquiries.update | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | |
-> | crm.inquiries.delete | ✓ | ✓ | ✓ | ✓ | | | |
-> | crm.inquiries.assign | ✓ | ✓ | ✓ | ✓ | ✓ | | |
-> | crm.notes.create | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-> | crm.followups.create / update | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-> | crm.sitevisits.create / update | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | |
-> | crm.lead_sources.read | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-> | crm.lead_sources.manage | ✓ | ✓ | ✓ | ✓ | | | |
+> | Permission | super_admin | org_owner | org_admin | sales_manager | sales_executive | telecaller |
+> |------------|:---:|:---:|:---:|:---:|:---:|:---:|
+> | crm.inquiries.create | ✓ | ✓ | ✓ | ✓ | ✓ | |
+> | crm.inquiries.read | ✓ | ✓ | ✓ | ✓ (team) | ✓ (assigned) | ✓ (assigned) |
+> | crm.inquiries.update | ✓ | ✓ | ✓ | ✓ | ✓ | |
+> | crm.inquiries.delete | ✓ | ✓ | ✓ | | | |
+> | crm.inquiries.assign | ✓ | ✓ | ✓ | ✓ | | |
+> | crm.notes.create | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+> | crm.followups.create / update | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+> | crm.sitevisits.create / update | ✓ | ✓ | ✓ | ✓ | ✓ | |
+> | crm.lead_sources.read | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+> | crm.lead_sources.manage | ✓ | ✓ | ✓ | | | |
 >
 > Scope (full-access / team / assigned-only) is enforced in `CrmService.resolveScope()`
 > exactly as the Phase 2 property scope. `client` has **no** CRM access. Telecaller is
@@ -121,25 +120,25 @@ Examples: `property.listing.create`, `inquiry.pipeline.update`, `billing.subscri
 
 > **As-built (Phase 4 Analytics).** Two seeded permission keys, one shared scope model:
 >
-> | Permission | super_admin | org_owner | org_admin | marketing_user | sales_manager | sales_executive | telecaller | client |
-> |------------|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-> | analytics.read | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | |
-> | platform.analytics.read | ✓ | | | | | | | |
+> | Permission | super_admin | org_owner | org_admin | sales_manager | sales_executive | telecaller | client |
+> |------------|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+> | analytics.read | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | |
+> | platform.analytics.read | ✓ | | | | | | |
 >
-> Data scope is enforced in `AnalyticsService.resolveScope()`: owner/admin/marketing →
+> Data scope is enforced in `AnalyticsService.resolveScope()`: owner/admin →
 > **org-wide** (`all`); sales_manager → **team** (self + direct reports); sales_executive /
 > telecaller → **assigned-only** (their own records). `client` has **no** analytics access.
 > The employee performance table is additionally gated to performance-view roles
-> (owner / admin / marketing / manager); assigned-scope roles receive an empty employee list.
+> (owner / admin / manager); assigned-scope roles receive an empty employee list.
 > `platform.analytics.read` powers the Super Admin cross-tenant dashboard and bypasses the
 > tenant guard (Super Admin only).
 
 > **As-built (Phase 5 Notifications).** Two seeded permission keys:
 >
-> | Permission | super_admin | org_owner | org_admin | marketing_user | sales_manager | sales_executive | telecaller |
-> |------------|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-> | notifications.read | ✓ | ✓ | ✓ | | ✓ | ✓ | ✓ |
-> | notifications.templates.manage | ✓ | ✓ | ✓ | | | | |
+> | Permission | super_admin | org_owner | org_admin | sales_manager | sales_executive | telecaller |
+> |------------|:---:|:---:|:---:|:---:|:---:|:---:|
+> | notifications.read | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+> | notifications.templates.manage | ✓ | ✓ | ✓ | | | |
 >
 > `notifications.read` grants list/unread-count/mark-read and preference APIs for the
 > authenticated user only (no cross-user access). `notifications.templates.manage` is for
@@ -149,15 +148,15 @@ Examples: `property.listing.create`, `inquiry.pipeline.update`, `billing.subscri
 
 > **As-built (Phase 6 Chat).** Seven seeded permission keys; scope in `ChatService.resolveScope()`:
 >
-> | Permission | super_admin | org_owner | org_admin | marketing_user | sales_manager | sales_executive | telecaller |
-> |------------|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-> | chat.conversations.create | ✓ | ✓ | ✓ | ✓ | ✓ | | |
-> | chat.conversations.read | ✓ | ✓ | ✓ | ✓ | ✓ (team) | ✓ (assigned) | ✓ (assigned) |
-> | chat.conversations.update | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-> | chat.conversations.assign | ✓ | ✓ | ✓ | ✓ | ✓ | | |
-> | chat.conversations.convert | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-> | chat.messages.read | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-> | chat.messages.send | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+> | Permission | super_admin | org_owner | org_admin | sales_manager | sales_executive | telecaller |
+> |------------|:---:|:---:|:---:|:---:|:---:|:---:|
+> | chat.conversations.create | ✓ | ✓ | ✓ | ✓ | | |
+> | chat.conversations.read | ✓ | ✓ | ✓ | ✓ (team) | ✓ (assigned) | ✓ (assigned) |
+> | chat.conversations.update | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+> | chat.conversations.assign | ✓ | ✓ | ✓ | ✓ | | |
+> | chat.conversations.convert | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+> | chat.messages.read | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+> | chat.messages.send | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 >
 > Full-access roles see all tenant conversations. `sales_manager` sees team-assigned +
 > participant threads. `sales_executive` / `telecaller` see assigned + participant only.
@@ -297,12 +296,11 @@ Examples: `property.listing.create`, `inquiry.pipeline.update`, `billing.subscri
 | org_owner, org_admin | `tenant_id = :t` | `tenant_id = :t` (all) |
 | sales_manager | team employees OR unassigned | **team** — assigned to self **or direct reports** |
 | sales_executive | `assigned_employee_id = me` | **assigned only** (authenticated API) |
-| telecaller | created by me OR assigned | assigned only |
-| marketing_user | — | all tenant |
+| telecaller | created by me OR assigned | **assigned only** (`properties.read` granted for calling context) |
 | client | `client_user_id = me` | public only (via `/public/properties`) |
 
 > **As-built (Phase 2).** `PropertiesService.resolveScope()` enforces this:
-> full-access roles (`super_admin`, `org_owner`, `org_admin`, `marketing_user`) →
+> full-access roles (`super_admin`, `org_owner`, `org_admin`) →
 > `{ type: 'all' }`; `sales_manager` → self + `findSubordinateEmployeeIds`;
 > everyone else → assigned-only. Out-of-scope reads return **404** (existence hidden).
 > Public visibility is served by the separate unauthenticated `/api/v1/public/properties`
@@ -326,7 +324,7 @@ Examples: `property.listing.create`, `inquiry.pipeline.update`, `billing.subscri
 - [ ] `TenantGuard` validates JWT tenant matches resource  
 - [ ] `ScopeService` applies assignment filters in repositories  
 - [ ] Frontend menu generated from `/auth/me` permissions array  
-- [ ] Integration tests: cross-tenant access returns 404  
+- [x] Integration tests: cross-tenant access returns 404  
 
 ---
 

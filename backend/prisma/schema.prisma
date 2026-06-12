@@ -27,6 +27,7 @@ model organizations {
 
   organization_usage organization_usage?
   users               users[]
+  user_invitations    user_invitations[]
   roles               roles[]
   user_roles         user_roles[]
   audit_logs         audit_logs[]
@@ -87,11 +88,13 @@ model users {
 
   refresh_tokens           refresh_tokens[]
   password_reset_tokens    password_reset_tokens[]
+  email_verification_tokens email_verification_tokens[]
   employees                employees?
   user_roles               user_roles[]
   audit_logs               audit_logs[] @relation("audit_actor")
   notifications            notifications[]
   notification_preferences notification_preferences[]
+  user_invitations         user_invitations[]
 
   @@unique([tenant_id, email])
   @@index([tenant_id])
@@ -99,19 +102,21 @@ model users {
 }
 
 model refresh_tokens {
-  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  user_id     String   @db.Uuid
-  jti         String   @unique
-  token_hash  String   @unique @map("token_hash")
-  expires_at  DateTime @map("expires_at")
-  revoked_at  DateTime? @map("revoked_at")
-  user_agent  String?
-  ip_address  String?  @map("ip_address")
-  created_at  DateTime @default(now()) @map("created_at")
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id         String   @db.Uuid
+  jti             String   @unique
+  token_family_id String   @map("token_family_id")
+  token_hash      String   @unique @map("token_hash")
+  expires_at      DateTime @map("expires_at")
+  revoked_at      DateTime? @map("revoked_at")
+  user_agent      String?
+  ip_address      String?  @map("ip_address")
+  created_at      DateTime @default(now()) @map("created_at")
 
   user users @relation(fields: [user_id], references: [id])
 
   @@index([user_id])
+  @@index([user_id, token_family_id])
 }
 
 model password_reset_tokens {
@@ -120,6 +125,19 @@ model password_reset_tokens {
   token_hash String   @unique @map("token_hash")
   expires_at DateTime @map("expires_at")
   used_at    DateTime? @map("used_at")
+
+  user users @relation(fields: [user_id], references: [id])
+
+  @@index([user_id])
+}
+
+model email_verification_tokens {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id    String   @db.Uuid
+  token_hash String   @unique @map("token_hash")
+  expires_at DateTime @map("expires_at")
+  used_at    DateTime? @map("used_at")
+  created_at DateTime @default(now()) @map("created_at")
 
   user users @relation(fields: [user_id], references: [id])
 
@@ -215,14 +233,20 @@ model employees {
 
 model user_invitations {
   id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenant_id   String   @db.Uuid
+  user_id     String   @db.Uuid
   email       String
   role_id     String   @db.Uuid
   token_hash  String   @unique @map("token_hash")
   expires_at  DateTime @map("expires_at")
   accepted_at DateTime? @map("accepted_at")
 
+  tenant organizations @relation(fields: [tenant_id], references: [id])
+  user  users         @relation(fields: [user_id], references: [id])
   roles roles @relation(fields: [role_id], references: [id])
 
+  @@index([tenant_id])
+  @@index([user_id])
   @@index([role_id])
 }
 
@@ -761,6 +785,7 @@ model inquiries {
   @@unique([tenant_id, inquiry_code])
   @@index([tenant_id])
   @@index([tenant_id, stage])
+  @@index([tenant_id, stage, closed_at])
   @@index([tenant_id, assigned_employee_id])
   @@index([tenant_id, source_id])
   @@index([tenant_id, created_at])

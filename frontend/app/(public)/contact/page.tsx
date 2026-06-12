@@ -1,23 +1,23 @@
 import { ContactForm } from '../../../components/public/contact-form';
+import { fetchPublicSettings } from '../../../lib/public-site';
 
 export const metadata = {
   title: 'Contact | RE-OS',
   description:
     'Contact the RE-OS team for property inquiries, callbacks, and site visits. We respond fast.',
+  openGraph: {
+    title: 'Contact RE-OS',
+    description:
+      'Request property callbacks, site visits, and help finding verified tenant-managed inventory.',
+    url: '/contact',
+    type: 'website',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Contact RE-OS',
+    description: 'Request property callbacks, site visits, and help finding verified listings.',
+  },
 };
-
-const OFFICES = [
-  {
-    city: 'Ahmedabad (HQ)',
-    address: 'SG Highway, Ahmedabad, Gujarat 380015',
-    phone: '+91 98765 43210',
-  },
-  {
-    city: 'Surat',
-    address: 'Vesu, Surat, Gujarat 395007',
-    phone: '+91 98765 43211',
-  },
-];
 
 const FAQS = [
   {
@@ -45,23 +45,29 @@ export default async function ContactPage({
 }) {
   const sp = await searchParams;
   const tenant = sp.tenant ?? 'demo';
+  const settings = await fetchPublicSettings(tenant);
+  const siteName = settings?.name ?? 'RE-OS';
+  const contact = settings?.website?.contact ?? {};
+  const phone = contact.phone ?? contact.whatsapp ?? null;
+  const email = contact.email ?? null;
+  const address = contact.address ?? null;
 
   return (
     <main>
-      {/* Hero */}
       <section className="relative overflow-hidden bg-slate-950 px-4 py-16 text-white">
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(20,184,166,0.2),transparent_30rem)]" />
         <div className="relative mx-auto max-w-4xl text-center">
           <p className="eyebrow text-teal-300">Contact</p>
-          <h1 className="mt-4 text-4xl font-bold tracking-tight sm:text-5xl">Let&apos;s find your property.</h1>
+          <h1 className="mt-4 text-4xl font-bold tracking-tight sm:text-5xl">
+            Talk to {siteName}.
+          </h1>
           <p className="mx-auto mt-5 max-w-2xl text-lg leading-8 text-slate-200">
-            Questions about a listing, a site visit, or putting your inventory on RE-OS? Reach out
+            Questions about a listing, a site visit, or putting your inventory online? Reach out
             and the right team will get back to you.
           </p>
         </div>
       </section>
 
-      {/* Form + details */}
       <section className="mx-auto max-w-6xl px-4 py-14">
         <div className="grid gap-8 lg:grid-cols-[1.4fr_1fr]">
           <ContactForm tenant={tenant} />
@@ -72,11 +78,11 @@ export default async function ContactPage({
               <dl className="mt-4 space-y-3 text-sm">
                 <div className="flex items-center justify-between gap-3">
                   <dt className="text-slate-500">Phone</dt>
-                  <dd className="font-semibold text-slate-900">+91 98765 43210</dd>
+                  <dd className="font-semibold text-slate-900">{phone ?? 'Configure in settings'}</dd>
                 </div>
                 <div className="flex items-center justify-between gap-3">
                   <dt className="text-slate-500">Email</dt>
-                  <dd className="font-semibold text-slate-900">hello@reos.app</dd>
+                  <dd className="font-semibold text-slate-900">{email ?? 'Configure in settings'}</dd>
                 </div>
                 <div className="flex items-center justify-between gap-3">
                   <dt className="text-slate-500">Hours</dt>
@@ -85,24 +91,17 @@ export default async function ContactPage({
               </dl>
             </div>
 
-            {OFFICES.map((office) => (
-              <div key={office.city} className="card p-6">
-                <h3 className="text-base font-bold text-slate-950">{office.city}</h3>
-                <p className="mt-2 text-sm leading-6 text-slate-600">{office.address}</p>
-                <p className="mt-1 text-sm font-semibold text-teal-800">{office.phone}</p>
+            {address ? (
+              <div className="card p-6">
+                <h3 className="text-base font-bold text-slate-950">Office</h3>
+                <p className="mt-2 text-sm leading-6 text-slate-600">{address}</p>
+                {phone ? <p className="mt-1 text-sm font-semibold text-teal-800">{phone}</p> : null}
               </div>
-            ))}
-
-            <div className="card overflow-hidden">
-              <div className="flex h-44 items-center justify-center bg-slate-100 text-sm font-medium text-slate-400">
-                Map preview
-              </div>
-            </div>
+            ) : null}
           </div>
         </div>
       </section>
 
-      {/* FAQ */}
       <section className="bg-white px-4 py-16">
         <div className="mx-auto max-w-4xl">
           <div className="text-center">

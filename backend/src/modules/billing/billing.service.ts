@@ -20,6 +20,7 @@ import {
 import { BillingRepository } from './billing.repository';
 import { CancelSubscriptionDto } from './dto/cancel-subscription.dto';
 import { ChangePlanDto } from './dto/change-plan.dto';
+import { ListInvoicesQueryDto } from './dto/list-invoices-query.dto';
 import { RazorpayWebhookDto } from './dto/razorpay-webhook.dto';
 import { SubscribeDto } from './dto/subscribe.dto';
 import { MockProvider } from './providers/mock.provider';
@@ -158,15 +159,21 @@ export class BillingService {
     if (!plan || !plan.is_active) throw new NotFoundException('Plan not found');
 
     const amount = this.amountForPlan(plan, dto.billing_cycle);
-    const provider = this.provider();
-    const providerResult = await provider.createSubscription({
-      tenantId,
-      planCode: plan.code,
-      planName: plan.name,
-      billingCycle: dto.billing_cycle,
-      amount,
-      currency: 'INR',
-    });
+    const providerResult =
+      amount === 0
+        ? {
+            provider: 'manual',
+            providerSubscriptionId: `manual_${tenantId}_${Date.now()}`,
+            checkoutUrl: null,
+          }
+        : await this.provider().createSubscription({
+            tenantId,
+            planCode: plan.code,
+            planName: plan.name,
+            billingCycle: dto.billing_cycle,
+            amount,
+            currency: 'INR',
+          });
 
     const now = new Date();
     const subscription = await this.repo.createOrReplaceSubscription({
@@ -240,6 +247,7 @@ export class BillingService {
       orgStatus: 'active',
       orgTier: plan.code,
     });
+    if (!updated) throw new NotFoundException('Subscription not found');
 
     await this.audit.record({
       actor,
@@ -263,7 +271,7 @@ export class BillingService {
       },
     });
 
-    return this.formatSubscription({ ...updated, plan });
+    return this.formatSubscription(updated);
   }
 
   async cancel(tenantId: string, dto: CancelSubscriptionDto, actor: AuthUser, meta?: AuditRequestMeta) {
@@ -282,6 +290,7 @@ export class BillingService {
       },
       orgStatus: atPeriodEnd ? undefined : 'cancelled',
     });
+    if (!updated) throw new NotFoundException('Subscription not found');
 
     await this.audit.record({
       actor,
@@ -293,12 +302,22 @@ export class BillingService {
       meta,
     });
 
-    return this.formatSubscription({ ...updated, plan: current.plan });
+    return this.formatSubscription(updated);
   }
 
-  async listInvoices(tenantId: string) {
-    const invoices = await this.repo.listInvoices(tenantId);
-    return invoices.map((invoice) => this.formatInvoice(invoice));
+  async listInvoices(tenantId: string, query: ListInvoicesQueryDto = {}) {
+    const page = query.page ?? 1;
+    const perPage = query.per_page ?? 20;
+    const { rows, total } = await this.repo.listInvoices(tenantId, page, perPage);
+    return {
+      data: rows.map((invoice) => this.formatInvoice(invoice)),
+      meta: {
+        page,
+        per_page: perPage,
+        total,
+        total_pages: Math.ceil(total / perPage) || 1,
+      },
+    };
   }
 
   async getUsage(tenantId: string) {
@@ -326,9 +345,13 @@ export class BillingService {
     };
   }
 
-  async processRazorpayWebhook(dto: RazorpayWebhookDto, signature: string | undefined) {
-    const payloadString = JSON.stringify(dto);
-    const valid = this.razorpayProvider.verifyWebhookSignature(payloadString, signature);
+  async processRazorpayWebhook(
+    dto: RazorpayWebhookDto,
+    signature: string | undefined,
+    rawBody?: Buffer,
+  ) {
+    const payload = rawBody ?? Buffer.from(JSON.stringify(dto));
+    const valid = this.razorpayProvider.verifyWebhookSignature(payload, signature);
     if (!valid) throw new UnauthorizedException('Invalid Razorpay webhook signature');
 
     const providerEventId = dto.id ?? `${dto.event}:${JSON.stringify(dto.payload).slice(0, 64)}`;
@@ -336,24 +359,23 @@ export class BillingService {
     if (existing?.processed_at) {
       return { processed: false, duplicate: true };
     }
-    if (existing) {
-      return { processed: false, duplicate: true };
-    }
 
-    const event = await this.repo.createWebhookEvent({
-      provider: 'razorpay',
-      providerEventId,
-      eventType: dto.event,
-      payload: dto as unknown as Prisma.InputJsonValue,
-      signatureValid: true,
-    });
+    const event =
+      existing ??
+      (await this.repo.createWebhookEvent({
+        provider: 'razorpay',
+        providerEventId,
+        eventType: dto.event,
+        payload: dto as unknown as Prisma.InputJsonValue,
+        signatureValid: true,
+      }));
 
     try {
       await this.applyWebhookEvent(dto);
       await this.repo.markWebhookProcessed(event.id);
-      return { processed: true, duplicate: false };
+      return { processed: true, duplicate: Boolean(existing) };
     } catch (error) {
-      await this.repo.markWebhookProcessed(
+      await this.repo.markWebhookFailed(
         event.id,
         error instanceof Error ? error.message : 'Webhook processing failed',
       );

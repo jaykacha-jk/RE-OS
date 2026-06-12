@@ -17,8 +17,7 @@ export class EmployeesRepository {
     const tierToPlan: Record<string, string> = {
       basic: 'starter',
       starter: 'starter',
-      pro: 'growth',
-      growth: 'growth',
+      pro: 'pro',
       enterprise: 'enterprise',
     };
     const planCode = tierToPlan[tier] ?? 'starter';
@@ -173,6 +172,8 @@ export class EmployeesRepository {
 
       await tx.user_invitations.create({
         data: {
+          tenant_id: input.tenantId,
+          user_id: user.id,
           email: input.email,
           role_id: input.roleId,
           token_hash: input.tokenHash,
@@ -218,8 +219,8 @@ export class EmployeesRepository {
         data.phone !== undefined ||
         data.status !== undefined
       ) {
-        await tx.users.update({
-          where: { id: employee.user_id },
+        await tx.users.updateMany({
+          where: { id: employee.user_id, tenant_id: tenantId, deleted_at: null },
           data: {
             first_name: data.firstName,
             last_name: data.lastName,
@@ -230,8 +231,8 @@ export class EmployeesRepository {
       }
 
       if (data.managerId !== undefined || data.status !== undefined) {
-        await tx.employees.update({
-          where: { id: employeeId },
+        await tx.employees.updateMany({
+          where: { id: employeeId, user: { tenant_id: tenantId, deleted_at: null } },
           data: {
             ...(data.managerId !== undefined ? { manager_id: data.managerId } : {}),
             ...(data.status ? { status: data.status } : {}),
@@ -268,12 +269,12 @@ export class EmployeesRepository {
       if (!employee) return null;
 
       const now = new Date();
-      await tx.employees.update({
-        where: { id: employeeId },
+      await tx.employees.updateMany({
+        where: { id: employeeId, user: { tenant_id: tenantId, deleted_at: null } },
         data: { deleted_at: now, status: 'inactive' },
       });
-      await tx.users.update({
-        where: { id: employee.user_id },
+      await tx.users.updateMany({
+        where: { id: employee.user_id, tenant_id: tenantId, deleted_at: null },
         data: { deleted_at: now, status: 'suspended' },
       });
       await tx.organization_usage.update({

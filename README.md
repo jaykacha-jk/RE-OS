@@ -1,10 +1,10 @@
 # Real Estate Operating System (RE-OS)
 
-Multi-tenant SaaS platform for real estate agencies — property inventory, CRM pipeline, AI qualification, live chat, analytics, and billing.
+Multi-tenant SaaS platform for real estate agencies — property inventory, CRM pipeline, assistant automation, live chat, analytics, and billing.
 
 ## Status
 
-Active development. Backend Admin API is ~88% complete and the platform now includes the **AI Agent Platform (Phase 10)** — lead qualification, property matching, AI chat (RAG + handoff), AI voice agent, follow-up automation, conversation intelligence, and usage/cost analytics. Admin UI ~64% and public web ~67%. See [docs/IMPLEMENTATION_STATUS.md](docs/IMPLEMENTATION_STATUS.md) for the live breakdown.
+Active development. Backend Admin API is ~88% complete and the platform includes assistant automation: deterministic lead scoring, property matching, follow-up suggestions, conversation intelligence, and LLM/RAG chat when `OPENAI_API_KEY` is configured. Voice calling is mock/demo-only until a real Exotel or Twilio provider is wired. Admin UI ~64% and public web ~67%. See [docs/IMPLEMENTATION_STATUS.md](docs/IMPLEMENTATION_STATUS.md) for the live breakdown.
 
 ## Documentation (`docs/`)
 
@@ -17,7 +17,7 @@ Active development. Backend Admin API is ~88% complete and the platform now incl
 | [API_SPEC.md](docs/API_SPEC.md) | REST API |
 | [RBAC.md](docs/RBAC.md) | Access control |
 | [MVP_ROADMAP.md](docs/MVP_ROADMAP.md) | 9-phase roadmap |
-| [AI_ARCHITECTURE.md](docs/AI_ARCHITECTURE.md) | AI Agent Platform |
+| [AI_ARCHITECTURE.md](docs/AI_ARCHITECTURE.md) | Assistant automation architecture |
 | [SECURITY.md](docs/SECURITY.md) | Security |
 | [DEPLOYMENT.md](docs/DEPLOYMENT.md) | Infrastructure |
 | [IMPLEMENTATION_STATUS.md](docs/IMPLEMENTATION_STATUS.md) | Current build status |
@@ -68,6 +68,12 @@ Next.js · NestJS · PostgreSQL · Prisma · Redis · BullMQ · Socket.IO · Raz
    - `NEXT_PUBLIC_API_URL=http://localhost:4545`
 
 > **Note:** BullMQ requires Redis **≥ 5.0.0**. An older local Redis (e.g. the legacy 3.x Windows build) lets the HTTP API boot but logs repeated queue connection errors. Use the `docker compose` Redis (or Redis ≥ 5) to enable background jobs.
+
+## Production Requirements
+
+- Configure Redis for BullMQ queues and cache-backed services; in-memory fallbacks are for local development only.
+- Set `CHAT_CLIENT_TOKEN_SECRET` (or `JWT_PRIVATE_KEY`) before enabling the public chat token helpers in production.
+- Use managed secrets for production credentials such as Resend, Razorpay, JWT keys, and database URLs.
 
 ## Running the Apps
 

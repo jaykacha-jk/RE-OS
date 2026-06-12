@@ -6,6 +6,7 @@ import {
   buildPropertyMetadata,
   fetchPublicListings,
   fetchPublicProperty,
+  fetchPublicSettings,
   propertyIntent,
   propertyPath,
 } from '../../../../lib/public-site';
@@ -39,12 +40,15 @@ export default async function PublicPropertyDetailPage({
   const property = await fetchPublicProperty(slug, tenantSlug);
   if (!property) notFound();
 
-  const { data: cityListings } = await fetchPublicListings({
-    tenant: tenantSlug,
-    city: property.city,
-    intent: propertyIntent(property),
-    perPage: 6,
-  });
+  const [{ data: cityListings }, settings] = await Promise.all([
+    fetchPublicListings({
+      tenant: tenantSlug,
+      city: property.city,
+      intent: propertyIntent(property),
+      perPage: 6,
+    }),
+    fetchPublicSettings(tenantSlug),
+  ]);
   const related = cityListings.filter((item) => item.slug !== property.slug).slice(0, 3);
 
   return (
@@ -53,6 +57,7 @@ export default async function PublicPropertyDetailPage({
       tenant={tenantSlug}
       canonicalUrl={propertyPath(property)}
       related={related}
+      settings={settings}
     />
   );
 }

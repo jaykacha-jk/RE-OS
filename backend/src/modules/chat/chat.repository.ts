@@ -69,6 +69,26 @@ export class ChatRepository {
     });
   }
 
+  async findPublicPropertyBySlug(tenantId: string, slug: string) {
+    return this.prisma.dbClient.properties.findFirst({
+      where: {
+        tenant_id: tenantId,
+        slug,
+        deleted_at: null,
+        is_public: true,
+        status: 'published',
+      },
+      select: { id: true, slug: true, title: true },
+    });
+  }
+
+  async findOrganizationBySlug(slug: string) {
+    return this.prisma.dbClient.organizations.findFirst({
+      where: { slug, deleted_at: null },
+      select: { id: true, name: true, slug: true, status: true },
+    });
+  }
+
   async findInquiryById(tenantId: string, inquiryId: string) {
     return this.prisma.dbClient.inquiries.findFirst({
       where: { id: inquiryId, tenant_id: tenantId, deleted_at: null },
@@ -203,8 +223,8 @@ export class ChatRepository {
             status: 'sent',
           },
         });
-        await tx.conversations.update({
-          where: { id: conversation.id },
+        await tx.conversations.updateMany({
+          where: { id: conversation.id, tenant_id: input.tenantId, deleted_at: null },
           data: {
             last_message_at: message.created_at,
             last_message_preview: input.initialMessage.content.slice(0, 200),
@@ -326,10 +346,16 @@ export class ChatRepository {
     } | null;
   }) {
     return this.prisma.dbClient.$transaction(async (tx) => {
-      await tx.conversations.update({ where: { id: input.id }, data: input.data });
+      const updated = await tx.conversations.updateMany({
+        where: { id: input.id, tenant_id: input.tenantId, deleted_at: null },
+        data: input.data,
+      });
+      if (updated.count !== 1) return false;
 
       if (input.tags) {
-        await tx.conversation_tags.deleteMany({ where: { conversation_id: input.id } });
+        await tx.conversation_tags.deleteMany({
+          where: { conversation_id: input.id, tenant_id: input.tenantId },
+        });
         if (input.tags.length) {
           await tx.conversation_tags.createMany({
             data: input.tags.map((tag) => ({
@@ -355,6 +381,7 @@ export class ChatRepository {
           },
         });
       }
+      return true;
     });
   }
 
@@ -364,8 +391,8 @@ export class ChatRepository {
       select: { id: true },
     });
     if (!existing) return false;
-    await this.prisma.dbClient.conversations.update({
-      where: { id },
+    await this.prisma.dbClient.conversations.updateMany({
+      where: { id, tenant_id: tenantId, deleted_at: null },
       data: { deleted_at: new Date() },
     });
     return true;
@@ -384,13 +411,14 @@ export class ChatRepository {
     actorEmail?: string | null;
   }) {
     return this.prisma.dbClient.$transaction(async (tx) => {
-      await tx.conversations.update({
-        where: { id: input.id },
+      const updated = await tx.conversations.updateMany({
+        where: { id: input.id, tenant_id: input.tenantId, deleted_at: null },
         data: {
           assigned_employee_id: input.employeeId,
           status: 'assigned',
         },
       });
+      if (updated.count !== 1) return false;
       await tx.conversation_assignments.create({
         data: {
           tenant_id: input.tenantId,
@@ -415,7 +443,7 @@ export class ChatRepository {
             employee_id: input.employeeId,
             display_name: input.participantName,
           },
-          update: { employee_id: input.employeeId },
+          update: { employee_id: input.employeeId, tenant_id: input.tenantId },
         });
       }
       await tx.conversation_activities.create({
@@ -432,6 +460,7 @@ export class ChatRepository {
           actor_email: input.actorEmail ?? null,
         },
       });
+      return true;
     });
   }
 
@@ -493,8 +522,8 @@ export class ChatRepository {
             ? `📎 ${input.attachments[0].name}`
             : '';
 
-      await tx.conversations.update({
-        where: { id: input.conversationId },
+      await tx.conversations.updateMany({
+        where: { id: input.conversationId, tenant_id: input.tenantId, deleted_at: null },
         data: {
           last_message_at: message.created_at,
           last_message_preview: preview,
@@ -506,6 +535,7 @@ export class ChatRepository {
         await tx.conversation_participants.updateMany({
           where: {
             conversation_id: input.conversationId,
+            tenant_id: input.tenantId,
             user_id: input.senderParticipantUserId,
           },
           data: { last_read_at: message.created_at, last_read_message_id: message.id },
@@ -569,7 +599,7 @@ export class ChatRepository {
     return this.prisma.dbClient.$transaction(async (tx) => {
       const now = new Date();
       await tx.conversation_participants.updateMany({
-        where: { conversation_id: input.conversationId, user_id: input.userId },
+        where: { conversation_id: input.conversationId, tenant_id: input.tenantId, user_id: input.userId },
         data: { last_read_at: now, last_read_message_id: input.upToMessageId ?? null },
       });
       // Flip status on messages authored by others to "read".
@@ -587,8 +617,8 @@ export class ChatRepository {
   }
 
   async markMessageRead(tenantId: string, messageId: string) {
-    await this.prisma.dbClient.messages.update({
-      where: { id: messageId },
+    await this.prisma.dbClient.messages.updateMany({
+      where: { id: messageId, tenant_id: tenantId, deleted_at: null },
       data: { status: 'read' },
     });
   }

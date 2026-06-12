@@ -7,17 +7,21 @@ import { fetchAiPrompts, upsertAiPrompt, type AiPrompt } from '../../../../lib/a
 export default function AiPromptsPage() {
   const [prompts, setPrompts] = useState<AiPrompt[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<Record<string, string>>({});
   const [savingKey, setSavingKey] = useState<string | null>(null);
   const [saved, setSaved] = useState<string | null>(null);
 
   async function load() {
+    setLoading(true);
     try {
       const res = await fetchAiPrompts();
       setPrompts(res);
       setEditing(Object.fromEntries(res.map((p) => [p.key, p.system_prompt])));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load prompts');
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -85,7 +89,10 @@ export default function AiPromptsPage() {
             </button>
           </div>
         ))}
-        {prompts.length === 0 && !error && <p className="text-sm text-slate-500">Loading prompts…</p>}
+        {loading && <p className="text-sm text-slate-500">Loading prompts…</p>}
+        {!loading && prompts.length === 0 && !error && (
+          <p className="text-sm text-slate-500">No prompt templates found.</p>
+        )}
       </div>
     </div>
   );

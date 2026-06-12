@@ -4,6 +4,8 @@ import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 
 import { SecurityHeadersMiddleware } from './common/middleware/security-headers.middleware';
+import { RequestLoggingMiddleware } from './common/observability/request-logging.middleware';
+import { ObservabilityModule } from './common/observability/observability.module';
 
 import { HealthModule } from './modules/health/health.module';
 import { AuthModule } from './modules/auth/auth.module';
@@ -44,6 +46,7 @@ import { PrismaModule } from './common/database/prisma.module';
         limit: 10,
       },
     ]),
+    ObservabilityModule,
     PrismaModule,
     EventsModule,
     JobsModule,
@@ -74,7 +77,9 @@ import { PrismaModule } from './common/database/prisma.module';
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
-    consumer.apply(SecurityHeadersMiddleware).forRoutes('*');
+    consumer
+      .apply(RequestLoggingMiddleware, SecurityHeadersMiddleware)
+      .forRoutes('*');
   }
 }
 

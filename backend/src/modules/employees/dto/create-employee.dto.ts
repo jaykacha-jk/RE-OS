@@ -20,9 +20,9 @@ export class CreateEmployeeDto {
   phone?: string;
 
   @ApiProperty({
-    enum: ['org_admin', 'sales_manager', 'sales_executive', 'telecaller', 'marketing_user'],
+    enum: ['org_admin', 'sales_manager', 'sales_executive', 'telecaller'],
   })
-  @IsIn(['org_admin', 'sales_manager', 'sales_executive', 'telecaller', 'marketing_user'])
+  @IsIn(['org_admin', 'sales_manager', 'sales_executive', 'telecaller'])
   role_code!: string;
 
   @ApiPropertyOptional({ format: 'uuid' })

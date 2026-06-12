@@ -30,7 +30,7 @@ export function ActivityFeed({ limit = 6 }: { limit?: number }) {
   const { items, loading } = useNotifications({ listLimit: limit });
 
   return (
-    <section className="card flex h-full flex-col p-5">
+    <section className="card flex flex-col p-5">
       <header className="mb-4 flex items-center justify-between">
         <div>
           <h3 className="text-h3">Activity feed</h3>
@@ -56,7 +56,7 @@ export function ActivityFeed({ limit = 6 }: { limit?: number }) {
       ) : items.length === 0 ? (
         <EmptyState title="No activity yet" message="Lead, chat, and billing events will stream here as your team works." />
       ) : (
-        <ul className="-mx-2 flex-1 space-y-0.5">
+        <ul className="-mx-2 space-y-0.5">
           {items.slice(0, limit).map((n) => {
             const tone = TYPE_TONE[n.type] ?? TYPE_TONE.SYSTEM;
             const icon = TYPE_ICON[n.type] ?? 'pulse';

@@ -329,8 +329,9 @@ const salesExecutivePermissions = [
   ...aiSalesPermissions,
 ];
 
-// Telecaller: assigned-scope CRM only (notes + follow-ups) + assigned analytics.
+// Telecaller: assigned-scope CRM and property read for calling context + assigned analytics.
 const telecallerPermissions = [
+  'properties.read',
   'analytics.read',
   ...crmTelecallerPermissions,
   ...chatAssignedPermissions,
@@ -397,6 +398,11 @@ const demoOrganizations = [
   { name: 'Surat Skyline Realty', slug: 'surat-skyline', city: 'Surat', tier: 'starter', domain: 'suratskyline.in' },
   { name: 'Vadodara Urban Homes', slug: 'vadodara-urban', city: 'Vadodara', tier: 'pro', domain: 'vadodaurban.in' },
   { name: 'Gandhinagar Capital Properties', slug: 'capital-properties', city: 'Gandhinagar', tier: 'enterprise', domain: 'capitalproperties.in' },
+  { name: 'Rajkot Ring Road Realty', slug: 'rajkot-ring-road', city: 'Rajkot', tier: 'starter', domain: 'rajkotringroad.in' },
+  { name: 'Ahmedabad West Homes', slug: 'ahmedabad-west', city: 'Ahmedabad', tier: 'pro', domain: 'ahmedabadwesthomes.in' },
+  { name: 'Surat Diamond Estates', slug: 'surat-diamond', city: 'Surat', tier: 'enterprise', domain: 'suratdiamondestates.in' },
+  { name: 'Vadodara Elite Spaces', slug: 'vadodara-elite', city: 'Vadodara', tier: 'pro', domain: 'vadodaraelite.in' },
+  { name: 'GIFT City Commercials', slug: 'gift-city-commercials', city: 'Gandhinagar', tier: 'enterprise', domain: 'giftcitycommercials.in' },
 ];
 
 const demoCities = ['Ahmedabad', 'Surat', 'Vadodara', 'Rajkot', 'Gandhinagar'];
@@ -914,9 +920,73 @@ async function createDemoEmployee(org, index, roleCode, passwordHash) {
 
 async function seedTenantSettings(org) {
   const rows = [
-    ['branding', { primaryColor: '#0f766e', accentColor: '#b7791f', font: 'Plus Jakarta Sans' }],
-    ['website', { heroTitle: `${org.name} verified properties`, city: org.city, phone: '+91 98765 43210' }],
-    ['seo', { titleTemplate: `%s | ${org.name}`, defaultCity: org.city, indexPublicPages: true }],
+    ['branding', { primary_color: '#0f766e', secondary_color: '#b7791f', font_family: 'Plus Jakarta Sans' }],
+    [
+      'website',
+      {
+        hero_title: `${org.name}: verified properties in ${org.city}`,
+        hero_subtitle: `Browse tenant-managed listings in ${org.city} and book visits with our local sales team.`,
+        contact: {
+          email: `hello@${org.slug}.reos.app`,
+          phone: '+91 98765 43210',
+          whatsapp: '+91 98765 43210',
+          address: `SG Highway, ${org.city}, Gujarat 380015`,
+        },
+        social_links: {
+          linkedin: 'https://www.linkedin.com/company/re-os',
+          instagram: null,
+          twitter: null,
+          facebook: null,
+          youtube: null,
+        },
+        testimonials:
+          org.slug === 'demo'
+            ? [
+                {
+                  author: 'Priya Shah',
+                  role: 'Home buyer',
+                  quote: `The ${org.name} team shared verified listings quickly and coordinated our site visit the same week.`,
+                },
+                {
+                  author: 'Rahul Mehta',
+                  role: 'Investor',
+                  quote: `Clear pricing, responsive callbacks, and no stale portal listings — exactly what we needed in ${org.city}.`,
+                },
+                {
+                  author: 'Anita Desai',
+                  role: 'Renter',
+                  quote: 'Every inquiry was tracked and answered. We found our apartment without chasing multiple brokers.',
+                },
+              ]
+            : [],
+        featured_sections: [
+          {
+            title: 'Verified inventory',
+            subtitle: 'Listings are managed by the sales team — not scraped from stale portals.',
+            type: 'trust',
+            enabled: true,
+          },
+          {
+            title: 'Locality-led discovery',
+            subtitle: `Search ${org.city} by area with SEO-friendly pages built for serious buyers.`,
+            type: 'trust',
+            enabled: true,
+          },
+          {
+            title: 'CRM-backed response',
+            subtitle: 'Every inquiry becomes a trackable lead so teams call back fast.',
+            type: 'trust',
+            enabled: true,
+          },
+        ],
+        footer: {
+          about: `${org.name} publishes verified property listings in ${org.city} with CRM-backed follow-up for every inquiry.`,
+          copyright: null,
+          links: [],
+        },
+      },
+    ],
+    ['seo', { meta_title: `${org.name} | Verified properties in ${org.city}`, meta_description: `Browse verified ${org.city} properties from ${org.name}.` }],
     ['features', { crm: true, chat: true, publicWebsite: true, billing: true, ai: true }],
     ['configuration', { currency: 'INR', timezone: 'Asia/Kolkata', locale: 'en-IN' }],
     ['white_label', { enabled: org.tier !== 'starter', hideReosBranding: org.tier === 'enterprise' }],
@@ -1180,7 +1250,7 @@ async function seedDemoInquiries(org, employees, properties, leadSources) {
 }
 
 async function seedDemoConversations(org, employees, properties, inquiries) {
-  for (let i = 0; i < 20; i += 1) {
+  for (let i = 0; i < 30; i += 1) {
     const property = properties[i % properties.length];
     const inquiry = inquiries[i % inquiries.length];
     const employee = employees[i % employees.length];
@@ -1239,7 +1309,7 @@ async function seedDemoConversations(org, employees, properties, inquiries) {
 }
 
 async function seedDemoNotificationsAndAnalytics(org, users, properties, inquiries) {
-  // 40 notifications per org (→ 200 across 5 orgs).
+  // 100 notifications per org (→ 1000 across 10 orgs).
   const notificationTitles = [
     'Hot lead needs follow-up',
     'New inquiry assigned to you',
@@ -1247,7 +1317,7 @@ async function seedDemoNotificationsAndAnalytics(org, users, properties, inquiri
     'Invoice payment received',
     'Property published to website',
   ];
-  for (let i = 0; i < 40; i += 1) {
+  for (let i = 0; i < 100; i += 1) {
     const user = users[i % users.length];
     const inquiry = inquiries[i % inquiries.length];
     const titleIdx = i % notificationTitles.length;

@@ -1,0 +1,77 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - master
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Lint, test, and build
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: reos_test
+          POSTGRES_USER: reos
+          POSTGRES_PASSWORD: reos
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U reos -d reos_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://reos:reos@localhost:5432/reos_test?schema=public
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npm --workspace backend run prisma:generate
+
+      - name: Lint workspaces
+        run: npm run lint
+
+      - name: Test backend
+        run: npm --workspace backend run test -- --runInBand
+
+      - name: Apply test database migrations
+        run: npm --workspace backend run prisma:migrate:deploy
+
+      - name: Test live tenant isolation
+        run: npm --workspace backend run test:e2e:tenant
+
+      - name: Test frontend
+        run: npm --workspace frontend run test
+
+      - name: Build backend
+        run: npm --workspace backend run build
+
+      - name: Build frontend
+        env:
+          NEXT_PUBLIC_API_URL: http://localhost:3001
+        run: npm --workspace frontend run build
+
+      - name: Build backend Docker image
+        run: docker build -f backend/Dockerfile -t re-os-backend:ci .
+
+      - name: Build frontend Docker image
+        run: docker build -f frontend/Dockerfile --build-arg NEXT_PUBLIC_API_URL=http://localhost:3001 -t re-os-frontend:ci .

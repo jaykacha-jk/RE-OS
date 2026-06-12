@@ -21,5 +21,5 @@ export interface PaymentProvider {
 
   createSubscription(input: ProviderSubscriptionRequest): Promise<ProviderSubscriptionResult>;
 
-  verifyWebhookSignature(payload: string, signature: string | undefined): boolean;
+  verifyWebhookSignature(payload: Buffer | string, signature: string | undefined): boolean;
 }

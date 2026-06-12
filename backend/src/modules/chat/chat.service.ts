@@ -34,11 +34,14 @@ import { ConvertInquiryDto } from './dto/convert-inquiry.dto';
 import { CreateConversationDto } from './dto/create-conversation.dto';
 import { ListConversationsQueryDto } from './dto/list-conversations-query.dto';
 import { ListMessagesQueryDto } from './dto/list-messages-query.dto';
+import { SendPublicChatMessageDto, StartPublicChatDto } from './dto/public-chat.dto';
 import { SendMessageDto } from './dto/send-message.dto';
 import { UpdateConversationDto } from './dto/update-conversation.dto';
 
 type ConversationDetail = NonNullable<Awaited<ReturnType<ChatRepository['findById']>>>;
 type ConversationBasic = NonNullable<Awaited<ReturnType<ChatRepository['findBasicById']>>>;
+
+const DEV_CHAT_CLIENT_TOKEN_SECRET = randomBytes(32).toString('hex');
 
 @Injectable()
 export class ChatService {
@@ -935,6 +938,191 @@ export class ChatService {
   }
 
   // ===========================================================================
+  // Public website chat (anonymous visitor, HMAC-scoped token)
+  // ===========================================================================
+
+  private async resolvePublicTenant(slug: string) {
+    const org = await this.repo.findOrganizationBySlug(slug);
+    if (!org || org.status === 'suspended') throw new NotFoundException('Chat not available');
+    return org;
+  }
+
+  private verifyPublicConversationToken(conversationId: string, token?: string) {
+    if (!token) throw new ForbiddenException('Chat token is required');
+    const verified = this.verifyClientToken(token);
+    if (!verified || verified.conversationId !== conversationId) {
+      throw new ForbiddenException('Invalid chat token');
+    }
+    return verified;
+  }
+
+  async startPublicConversation(dto: StartPublicChatDto, meta?: AuditRequestMeta) {
+    const org = await this.resolvePublicTenant(dto.tenant);
+    const message = dto.message.trim();
+    if (!message) throw new BadRequestException('Message content is required');
+
+    const property = dto.property_slug
+      ? await this.repo.findPublicPropertyBySlug(org.id, dto.property_slug)
+      : null;
+    if (dto.property_slug && !property) throw new NotFoundException('Listing not found');
+
+    const code = await this.generateConversationCode(org.id);
+    const displayName = dto.client_name?.trim() || 'Website visitor';
+    const data: Prisma.conversationsCreateInput = {
+      tenant: { connect: { id: org.id } },
+      conversation_code: code,
+      type: 'website',
+      status: 'open',
+      subject: dto.subject ?? property?.title ?? 'Website inquiry',
+      client_name: dto.client_name ?? null,
+      client_email: dto.client_email ?? null,
+      client_phone: dto.client_phone ?? null,
+      client_identifier: dto.client_identifier,
+      property_slug: property?.slug ?? dto.property_slug ?? null,
+      created_by: null,
+      ...(property ? { property: { connect: { id: property.id } } } : {}),
+    };
+
+    const id = await this.repo.createConversation({
+      tenantId: org.id,
+      data,
+      participants: [
+        {
+          participant_type: 'client',
+          display_name: displayName,
+        },
+      ],
+      initialMessage: {
+        sender_type: 'client',
+        sender_id: null,
+        sender_name: displayName,
+        message_type: 'text',
+        content: message,
+      },
+      actorId: null,
+    });
+
+    const created = await this.repo.findById(org.id, id);
+    const mapped = this.mapDetail(created!);
+    const token = this.issueClientToken(org.id, id, dto.client_identifier);
+
+    await this.auditService.record({
+      actor: null,
+      tenantId: org.id,
+      action: 'chat.public_conversation.created',
+      entityType: 'conversation',
+      entityId: id,
+      afterState: { conversation_code: mapped.conversation_code, property_slug: mapped.property_slug },
+      meta,
+    });
+
+    this.events.emit(DOMAIN_EVENTS.CONVERSATION_CREATED, {
+      tenantId: org.id,
+      actorUserId: null,
+      entityType: 'conversation',
+      entityId: id,
+      context: {
+        conversationCode: mapped.conversation_code,
+        clientName: mapped.client_name ?? 'Website visitor',
+        source: 'Public widget',
+      },
+    });
+
+    return { conversation: mapped, token };
+  }
+
+  async listPublicMessages(conversationId: string, token?: string, query: ListMessagesQueryDto = {}) {
+    const verified = this.verifyPublicConversationToken(conversationId, token);
+    const conversation = await this.repo.findBasicById(verified.tenantId, conversationId);
+    if (!conversation || conversation.client_identifier !== verified.clientIdentifier) {
+      throw new NotFoundException('Conversation not found');
+    }
+
+    const page = query.page ?? 1;
+    const perPage = query.per_page ?? 50;
+    const { rows, total } = await this.repo.listMessages({
+      tenantId: verified.tenantId,
+      conversationId,
+      page,
+      perPage,
+      before: query.before,
+    });
+
+    return {
+      data: rows.map((m) => this.mapMessage(m)).reverse(),
+      meta: { page, per_page: perPage, total, total_pages: Math.ceil(total / perPage) || 1 },
+    };
+  }
+
+  async sendPublicMessage(
+    conversationId: string,
+    token: string | undefined,
+    dto: SendPublicChatMessageDto,
+    meta?: AuditRequestMeta,
+  ) {
+    const verified = this.verifyPublicConversationToken(conversationId, token);
+    const conversation = await this.repo.findBasicById(verified.tenantId, conversationId);
+    if (!conversation || conversation.client_identifier !== verified.clientIdentifier) {
+      throw new NotFoundException('Conversation not found');
+    }
+    if (CONVERSATION_CLOSED_STATUSES.includes(conversation.status as ConversationStatus)) {
+      throw new UnprocessableEntityException('Cannot send messages to a closed conversation');
+    }
+
+    const content = dto.content.trim();
+    if (!content) throw new BadRequestException('Message content is required');
+
+    const message = await this.repo.addMessage({
+      tenantId: verified.tenantId,
+      conversationId,
+      sender: {
+        sender_type: 'client',
+        sender_id: null,
+        sender_name: conversation.client_name ?? 'Website visitor',
+      },
+      messageType: 'text',
+      content,
+    });
+    const mapped = this.mapMessage(message);
+    const recipientUserIds = await this.repo.listParticipantUserIds(conversationId);
+
+    await this.auditService.record({
+      actor: null,
+      tenantId: verified.tenantId,
+      action: 'chat.public_message.sent',
+      entityType: 'message',
+      entityId: message.id,
+      afterState: { conversation_id: conversationId },
+      meta,
+    });
+
+    this.gateway.emitMessage({
+      conversationId,
+      recipientUserIds,
+      message: mapped,
+    });
+
+    this.events.emit(DOMAIN_EVENTS.MESSAGE_RECEIVED, {
+      tenantId: verified.tenantId,
+      actorUserId: null,
+      entityType: 'conversation',
+      entityId: conversationId,
+      recipientUserIds,
+      context: {
+        conversationCode: conversation.conversation_code,
+        clientName: conversation.client_name ?? 'Website visitor',
+        senderName: conversation.client_name ?? 'Website visitor',
+        preview: mapped.content.slice(0, 120),
+        employeeId: conversation.assigned_employee_id,
+      },
+    });
+
+    await this.pushUnreadBadges(verified.tenantId, recipientUserIds);
+
+    return mapped;
+  }
+
+  // ===========================================================================
   // Timeline helpers (detail sidebar)
   // ===========================================================================
 
@@ -972,9 +1160,18 @@ export class ChatService {
   // Public widget token helpers (website messenger foundation)
   // ===========================================================================
 
+  private clientTokenSecret(): string {
+    const secret = process.env.CHAT_CLIENT_TOKEN_SECRET || process.env.JWT_PRIVATE_KEY;
+    if (secret) return secret;
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error('CHAT_CLIENT_TOKEN_SECRET is required in production');
+    }
+    return DEV_CHAT_CLIENT_TOKEN_SECRET;
+  }
+
   /** Issue an HMAC-signed access token for an anonymous website visitor. */
   issueClientToken(tenantId: string, conversationId: string, clientIdentifier: string): string {
-    const secret = process.env.CHAT_CLIENT_TOKEN_SECRET ?? process.env.JWT_PRIVATE_KEY ?? 'dev-chat-secret';
+    const secret = this.clientTokenSecret();
     const payload = `${tenantId}:${conversationId}:${clientIdentifier}`;
     const sig = createHmac('sha256', secret).update(payload).digest('hex');
     return Buffer.from(`${payload}:${sig}`).toString('base64url');
@@ -986,7 +1183,7 @@ export class ChatService {
       const parts = decoded.split(':');
       if (parts.length !== 4) return null;
       const [tenantId, conversationId, clientIdentifier, sig] = parts;
-      const secret = process.env.CHAT_CLIENT_TOKEN_SECRET ?? process.env.JWT_PRIVATE_KEY ?? 'dev-chat-secret';
+      const secret = this.clientTokenSecret();
       const expected = createHmac('sha256', secret)
         .update(`${tenantId}:${conversationId}:${clientIdentifier}`)
         .digest('hex');

@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { FormEvent, useState } from 'react';
 
 import { apiFetch } from '../../../lib/api';
@@ -43,9 +43,10 @@ const DEV_CREDENTIALS: DevCredential[] = [
 
 export function LoginForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [tenantSlug, setTenantSlug] = useState('');
+  const [tenantSlug, setTenantSlug] = useState(searchParams.get('tenant_slug') ?? '');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 

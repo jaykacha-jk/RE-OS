@@ -1,17 +1,17 @@
 # RE-OS Implementation Status
 
-**Last updated:** 2026-06-10 (Phase 10 — AI Agent Platform)  
-**Current phase:** Phase 10 — AI Agent Platform (voice, chat, qualification, matching, follow-ups, intelligence, RAG)  
+**Last updated:** 2026-06-12 (Phase 0 hardening — honest assistant labels)  
+**Current phase:** Phase 0 go-to-market hardening after Phase 10 assistant automation  
 **Legend:** ✅ Done · 🟡 Partial / scaffold only · ❌ Not started
 
-> **Phase 10 (AI Agent Platform) — ✅ implemented & validated.** Provider-abstracted
-> (Mock + OpenAI, future-ready for Claude/Gemini/DeepSeek). New `modules/ai` with
-> lead qualification, property matching, AI chat (RAG + handoff), AI voice agent
-> (call → transcript → summary → qualification → CRM), follow-up automation,
-> conversation intelligence, vector knowledge base, usage/cost analytics, RBAC,
-> and 7 admin UI pages. Migration `20260610170000_add_ai_agent_platform` applied;
-> seed adds AI permissions, plan AI minutes, prompt templates, and demo knowledge.
-> 31 AI unit tests pass; all AI endpoints smoke-tested green. See `AI_ARCHITECTURE.md`.
+> **Phase 10 assistant automation — 🟡 implemented with mixed runtime modes.**
+> Chat, embeddings, and transcription are provider-abstracted (Mock + OpenAI; OpenAI
+> requires `OPENAI_API_KEY`). Lead qualification, property matching, conversation
+> intelligence, and follow-up automation are deterministic rule engines, not LLM
+> reasoning. Voice calling is mock/demo-only until a real Exotel or Twilio telephony
+> provider is wired. Migration `20260610170000_add_ai_agent_platform` applied; seed
+> adds AI permissions, plan AI minutes, prompt templates, and demo knowledge. See
+> `AI_ARCHITECTURE.md` for architecture details.
 
 ---
 
@@ -93,14 +93,14 @@
 | # | Item | Status | Notes |
 |---|------|--------|-------|
 | 1 | `POST /api/v1/auth/login` | ✅ | RS256 + bcrypt; super admin + tenant |
-| 2 | `POST /api/v1/auth/refresh` | ✅ | Token rotation + revoke on reuse path |
+| 2 | `POST /api/v1/auth/refresh` | ✅ | Single-use rotation + token-family revocation/audit on reuse |
 | 3 | `POST /api/v1/auth/logout` | ✅ | Revokes refresh token |
 | 4 | `GET /api/v1/auth/me` | ✅ | JWT guard wired |
 | 5 | Login / refresh / logout DTOs | ✅ | class-validator |
 | 6 | bcrypt password verify | ✅ | BR-A02 ready |
 | 7 | JWT RS256 sign (access token) | ✅ | `.keys/` or env PEM |
 | 8 | JWT RS256 verify (guard) | ✅ | `.keys/` or env PEM |
-| 9 | Refresh token storage (hashed) | ✅ | Prisma model + repo |
+| 9 | Refresh token storage (hashed) | ✅ | Prisma model + repo, with `token_family_id` |
 | 10 | `POST /auth/forgot-password` | 🟡 | Creates reset token; email dispatch deferred |
 | 11 | `POST /auth/reset-password` | ✅ | Consumes token + resets password |
 | 12 | Failed login lockout (BR-A03) | ✅ | Locks after 5 failed attempts |
@@ -118,10 +118,13 @@
 | 5 | `TenantGuard` (middleware) | ✅ |
 | 6 | RBAC seed in database | ✅ | Platform + employee permissions; super_admin mapped |
 | 7 | Role/permission load on login | ✅ | Platform super_admin permissions loaded from DB |
-| 8 | Tenant isolation integration tests | ❌ |
+| 8 | Tenant isolation integration tests | ✅ | `tenant-isolation.integration.spec.ts` covers public listings, slug lookups, and public inquiry property lookup across tenants |
 | 9 | Rate limiting | ✅ | Global + stricter auth throttles |
 | 10 | Security headers middleware | ✅ | HSTS, X-Frame-Options, etc. |
 | 11 | Global HTTP exception filter | ✅ | `{ error: { code, message } }` envelope |
+| 12 | CRM field-level PII stripping | ✅ | Telecaller responses strip email, budgets, score, remarks, and note text |
+| 13 | Chat client token secret | ✅ | Production requires `CHAT_CLIENT_TOKEN_SECRET` or `JWT_PRIVATE_KEY`; no hardcoded fallback |
+| 14 | Base repository tenant guard | ✅ | `TenantScopedRepository` appends/asserts `tenant_id`; properties, CRM, analytics, public analytics, and settings use it |
 
 ### 2.5 Organization (Super Admin)
 
@@ -194,7 +197,7 @@ Target users: Organization Owner, Org Admin, Sales Manager, Super Admin.
 | 13 | **Employee list** | `/employees` | ✅ | List + create form |
 | 14 | **Employee create / delete** | `/employees` | ✅ | Create form + Remove action |
 | 14b | **Audit logs** | `/audit-logs` | ✅ | Permission-gated list + filters |
-| 15 | **Profile settings** | `/settings/profile` | ✅ | Account, roles, permissions |
+| 15 | **Profile settings** | `/settings/profile` | ✅ | Edit first name, last name, phone; view roles and permissions |
 | 16 | Permission-gated buttons (RBAC UI) | — | 🟡 | Sidebar + audit nav gated; button-level polish later |
 | 17 | Toast / error handling | — | ❌ |
 | 18 | INR / +91 phone formatting | — | ❌ |
@@ -219,14 +222,14 @@ Target users: Property buyers/renters (Client role), SEO visitors.
 | 6 | Submit inquiry form | On property page | ✅ | Public form creates CRM inquiry |
 | 7 | Client registration / profile | `/profile` | ❌ |
 | 8 | Saved properties | `/saved` | ❌ |
-| 9 | **Live chat widget** | embed | 🟡 | WhatsApp CTA present; first-party chat widget embed deferred |
+| 9 | **Live chat widget** | embed | ✅ | Floating public widget starts website conversations with HMAC visitor tokens |
 | 10 | `generateMetadata` + JSON-LD | `/listings/{slug}`, `/{intent}/{city}/{slug}` | ✅ | Metadata, canonical, Open Graph, Twitter cards, RealEstateListing JSON-LD |
 | 11 | Sitemap + robots.txt | `/sitemap.xml`, `/robots.txt` | ✅ | Tenant-aware sitemap capped to public listings |
 | 12 | Tenant subdomain routing (`{slug}.reos.app`) | — | 🟡 | Host-derived fallback in sitemap; full custom-domain routing deferred |
 | 13 | Mobile-responsive property cards | — | ✅ | Responsive grids/cards on home, listings, city hubs |
 | 14 | EMI calculator on detail page | — | ❌ | Optional |
 
-**Public web score: 1 ✅ · 1 🟡 · 12 ❌ → ~7%**
+**Public web score: 10 ✅ · 3 🟡 · 2 ❌ → ~67%**
 
 ---
 
@@ -247,12 +250,12 @@ Target users: Property buyers/renters (Client role), SEO visitors.
 
 | Phase | Name | Backend | Admin UI | Public Web |
 |-------|------|---------|----------|------------|
-| **1** | Foundation (Auth, RBAC, Org, Employee) | 🟡 ~88% | 🟡 ~64% | 🟡 ~7% |
+| **1** | Foundation (Auth, RBAC, Org, Employee) | 🟡 ~88% | 🟡 ~64% | 🟡 ~67% |
 | **2** | Property management | ✅ ~95% | ✅ ~90% | 🟡 ~40% |
 | **3** | CRM / Inquiry pipeline | ✅ ~95% | ✅ ~90% | ❌ 0% |
 | **4** | Dashboard & reports | ✅ ~95% | ✅ ~90% | — |
 | **5** | Notifications & Automation | ✅ ~95% | ✅ ~90% | — |
-| **6** | Live chat | ✅ ~90% | ✅ ~85% | 🟡 ~10% (widget foundation) |
+| **6** | Live chat | ✅ ~95% | ✅ ~90% | ✅ first-party public widget shipped |
 | **7** | Billing (Razorpay) | ✅ ~90% | ✅ ~85% | — |
 | **8** | AI calling agent | ❌ 0% | ❌ 0% | — |
 | **9** | Enterprise (settings, domains, white-label, public analytics) | ✅ ~92% | ✅ ~90% | 🟡 ~40% (public ingest + settings API) |
@@ -389,7 +392,7 @@ npm run dev:frontend
 | Item | Notes |
 |------|-------|
 | Tenant/domain routing | Query-param tenant fallback works; production subdomain/custom-domain routing still needs middleware/domain mapping |
-| Integration tests against live Postgres | Service-level unit tests cover the business logic; DB-backed e2e deferred to CI setup |
+| Integration tests against live Postgres | Jest tenant-isolation integration coverage exists; DB-backed e2e remains deferred to CI setup |
 | Image upload UI | Add-by-URL + cover/delete in UI; drag-reorder available via API, not yet wired in UI |
 | Area/facet programmatic pages | City hubs shipped; area and BHK/facet pages deferred until content quality gates are backed by data |
 
@@ -603,7 +606,7 @@ Notifications, Chat, Billing, AI Agent — intentionally not started in Phase 4.
 | Notification domain events + automation rules | ✅ |
 | CRM inquiry conversion (`POST …/convert-inquiry`) | ✅ |
 | Attachment upload via `StorageService.saveChatAttachment` | ✅ |
-| Unit tests `chat.service.spec.ts` (7 cases) | ✅ |
+| Unit tests `chat.service.spec.ts` (12 cases) | ✅ |
 
 ### ✅ Admin UI
 
@@ -617,7 +620,7 @@ Notifications, Chat, Billing, AI Agent — intentionally not started in Phase 4.
 
 | Item | Notes |
 |------|-------|
-| Public website chat widget | HMAC client token helpers in service; no embed UI yet |
+| Public chat realtime socket auth | Public widget is REST-backed with polling; public Socket.io token auth can be layered on later |
 | WhatsApp / AI agent channels | Foundation only (string enums + extensible schema) |
 | `@mentions` | Notification type reserved; not implemented |
 | Full integration/e2e with live Postgres | Unit tests only in CI |
@@ -699,7 +702,7 @@ AI Agent runtime and WhatsApp Business API — not started.
 | Admin website settings | No dedicated Website Settings / SEO Settings / Brand Settings UI yet; current branding is mostly static with tenant query fallback. |
 | Custom domains | Sitemap can infer subdomain host labels, but full custom-domain lookup/middleware remains deferred. |
 | Area/facet programmatic SEO | City hubs shipped; area pages, BHK pages, and content quality gates need backed data before indexing at scale. |
-| Public chat widget | Property pages expose a WhatsApp CTA; first-party public chat embed is deferred. |
+| Public chat realtime socket auth | First-party public chat embed ships with REST polling; public Socket.io auth remains incremental polish. |
 | Public analytics ingestion | Internal analytics exists; public page view/conversion event ingestion is not yet wired. |
 
 ---
@@ -763,9 +766,42 @@ AI Agent runtime and WhatsApp Business API — not started.
 | Real DNS/SSL provisioning | `verify` uses a simulated TXT lookup; production needs a real resolver + ACME/SSL issuance and host→tenant routing middleware. |
 | Redis cache backend | In-memory TTL caches ship now; swap to Redis via the same `wrap()`/`invalidate()` interface. |
 | DB-backed settings/domains/audit integration e2e | Service unit tests cover logic; live-Postgres API e2e deferred to CI. |
-| Public website consumption of settings | Settings + public settings API are live; wiring the public site to render tenant branding/SEO end-to-end is incremental. |
+| Public branding polish (logo upload, theme CSS vars) | Homepage, about, contact, footer, and property contact cards consume `GET /api/v1/public/settings`; full logo/theme injection on header is incremental. |
 | Asset uploads for logos/favicons | Settings store URLs; a dedicated upload widget reuses the existing `StorageService` and is incremental. |
 
 ### ❌ Out of scope (by instruction)
 
 AI Agent and Mobile Apps — intentionally not started in Phase 9.
+
+---
+
+## Phase 11 — Production Hardening (Jun 2026)
+
+**Status:** Started. The GTM front door is built; the current focus is making every change and deploy safe enough for paid agencies.
+
+### ✅ CI/CD Quality Gate
+
+| Area | Status |
+|------|--------|
+| GitHub Actions workflow | ✅ `.github/workflows/ci.yml` runs on PRs and pushes to `main`/`master` |
+| Dependency install | ✅ `npm ci` with npm lockfile cache |
+| Prisma client generation | ✅ `npm --workspace backend run prisma:generate` |
+| Workspace lint | ✅ `npm run lint` with non-interactive frontend ESLint CLI |
+| Backend tests | ✅ `npm --workspace backend run test -- --runInBand` |
+| Frontend tests | ✅ `npm --workspace frontend run test` placeholder gate |
+| Backend build | ✅ `npm --workspace backend run build` |
+| Frontend build | ✅ `npm --workspace frontend run build` with `NEXT_PUBLIC_API_URL` |
+| Backend Docker image | ✅ `backend/Dockerfile` multi-stage image with `/health` healthcheck and release migration support |
+| Frontend Docker image | ✅ `frontend/Dockerfile` Next.js standalone image with non-root runtime |
+| Staging compose scaffold | ✅ `docker-compose.staging.yml` runs Postgres, Redis, migration release step, API, and frontend |
+| Docker build validation | ✅ CI builds both backend and frontend images |
+| Live Postgres tenant-isolation e2e | ✅ CI starts Postgres 16, runs migrations, then executes `npm --workspace backend run test:e2e:tenant` |
+| Error tracking | ✅ `ErrorTrackingService` forwards 5xx faults to Sentry when `SENTRY_DSN` set (lazy `@sentry/node`); safe no-op otherwise |
+| Structured logging | ✅ `RequestLoggingMiddleware` emits JSON request logs (`LOG_FORMAT=json`) with `request_id` correlation echoed in responses + error bodies |
+| Postgres backups + restore | ✅ `scripts/db-backup.sh` / `scripts/db-restore.sh` (pg_dump custom format, integrity check, retention, optional S3), compose `backup` service, runbook `docs/BACKUP_RUNBOOK.md` |
+
+### 🟡 Remaining Production Hardening
+
+| Item | Notes |
+|------|-------|
+| Redis-backed queues/caches | Deployed environments still need Redis as the default queue/cache backend (P0-7). |

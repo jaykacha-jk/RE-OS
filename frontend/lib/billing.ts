@@ -41,6 +41,16 @@ export type Invoice = {
   paid_at: string | null;
 };
 
+type PaginatedInvoices = {
+  data: Invoice[];
+  meta: {
+    page: number;
+    per_page: number;
+    total: number;
+    total_pages: number;
+  };
+};
+
 export type BillingUsage = {
   plan: BillingPlan;
   usage: {
@@ -54,6 +64,15 @@ export type BillingUsage = {
     employees: number;
     storage_bytes: number;
     ai_minutes: number;
+  };
+};
+
+export type SubscribeResult = {
+  subscription: BillingSubscription;
+  checkout: {
+    provider: string;
+    subscription_id: string;
+    checkout_url: string | null;
   };
 };
 
@@ -73,7 +92,7 @@ export async function fetchSubscription() {
 
 export async function subscribe(planCode: string, billingCycle: 'monthly' | 'yearly') {
   return (
-    await apiFetch('/api/v1/billing/subscribe', {
+    await apiFetch<SubscribeResult>('/api/v1/billing/subscribe', {
       token: token(),
       method: 'POST',
       body: JSON.stringify({ plan_code: planCode, billing_cycle: billingCycle }),
@@ -102,7 +121,8 @@ export async function cancelSubscription(atPeriodEnd = true) {
 }
 
 export async function fetchInvoices() {
-  return (await apiFetch<Invoice[]>('/api/v1/billing/invoices', { token: token() })).data;
+  const result = (await apiFetch<Invoice[] | PaginatedInvoices>('/api/v1/billing/invoices', { token: token() })).data;
+  return Array.isArray(result) ? result : result.data;
 }
 
 export async function fetchUsage() {

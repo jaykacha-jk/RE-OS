@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 
 import { PrismaService } from '../../common/database/prisma.service';
+import { TenantScopedRepository } from '../../common/database/tenant-scoped.repository';
 import { NO_MATCH_UUID, PROPERTY_ACTIVE_STATUSES } from './analytics.constants';
 
 export type AnalyticsScope = { type: 'all' } | { type: 'employees'; employeeIds: string[] };
@@ -20,8 +21,10 @@ export type MonthlyLeadRow = { month: string; leads: number };
 export type MonthlyConversionRow = { month: string; leads: number; won: number };
 
 @Injectable()
-export class AnalyticsRepository {
-  constructor(private readonly prisma: PrismaService) {}
+export class AnalyticsRepository extends TenantScopedRepository {
+  constructor(private readonly prisma: PrismaService) {
+    super();
+  }
 
   // ===========================================================================
   // Scope helpers (employee resolution mirrors CRM)
@@ -87,7 +90,7 @@ export class AnalyticsRepository {
     opts: { dateField?: 'created_at' | 'closed_at' } = {},
   ): Prisma.inquiriesWhereInput {
     const dateField = opts.dateField ?? 'created_at';
-    const where: Prisma.inquiriesWhereInput = { tenant_id: tenantId, deleted_at: null };
+    const where: Prisma.inquiriesWhereInput = this.tenantWhere(tenantId, { deleted_at: null });
 
     if (range.from || range.to) {
       where[dateField] = {
@@ -110,7 +113,7 @@ export class AnalyticsRepository {
     scope: AnalyticsScope,
     range: DateRange,
   ): Prisma.site_visitsWhereInput {
-    const where: Prisma.site_visitsWhereInput = { tenant_id: tenantId };
+    const where: Prisma.site_visitsWhereInput = this.tenantWhere(tenantId);
     if (range.from || range.to) {
       where.scheduled_at = {
         ...(range.from ? { gte: range.from } : {}),
@@ -124,7 +127,7 @@ export class AnalyticsRepository {
   }
 
   buildPropertyWhere(tenantId: string, scope: AnalyticsScope): Prisma.propertiesWhereInput {
-    const where: Prisma.propertiesWhereInput = { tenant_id: tenantId, deleted_at: null };
+    const where: Prisma.propertiesWhereInput = this.tenantWhere(tenantId, { deleted_at: null });
     if (scope.type === 'employees') {
       where.assignments = {
         some: {
@@ -140,6 +143,7 @@ export class AnalyticsRepository {
   // ===========================================================================
 
   async stageCounts(where: Prisma.inquiriesWhereInput) {
+    this.assertTenantWhere('AnalyticsRepository.stageCounts', where as Record<string, unknown>);
     return this.prisma.dbClient.inquiries.groupBy({
       by: ['stage'],
       where,
@@ -148,14 +152,17 @@ export class AnalyticsRepository {
   }
 
   async countInquiries(where: Prisma.inquiriesWhereInput) {
+    this.assertTenantWhere('AnalyticsRepository.countInquiries', where as Record<string, unknown>);
     return this.prisma.dbClient.inquiries.count({ where });
   }
 
   async countSiteVisits(where: Prisma.site_visitsWhereInput) {
+    this.assertTenantWhere('AnalyticsRepository.countSiteVisits', where as Record<string, unknown>);
     return this.prisma.dbClient.site_visits.count({ where });
   }
 
   async sourceCounts(where: Prisma.inquiriesWhereInput) {
+    this.assertTenantWhere('AnalyticsRepository.sourceCounts', where as Record<string, unknown>);
     return this.prisma.dbClient.inquiries.groupBy({
       by: ['source_name'],
       where,
@@ -165,6 +172,7 @@ export class AnalyticsRepository {
 
   /** Won deals (by closed_at) with the data needed to estimate revenue. */
   async wonDeals(where: Prisma.inquiriesWhereInput) {
+    this.assertTenantWhere('AnalyticsRepository.wonDeals', where as Record<string, unknown>);
     return this.prisma.dbClient.inquiries.findMany({
       where: { ...where, stage: 'CLOSED_WON' },
       select: {
@@ -181,6 +189,7 @@ export class AnalyticsRepository {
   // ===========================================================================
 
   async propertyStatusCounts(where: Prisma.propertiesWhereInput) {
+    this.assertTenantWhere('AnalyticsRepository.propertyStatusCounts', where as Record<string, unknown>);
     return this.prisma.dbClient.properties.groupBy({
       by: ['status'],
       where,
@@ -189,6 +198,7 @@ export class AnalyticsRepository {
   }
 
   async countActiveProperties(where: Prisma.propertiesWhereInput) {
+    this.assertTenantWhere('AnalyticsRepository.countActiveProperties', where as Record<string, unknown>);
     return this.prisma.dbClient.properties.count({
       where: { ...where, status: { in: PROPERTY_ACTIVE_STATUSES } },
     });

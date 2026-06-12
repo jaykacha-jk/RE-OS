@@ -112,7 +112,7 @@ function buildService() {
 describe('CrmService — RBAC scope', () => {
   it('grants full scope to privileged roles', async () => {
     const { service, repo } = buildService();
-    for (const role of ['super_admin', 'org_owner', 'org_admin', 'marketing_user']) {
+    for (const role of ['super_admin', 'org_owner', 'org_admin']) {
       const scope: InquiryScope = await service.resolveScope(makeUser([role]), TENANT);
       expect(scope).toEqual({ type: 'all' });
     }
@@ -177,6 +177,139 @@ describe('CrmService — access enforcement', () => {
     await expect(
       service.getOne(TENANT, makeUser(['org_admin']), 'missing'),
     ).rejects.toBeInstanceOf(NotFoundException);
+  });
+});
+
+describe('CrmService — field-level PII stripping', () => {
+  const sensitiveInquiry = () =>
+    makeInquiry({
+      assigned_employee_id: 'emp-me',
+      remarks: 'Buyer shared Aadhaar scan in WhatsApp.',
+      lost_reason: 'Sensitive reason',
+      no_property_reason: 'Sensitive no-property note',
+      notes: [
+        {
+          id: 'note-1',
+          note: 'Client PAN is ABCDE1234F',
+          created_by: 'user-1',
+          created_by_email: 'owner@example.com',
+          created_at: new Date('2026-01-02T00:00:00.000Z'),
+        },
+      ],
+      followups: [
+        {
+          id: 'followup-1',
+          followup_date: new Date('2026-01-03T00:00:00.000Z'),
+          followup_time: '10:00',
+          followup_type: 'call',
+          status: 'pending',
+          notes: 'Discuss loan docs',
+          completed_at: null,
+          assigned_employee_id: 'emp-me',
+          created_at: new Date('2026-01-02T00:00:00.000Z'),
+          employee: null,
+        },
+      ],
+      site_visits: [
+        {
+          id: 'visit-1',
+          scheduled_at: new Date('2026-01-04T10:00:00.000Z'),
+          completed_at: null,
+          status: 'scheduled',
+          notes: 'Meet at home address',
+          property_id: null,
+          employee_id: 'emp-me',
+          created_at: new Date('2026-01-02T00:00:00.000Z'),
+          employee: null,
+          property: null,
+        },
+      ],
+    });
+
+  it('keeps full CRM PII visible for admins', async () => {
+    const { service, repo } = buildService();
+    repo.findById!.mockResolvedValue(sensitiveInquiry() as never);
+
+    const result = await service.getOne(TENANT, makeUser(['org_admin']), 'inq-1');
+
+    expect(result.phone).toBe('+919876543210');
+    expect(result.email).toBe('rahul@example.com');
+    expect(result.lead_score).toBe(60);
+    expect(result.budget_min).toBe(5000000);
+    expect(result.remarks).toContain('Aadhaar');
+    expect(result.notes[0].note).toContain('PAN');
+    expect(result.followups[0].notes).toBe('Discuss loan docs');
+    expect(result.site_visits[0].notes).toBe('Meet at home address');
+  });
+
+  it('keeps assigned sales executives operational lead details', async () => {
+    const { service, repo } = buildService();
+    repo.findById!.mockResolvedValue(sensitiveInquiry() as never);
+    repo.findEmployeeByUserId!.mockResolvedValue({ id: 'emp-me' } as never);
+
+    const result = await service.getOne(TENANT, makeUser(['sales_executive']), 'inq-1');
+
+    expect(result.phone).toBe('+919876543210');
+    expect(result.email).toBe('rahul@example.com');
+    expect(result.lead_score).toBe(60);
+    expect(result.remarks).toContain('Aadhaar');
+    expect(result.notes[0].note).toContain('PAN');
+  });
+
+  it('strips internal CRM PII for telecallers while keeping dialable contact fields', async () => {
+    const { service, repo } = buildService();
+    repo.findById!.mockResolvedValue(sensitiveInquiry() as never);
+    repo.findEmployeeByUserId!.mockResolvedValue({ id: 'emp-me' } as never);
+
+    const result = await service.getOne(TENANT, makeUser(['telecaller']), 'inq-1');
+
+    expect(result.client_name).toBe('Rahul Sharma');
+    expect(result.phone).toBe('+919876543210');
+    expect(result.whatsapp).toBeNull();
+    expect(result.email).toBeNull();
+    expect(result.lead_score).toBeNull();
+    expect(result.budget_min).toBeNull();
+    expect(result.budget_max).toBeNull();
+    expect(result.remarks).toBeNull();
+    expect(result.lost_reason).toBeNull();
+    expect(result.no_property_reason).toBeNull();
+    expect(result.created_by).toBeNull();
+    expect(result.notes[0]).toEqual({
+      id: 'note-1',
+      note: null,
+      created_by: null,
+      created_by_email: null,
+      created_at: '2026-01-02T00:00:00.000Z',
+    });
+    expect(result.followups[0].notes).toBeNull();
+    expect(result.site_visits[0].notes).toBeNull();
+  });
+
+  it('strips note list content for telecallers', async () => {
+    const { service, repo } = buildService();
+    repo.findBasicById!.mockResolvedValue(sensitiveInquiry() as never);
+    repo.findEmployeeByUserId!.mockResolvedValue({ id: 'emp-me' } as never);
+    repo.listNotes!.mockResolvedValue([
+      {
+        id: 'note-1',
+        note: 'Client PAN is ABCDE1234F',
+        created_by: 'user-1',
+        created_by_email: 'owner@example.com',
+        created_at: new Date('2026-01-02T00:00:00.000Z'),
+      },
+    ] as never);
+
+    const result = await service.listNotes(TENANT, makeUser(['telecaller']), 'inq-1');
+
+    expect(result).toEqual([
+      {
+        id: 'note-1',
+        note: null,
+        created_by: null,
+        created_by_email: null,
+        created_at: '2026-01-02T00:00:00.000Z',
+      },
+    ]);
   });
 });
 

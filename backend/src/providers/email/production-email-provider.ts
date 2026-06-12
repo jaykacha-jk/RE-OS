@@ -1,4 +1,5 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { Resend } from 'resend';
 
 import type {
   EmailMessage,
@@ -6,33 +7,62 @@ import type {
   EmailSendResult,
 } from './email-provider.interface';
 
-/**
- * Production email provider INTERFACE/skeleton.
- *
- * Intentionally NOT wired to a real ESP yet (no AWS SES / SendGrid / SMTP
- * integration in this phase, per scope). It is selected only when
- * EMAIL_PROVIDER=production. The `send()` method is the single integration
- * point a later phase implements (credentials must come from a secrets
- * manager — never committed; see docs/SECURITY.md).
- *
- * Until implemented it fails fast so misconfiguration is obvious rather than
- * silently dropping mail. The dispatcher records the failure in the delivery
- * log and retries via the queue.
- */
 @Injectable()
-export class ProductionEmailProvider implements EmailProvider {
-  readonly name = 'production';
+export class ProductionEmailProvider implements EmailProvider, OnModuleInit {
+  readonly name = 'resend';
   private readonly logger = new Logger('ProductionEmailProvider');
+  private client: Resend | null = null;
 
-  async send(_message: EmailMessage): Promise<EmailSendResult> {
-    this.logger.warn(
-      'ProductionEmailProvider.send called but no ESP integration is configured.',
-    );
-    // TODO(Phase 7+): integrate AWS SES / SendGrid here.
-    //   const client = new SESv2Client({ region: process.env.AWS_REGION });
-    //   ...map message -> SendEmailCommand, return real messageId.
-    throw new Error(
-      'EMAIL_PROVIDER=production is not yet integrated. Configure an ESP or use the dev provider.',
-    );
+  onModuleInit() {
+    if (process.env.EMAIL_PROVIDER !== 'production') return;
+    this.validateConfig();
+    this.client = new Resend(process.env.RESEND_API_KEY);
+    this.logger.log('Production email provider configured with Resend.');
+  }
+
+  async send(message: EmailMessage): Promise<EmailSendResult> {
+    const client = this.getClient();
+    const from = this.requiredEnv('EMAIL_FROM');
+    const replyTo = message.replyTo ?? process.env.EMAIL_REPLY_TO;
+
+    const { data, error } = await client.emails.send({
+      from,
+      to: message.to,
+      subject: message.subject,
+      text: message.text,
+      html: message.html,
+      replyTo,
+    });
+
+    if (error) {
+      throw new Error(`Resend email delivery failed: ${error.message}`);
+    }
+
+    if (!data?.id) {
+      throw new Error('Resend email delivery did not return a message id');
+    }
+
+    return { messageId: data.id, provider: this.name, accepted: true };
+  }
+
+  private getClient(): Resend {
+    if (!this.client) {
+      this.validateConfig();
+      this.client = new Resend(process.env.RESEND_API_KEY);
+    }
+    return this.client;
+  }
+
+  private validateConfig(): void {
+    this.requiredEnv('RESEND_API_KEY');
+    this.requiredEnv('EMAIL_FROM');
+  }
+
+  private requiredEnv(name: string): string {
+    const value = process.env[name]?.trim();
+    if (!value) {
+      throw new Error(`${name} is required when EMAIL_PROVIDER=production`);
+    }
+    return value;
   }
 }

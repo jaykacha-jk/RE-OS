@@ -56,6 +56,23 @@ describe('TemplateRenderer', () => {
       expect(out.priority).toBe('HIGH');
     });
 
+    it('renders invitation emails with an accept link', () => {
+      const out = renderer.render({
+        key: DOMAIN_EVENTS.USER_INVITED,
+        channel: 'email',
+        context: {
+          organizationName: 'Acme Realty',
+          acceptUrl: 'https://app.example.com/accept-invitation?token=abc',
+        },
+      });
+
+      expect(out.emailSubject).toBe('You are invited to Acme Realty');
+      expect(out.body).toContain('Acme Realty');
+      expect(out.body).toContain(
+        'https://app.example.com/accept-invitation?token=abc',
+      );
+    });
+
     it('uses explicit fallback when key has no template', () => {
       const out = renderer.render({
         key: 'unknown.event',

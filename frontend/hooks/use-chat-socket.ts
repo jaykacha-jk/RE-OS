@@ -6,7 +6,7 @@ import { io, type Socket } from 'socket.io-client';
 import { getSession } from '../lib/auth';
 import type { Conversation, Message } from '../lib/chat';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4545';
 
 export const CHAT_SOCKET_EVENTS = {
   MESSAGE_NEW: 'chat:message_new',

@@ -118,7 +118,6 @@ export const CHAT_FULL_ACCESS_ROLES = [
   'super_admin',
   'org_owner',
   'org_admin',
-  'marketing_user',
 ];
 
 /** Roles scoped to "team" conversations (self + direct reports). */

@@ -1,8 +1,27 @@
 import Link from 'next/link';
 
-import { fetchPublicListings, inr, propertyPath } from '../../lib/public-site';
+import { fetchPublicListings, fetchPublicSettings, inr, propertyPath } from '../../lib/public-site';
 
 export const revalidate = 300;
+
+export const metadata = {
+  title: 'RE-OS | Verified Real Estate Listings',
+  description:
+    'Browse verified Gujarat properties, compare market-ready homes and commercial spaces, and request fast callbacks from local sales teams.',
+  openGraph: {
+    title: 'RE-OS | Verified Real Estate Listings',
+    description:
+      'Tenant-managed real estate discovery with verified listings, site visits, and CRM-backed callbacks.',
+    url: '/',
+    type: 'website',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'RE-OS | Verified Real Estate Listings',
+    description:
+      'Browse verified Gujarat properties and request fast callbacks from local sales teams.',
+  },
+};
 
 export default async function HomePage({
   searchParams,
@@ -12,9 +31,30 @@ export default async function HomePage({
   const sp = await searchParams;
   const tenant = sp.tenant ?? 'demo';
   const city = sp.city ?? 'Ahmedabad';
-  const { data } = await fetchPublicListings({ tenant, city, perPage: 6 });
+  const [{ data, meta }, settings] = await Promise.all([
+    fetchPublicListings({ tenant, city, perPage: 6 }),
+    fetchPublicSettings(tenant),
+  ]);
   const citySlug = city.toLowerCase().replace(/\s+/g, '-');
   const areas = ['SG Highway', 'South Bopal', 'Science City', 'Prahlad Nagar', 'Satellite', 'Thaltej'];
+  const siteName = settings?.name ?? 'RE-OS';
+  const website = settings?.website;
+  const heroTitle =
+    website?.hero_title ?? `${siteName}: verified ${city} properties, curated by local sales teams.`;
+  const heroSubtitle =
+    website?.hero_subtitle ??
+    'Browse tenant-managed listings, compare market-ready homes and commercial spaces, and book visits with teams who know the locality.';
+  const contact = website?.contact ?? {};
+  const testimonials = (website?.testimonials ?? []).filter((item) => item.quote && item.author).slice(0, 3);
+  const trustCards = (website?.featured_sections ?? [])
+    .filter((item) => item.enabled !== false && item.title)
+    .slice(0, 3);
+  const totalListings = meta?.total ?? data.length;
+  const stats = [
+    [totalListings ? `${totalListings}+` : `${data.length}`, 'verified listings'],
+    [city, 'active city'],
+    [contact.phone || contact.whatsapp ? 'Direct' : 'Fast', 'callback channel'],
+  ];
 
   return (
     <main className="bg-reos-bg">
@@ -24,10 +64,10 @@ export default async function HomePage({
           <div>
             <p className="text-sm font-bold uppercase tracking-[0.22em] text-teal-200">Premium real estate discovery</p>
             <h1 className="mt-5 max-w-4xl text-5xl font-bold tracking-tight sm:text-6xl">
-              Verified Gujarat properties, curated by local sales teams.
+              {heroTitle}
             </h1>
             <p className="mt-6 max-w-2xl text-lg leading-8 text-slate-200">
-              Browse tenant-managed listings, compare market-ready homes and commercial spaces, and book visits with teams who know the locality.
+              {heroSubtitle}
             </p>
 
             <form className="mt-8 flex max-w-3xl flex-wrap gap-3 rounded-3xl border border-white/10 bg-white p-3 shadow-premium" method="get">
@@ -53,11 +93,7 @@ export default async function HomePage({
             </form>
 
             <div className="mt-8 grid max-w-2xl grid-cols-3 gap-3 text-sm">
-              {[
-                ['500+', 'demo listings ready'],
-                ['5', 'Gujarat cities'],
-                ['2 min', 'inquiry response flow'],
-              ].map(([value, label]) => (
+              {stats.map(([value, label]) => (
                 <div key={label} className="rounded-2xl border border-white/10 bg-white/10 p-4 backdrop-blur">
                   <p className="text-2xl font-bold">{value}</p>
                   <p className="mt-1 text-xs text-slate-300">{label}</p>
@@ -77,7 +113,7 @@ export default async function HomePage({
               <div className="p-5">
                 <p className="text-xs font-bold uppercase tracking-[0.18em] text-teal-700">Featured now</p>
                 <h2 className="mt-2 text-2xl font-bold">{data[0]?.title ?? 'Luxury villa in Ahmedabad'}</h2>
-                <p className="mt-2 text-sm text-slate-500">{data[0]?.city ?? city} · Verified listing · Site visit ready</p>
+                <p className="mt-2 text-sm text-slate-500">{data[0]?.city ?? city} · {siteName} · Site visit ready</p>
               </div>
             </div>
           </div>
@@ -156,11 +192,13 @@ export default async function HomePage({
 
       <section className="bg-slate-950 px-4 py-14 text-white">
         <div className="mx-auto grid max-w-6xl gap-5 md:grid-cols-3">
-          {[
-            ['Verified inventory', 'Listings are managed by tenant teams, not scraped from stale portals.'],
-            ['CRM-backed inquiry flow', 'Every form submit becomes a trackable sales lead with source attribution.'],
-            ['White-label ready', 'Tenant branding, SEO pages, and custom domains are ready for agency demos.'],
-          ].map(([title, text]) => (
+          {(trustCards.length
+            ? trustCards.map((item) => [item.title ?? '', item.subtitle ?? ''])
+            : [
+                ['Verified inventory', 'Listings are managed by tenant teams, not scraped from stale portals.'],
+                ['CRM-backed inquiry flow', 'Every form submit becomes a trackable sales lead with source attribution.'],
+                ['Local service', contact.address ? `Visit us at ${contact.address}.` : 'Local specialists help coordinate site visits and callbacks.'],
+              ]).map(([title, text]) => (
             <div key={title} className="rounded-3xl border border-white/10 bg-white/10 p-6 backdrop-blur">
               <h3 className="font-bold text-white">{title}</h3>
               <p className="mt-2 text-sm leading-6 text-slate-300">{text}</p>
@@ -169,40 +207,42 @@ export default async function HomePage({
         </div>
       </section>
 
-      {/* Testimonials */}
-      <section className="mx-auto max-w-6xl px-4 py-16">
-        <div className="max-w-2xl">
-          <p className="eyebrow">What teams say</p>
-          <h2 className="mt-2 text-3xl font-bold tracking-tight text-slate-950">Trusted by growing property teams.</h2>
-        </div>
-        <div className="mt-10 grid gap-6 sm:grid-cols-3">
-          {[
-            ['“We respond to leads in minutes now. Our conversion jumped within a month.”', 'Priya Mehta', 'Sales Head, Ahmedabad'],
-            ['“The public site finally feels like ours — branded, fast, and full of verified listings.”', 'Arjun Patel', 'Founder, Surat Realty'],
-            ['“One platform for listings, CRM, and analytics. We retired three tools.”', 'Neha Shah', 'Operations, Gujarat Homes'],
-          ].map(([quote, name, role]) => (
-            <figure key={name} className="card p-6">
-              <blockquote className="leading-7 text-slate-700">{quote}</blockquote>
-              <figcaption className="mt-4 flex items-center gap-3">
-                <span className="flex h-10 w-10 items-center justify-center rounded-full bg-teal-50 text-sm font-bold text-teal-800">
-                  {name.split(' ').map((p) => p[0]).join('')}
-                </span>
-                <span>
-                  <span className="block text-sm font-bold text-slate-950">{name}</span>
-                  <span className="block text-xs text-slate-500">{role}</span>
-                </span>
-              </figcaption>
-            </figure>
-          ))}
-        </div>
-      </section>
+      {testimonials.length ? (
+        <section className="mx-auto max-w-6xl px-4 py-16">
+          <div className="max-w-2xl">
+            <p className="eyebrow">Client stories</p>
+            <h2 className="mt-2 text-3xl font-bold tracking-tight text-slate-950">Trusted by {siteName} clients.</h2>
+          </div>
+          <div className="mt-10 grid gap-6 sm:grid-cols-3">
+            {testimonials.map((item) => {
+              const name = item.author ?? 'Client';
+              return (
+                <figure key={`${name}-${item.quote}`} className="card p-6">
+                  <blockquote className="leading-7 text-slate-700">{item.quote}</blockquote>
+                  <figcaption className="mt-4 flex items-center gap-3">
+                    <span className="flex h-10 w-10 items-center justify-center rounded-full bg-teal-50 text-sm font-bold text-teal-800">
+                      {name.split(' ').map((p) => p[0]).join('').slice(0, 2)}
+                    </span>
+                    <span>
+                      <span className="block text-sm font-bold text-slate-950">{name}</span>
+                      {item.role ? <span className="block text-xs text-slate-500">{item.role}</span> : null}
+                    </span>
+                  </figcaption>
+                </figure>
+              );
+            })}
+          </div>
+        </section>
+      ) : null}
 
       {/* CTA banner */}
       <section className="mx-auto max-w-6xl px-4 pb-20">
         <div className="overflow-hidden rounded-3xl bg-slate-950 px-8 py-12 text-center text-white sm:px-12">
-          <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">Find your next property in {city}.</h2>
+          <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">Find your next property with {siteName}.</h2>
           <p className="mx-auto mt-3 max-w-xl text-slate-300">
-            Browse verified listings and request a callback in seconds — every inquiry reaches the team instantly.
+            {contact.phone || contact.email
+              ? `Reach the team${contact.phone ? ` at ${contact.phone}` : ''}${contact.email ? ` or ${contact.email}` : ''}.`
+              : 'Browse verified listings and request a callback in seconds — every inquiry reaches the team instantly.'}
           </p>
           <div className="mt-7 flex flex-wrap justify-center gap-3">
             <Link

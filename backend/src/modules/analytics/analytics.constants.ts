@@ -17,7 +17,6 @@ export const ANALYTICS_FULL_ACCESS_ROLES = [
   'super_admin',
   'org_owner',
   'org_admin',
-  'marketing_user',
 ];
 
 /** Roles scoped to "team" analytics (self + direct reports). */
@@ -28,7 +27,6 @@ export const ANALYTICS_PERFORMANCE_VIEW_ROLES = [
   'super_admin',
   'org_owner',
   'org_admin',
-  'marketing_user',
   'sales_manager',
 ];
 

@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { Suspense } from 'react';
 
 import { LoginForm } from './login-form';
 
@@ -63,7 +64,9 @@ export default function LoginPage() {
             <h1 className="mt-2 text-2xl font-bold tracking-tight text-slate-950">Welcome back</h1>
             <p className="mt-1 text-sm text-slate-500">Admin and platform access to your workspace.</p>
             <div className="mt-6">
-              <LoginForm />
+              <Suspense fallback={<p className="text-sm text-slate-500">Loading sign in...</p>}>
+                <LoginForm />
+              </Suspense>
             </div>
           </div>
 
@@ -74,8 +77,8 @@ export default function LoginPage() {
 
           <p className="mt-6 text-center text-xs text-slate-500">
             New to RE-OS?{' '}
-            <Link href="/" className="font-semibold text-teal-700 hover:underline">
-              Explore the platform
+            <Link href="/signup" className="font-semibold text-teal-700 hover:underline">
+              Create an agency account
             </Link>
           </p>
         </div>

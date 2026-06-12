@@ -142,7 +142,6 @@ export const CRM_FULL_ACCESS_ROLES = [
   'super_admin',
   'org_owner',
   'org_admin',
-  'marketing_user',
 ];
 
 /** Roles scoped to "team" inquiries (self + direct reports). */
@@ -154,6 +153,26 @@ export const CRM_STAGE_JUMP_ROLES = [
   'org_owner',
   'org_admin',
   'sales_manager',
+];
+
+/** Roles allowed to see all sensitive CRM lead fields. */
+export const CRM_FULL_PII_ACCESS_ROLES = [
+  'super_admin',
+  'org_owner',
+  'org_admin',
+  'sales_manager',
+];
+
+/** Assigned daily drivers may see operational lead detail, but not tenant-wide PII. */
+export const CRM_OPERATIONAL_PII_ACCESS_ROLES = [
+  ...CRM_FULL_PII_ACCESS_ROLES,
+  'sales_executive',
+];
+
+/** Telecallers need dialable contact data, but not financial/internal CRM details. */
+export const CRM_CONTACT_PII_ACCESS_ROLES = [
+  ...CRM_OPERATIONAL_PII_ACCESS_ROLES,
+  'telecaller',
 ];
 
 /** Duplicate-detection window in days (BR-C01). */

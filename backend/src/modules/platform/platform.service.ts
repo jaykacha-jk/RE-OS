@@ -10,6 +10,8 @@ import { ListOrganizationsQueryDto } from './dto/list-organizations-query.dto';
 import { UpdateOrganizationDto } from './dto/update-organization.dto';
 import { PlatformRepository } from './platform.repository';
 import type { AuthUser } from '../../common/context/auth-user';
+import { DomainEventBus } from '../../events/domain-event-bus';
+import { DOMAIN_EVENTS } from '../../events/domain-events';
 import { AuditService, type AuditRequestMeta } from '../audit/audit.service';
 
 const INVITATION_TTL_DAYS = 7;
@@ -19,15 +21,20 @@ export class PlatformService {
   constructor(
     private readonly platformRepository: PlatformRepository,
     private readonly auditService: AuditService,
+    private readonly events: DomainEventBus,
   ) {}
 
   private devInvitationHint(token: string) {
     if (process.env.NODE_ENV === 'production') return {};
-    const base = process.env.APP_URL ?? 'http://localhost:3000';
     return {
       invitation_token: token,
-      accept_url: `${base}/accept-invitation?token=${encodeURIComponent(token)}`,
+      accept_url: this.invitationUrl(token),
     };
+  }
+
+  private invitationUrl(token: string) {
+    const base = process.env.APP_URL ?? 'http://localhost:3000';
+    return `${base.replace(/\/$/, '')}/accept-invitation?token=${encodeURIComponent(token)}`;
   }
 
   private mapOrganization(org: {
@@ -108,7 +115,7 @@ export class PlatformService {
     const tokenHash = createHash('sha256').update(invitationToken).digest('hex');
     const expiresAt = new Date(Date.now() + INVITATION_TTL_DAYS * 24 * 60 * 60 * 1000);
 
-    await this.platformRepository.createOwnerInvitation({
+    const owner = await this.platformRepository.createOwnerInvitation({
       tenantId: org.id,
       email: dto.owner_email,
       roleId: ownerRole.id,
@@ -116,10 +123,9 @@ export class PlatformService {
       expiresAt,
     });
 
-    // Email dispatch is async (BullMQ) — invitation record created; send deferred to Phase 5.
     const response = {
       organization: this.mapOrganization(org),
-      invitation_sent: false,
+      invitation_sent: true,
       invitation_pending: true,
       ...this.devInvitationHint(invitationToken),
     };
@@ -132,6 +138,20 @@ export class PlatformService {
       entityId: org.id,
       afterState: response.organization,
       meta,
+    });
+
+    this.events.emit(DOMAIN_EVENTS.USER_INVITED, {
+      tenantId: org.id,
+      actorUserId: actor?.userId ?? null,
+      entityType: 'user',
+      entityId: owner.id,
+      recipientUserIds: [owner.id],
+      context: {
+        email: dto.owner_email,
+        roleCode: 'org_owner',
+        organizationName: org.name,
+        acceptUrl: this.invitationUrl(invitationToken),
+      },
     });
 
     return response;

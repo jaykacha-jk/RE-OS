@@ -2,11 +2,14 @@ import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 
 import { PrismaService } from '../../common/database/prisma.service';
+import { TenantScopedRepository } from '../../common/database/tenant-scoped.repository';
 import type { SettingsCategory } from './settings.constants';
 
 @Injectable()
-export class SettingsRepository {
-  constructor(private readonly prisma: PrismaService) {}
+export class SettingsRepository extends TenantScopedRepository {
+  constructor(private readonly prisma: PrismaService) {
+    super();
+  }
 
   // --- Tenant settings -------------------------------------------------------
 
@@ -18,7 +21,7 @@ export class SettingsRepository {
 
   async findAll(tenantId: string) {
     return this.prisma.dbClient.tenant_settings.findMany({
-      where: { tenant_id: tenantId },
+      where: this.tenantWhere(tenantId),
     });
   }
 
@@ -58,14 +61,14 @@ export class SettingsRepository {
 
   async listDomains(tenantId: string) {
     return this.prisma.dbClient.custom_domains.findMany({
-      where: { tenant_id: tenantId, deleted_at: null },
+      where: this.tenantWhere(tenantId, { deleted_at: null }),
       orderBy: [{ is_primary: 'desc' }, { created_at: 'asc' }],
     });
   }
 
   async findDomainById(tenantId: string, id: string) {
     return this.prisma.dbClient.custom_domains.findFirst({
-      where: { id, tenant_id: tenantId, deleted_at: null },
+      where: this.tenantWhere(tenantId, { id, deleted_at: null }),
     });
   }
 
@@ -117,8 +120,8 @@ export class SettingsRepository {
           data: { is_primary: false },
         });
       }
-      return tx.custom_domains.update({
-        where: { id: input.id },
+      const result = await tx.custom_domains.updateMany({
+        where: { id: input.id, tenant_id: input.tenantId, deleted_at: null },
         data: {
           ...(input.isPrimary !== undefined ? { is_primary: input.isPrimary } : {}),
           ...(input.sslStatus !== undefined ? { ssl_status: input.sslStatus } : {}),
@@ -129,15 +132,20 @@ export class SettingsRepository {
           ...(input.lastCheckedAt !== undefined ? { last_checked_at: input.lastCheckedAt } : {}),
         },
       });
+      if (result.count !== 1) return null;
+      return tx.custom_domains.findFirst({
+        where: { id: input.id, tenant_id: input.tenantId, deleted_at: null },
+      });
     });
   }
 
   async softDeleteDomain(tenantId: string, id: string) {
     const existing = await this.findDomainById(tenantId, id);
     if (!existing) return null;
-    return this.prisma.dbClient.custom_domains.update({
-      where: { id },
+    const result = await this.prisma.dbClient.custom_domains.updateMany({
+      where: { id, tenant_id: tenantId, deleted_at: null },
       data: { deleted_at: new Date(), is_primary: false },
     });
+    return result.count === 1 ? existing : null;
   }
 }

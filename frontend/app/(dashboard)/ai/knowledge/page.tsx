@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useState } from 'react';
 
+import { PageHeader } from '../../../../components/shared/PageHeader';
 import {
   createAiKnowledge,
   deleteAiKnowledge,
@@ -9,8 +10,9 @@ import {
   searchAiKnowledge,
   type AiKnowledgeDoc,
 } from '../../../../lib/ai';
+import { getSession, hasPermission } from '../../../../lib/auth';
 
-const TYPES = ['faq', 'policy', 'property', 'knowledge'];
+const TYPES = ['faq', 'policy', 'property', 'document'];
 
 export default function AiKnowledgePage() {
   const [docs, setDocs] = useState<AiKnowledgeDoc[]>([]);
@@ -21,6 +23,7 @@ export default function AiKnowledgePage() {
   const [content, setContent] = useState('');
   const [type, setType] = useState('faq');
   const [saving, setSaving] = useState(false);
+  const [canManage, setCanManage] = useState(false);
 
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<{ id: string; title: string; content: string; score: number }[] | null>(null);
@@ -38,6 +41,7 @@ export default function AiKnowledgePage() {
   }
 
   useEffect(() => {
+    setCanManage(hasPermission(getSession(), 'ai.knowledge.manage'));
     load();
   }, []);
 
@@ -79,48 +83,48 @@ export default function AiKnowledgePage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold text-slate-900">Knowledge base</h1>
-        <p className="text-sm text-slate-500">
-          FAQs, policies, and docs powering RAG retrieval for the AI assistant.
-        </p>
-      </div>
+      <PageHeader
+        title="Knowledge base"
+        description="FAQs, policies, and docs powering RAG retrieval for the assistant when OpenAI is configured."
+      />
 
       {error && <div className="rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
 
       <section className="grid gap-6 lg:grid-cols-2">
-        <form onSubmit={create} className="space-y-3 rounded-lg border bg-white p-5">
-          <h2 className="font-semibold text-slate-900">Add document</h2>
-          <input
-            className="w-full rounded border px-3 py-2 text-sm"
-            placeholder="Title"
-            value={title}
-            required
-            onChange={(e) => setTitle(e.target.value)}
-          />
-          <select className="w-full rounded border px-3 py-2 text-sm" value={type} onChange={(e) => setType(e.target.value)}>
-            {TYPES.map((t) => (
-              <option key={t} value={t}>
-                {t}
-              </option>
-            ))}
-          </select>
-          <textarea
-            className="w-full rounded border px-3 py-2 text-sm"
-            rows={5}
-            placeholder="Content"
-            value={content}
-            required
-            onChange={(e) => setContent(e.target.value)}
-          />
-          <button
-            type="submit"
-            disabled={saving}
-            className="rounded bg-teal-700 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-800 disabled:opacity-50"
-          >
-            {saving ? 'Saving…' : 'Add & embed'}
-          </button>
-        </form>
+        {canManage ? (
+          <form onSubmit={create} className="space-y-3 rounded-lg border bg-white p-5">
+            <h2 className="font-semibold text-slate-900">Add document</h2>
+            <input
+              className="w-full rounded border px-3 py-2 text-sm"
+              placeholder="Title"
+              value={title}
+              required
+              onChange={(e) => setTitle(e.target.value)}
+            />
+            <select className="w-full rounded border px-3 py-2 text-sm" value={type} onChange={(e) => setType(e.target.value)}>
+              {TYPES.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
+            </select>
+            <textarea
+              className="w-full rounded border px-3 py-2 text-sm"
+              rows={5}
+              placeholder="Content"
+              value={content}
+              required
+              onChange={(e) => setContent(e.target.value)}
+            />
+            <button
+              type="submit"
+              disabled={saving}
+              className="rounded bg-teal-700 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-800 disabled:opacity-50"
+            >
+              {saving ? 'Saving…' : 'Add & embed'}
+            </button>
+          </form>
+        ) : null}
 
         <form onSubmit={runSearch} className="space-y-3 rounded-lg border bg-white p-5">
           <h2 className="font-semibold text-slate-900">Semantic search</h2>
@@ -186,9 +190,11 @@ export default function AiKnowledgePage() {
                     {new Date(d.updated_at).toLocaleDateString('en-IN')}
                   </td>
                   <td className="px-4 py-3 text-right">
-                    <button type="button" onClick={() => remove(d.id)} className="text-red-600 hover:underline">
-                      Delete
-                    </button>
+                    {canManage ? (
+                      <button type="button" onClick={() => remove(d.id)} className="text-red-600 hover:underline">
+                        Delete
+                      </button>
+                    ) : null}
                   </td>
                 </tr>
               ))

@@ -65,7 +65,7 @@ export default function AiFollowupsPage() {
         <div>
           <h1 className="text-2xl font-semibold text-slate-900">Follow-up suggestions</h1>
           <p className="text-sm text-slate-500">
-            AI-generated next actions for stale and high-intent inquiries.
+            Rule-based next actions for stale and high-intent inquiries.
           </p>
         </div>
         <button
@@ -74,7 +74,7 @@ export default function AiFollowupsPage() {
           disabled={busy}
           className="rounded bg-teal-700 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-800 disabled:opacity-50"
         >
-          {busy ? 'Scanning…' : 'Generate suggestions'}
+          {busy ? 'Scanning…' : 'Scan inquiries'}
         </button>
       </div>
 

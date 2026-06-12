@@ -35,6 +35,7 @@ import { CreateConversationDto } from './dto/create-conversation.dto';
 import { ListConversationsQueryDto } from './dto/list-conversations-query.dto';
 import { ListMessagesQueryDto } from './dto/list-messages-query.dto';
 import { SendMessageDto } from './dto/send-message.dto';
+import { SendPublicChatMessageDto, StartPublicChatDto } from './dto/public-chat.dto';
 import { UpdateConversationDto } from './dto/update-conversation.dto';
 
 function requestMeta(req: Request) {
@@ -215,4 +216,50 @@ export class ChatMessagesController {
   ) {
     return envelope(await this.chat.markMessageRead(tenantId, user, id, requestMeta(req)));
   }
+}
+
+@ApiTags('Public Chat')
+@Controller('api/v1/public/chat')
+export class PublicChatController {
+  constructor(private readonly chat: ChatService) {}
+
+  @Post('conversations')
+  @ApiOperation({ summary: 'Start a public website chat conversation' })
+  @ApiCreatedResponse({ description: 'Conversation created with visitor token' })
+  async start(@Body() dto: StartPublicChatDto, @Req() req: Request) {
+    return envelope(await this.chat.startPublicConversation(dto, requestMeta(req)));
+  }
+
+  @Get('conversations/:id/messages')
+  @ApiOperation({ summary: 'List messages visible to the public chat visitor' })
+  async listMessages(
+    @Param('id') id: string,
+    @Query('token') token: string | undefined,
+    @Req() req: Request,
+  ) {
+    const result = await this.chat.listPublicMessages(id, token ?? bearerToken(req), {
+      page: 1,
+      per_page: 50,
+    });
+    return {
+      data: result.data,
+      meta: { ...result.meta, request_id: randomBytes(16).toString('hex') },
+    };
+  }
+
+  @Post('conversations/:id/messages')
+  @ApiOperation({ summary: 'Send a public website chat message' })
+  async sendMessage(
+    @Param('id') id: string,
+    @Body() dto: SendPublicChatMessageDto,
+    @Req() req: Request,
+  ) {
+    return envelope(await this.chat.sendPublicMessage(id, bearerToken(req), dto, requestMeta(req)));
+  }
+}
+
+function bearerToken(req: Request): string | undefined {
+  const header = req.headers.authorization;
+  if (!header) return undefined;
+  return header.replace(/^Bearer\s+/i, '');
 }

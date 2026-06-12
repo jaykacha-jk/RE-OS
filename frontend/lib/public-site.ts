@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 
-export const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
+export const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4545';
 
 export type PublicIntent = 'buy' | 'rent' | 'commercial';
 
@@ -34,6 +34,7 @@ export type PublicProperty = {
 
 export type PublicListingResponse = {
   data: PublicProperty[];
+  error?: string;
   meta?: {
     page: number;
     per_page: number;
@@ -41,6 +42,55 @@ export type PublicListingResponse = {
     total_pages: number;
     tenant: string;
   };
+};
+
+export type PublicWebsiteSettings = {
+  hero_title: string | null;
+  hero_subtitle: string | null;
+  contact: {
+    email?: string | null;
+    phone?: string | null;
+    whatsapp?: string | null;
+    address?: string | null;
+  };
+  social_links: Record<string, unknown>;
+  testimonials: Array<{
+    author?: string;
+    role?: string | null;
+    quote?: string;
+    avatar_url?: string | null;
+  }>;
+  featured_sections: Array<{
+    title?: string;
+    subtitle?: string | null;
+    type?: string;
+    enabled?: boolean;
+  }>;
+  footer: {
+    about?: string | null;
+    copyright?: string | null;
+    links?: Array<{ label: string; href: string }>;
+  };
+};
+
+export type PublicSettings = {
+  tenant: string;
+  name: string;
+  branding: {
+    logo_url?: string | null;
+    primary_color?: string;
+    secondary_color?: string;
+  };
+  website: PublicWebsiteSettings;
+  seo: Record<string, unknown>;
+  white_label: {
+    enabled: boolean;
+    hide_branding: boolean;
+    custom_logo_url?: string | null;
+    primary_color?: string | null;
+    secondary_color?: string | null;
+  };
+  powered_by_reos: boolean;
 };
 
 export const inr = new Intl.NumberFormat('en-IN', {
@@ -89,14 +139,27 @@ export function propertyMatchesRoute(property: PublicProperty, intent: PublicInt
   return propertyIntent(property) === intent && slugify(property.city) === city;
 }
 
+/** Build a wa.me link only when the tenant has configured a dialable number. */
+export function whatsappHref(phone: string | null | undefined, text: string) {
+  if (!phone) return null;
+  const digits = phone.replace(/[^\d]/g, '');
+  if (!digits) return null;
+  return `https://wa.me/${digits}?text=${encodeURIComponent(text)}`;
+}
+
 export async function fetchPublicListings(input: {
   tenant: string;
   search?: string;
   city?: string;
   intent?: PublicIntent;
+  page?: number;
   perPage?: number;
 }): Promise<PublicListingResponse> {
-  const params = new URLSearchParams({ tenant: input.tenant, per_page: String(input.perPage ?? 24) });
+  const params = new URLSearchParams({
+    tenant: input.tenant,
+    page: String(input.page ?? 1),
+    per_page: String(input.perPage ?? 24),
+  });
   if (input.search) params.set('search', input.search);
   if (input.city) params.set('filter[city]', input.city);
   if (input.intent) {
@@ -108,8 +171,22 @@ export async function fetchPublicListings(input: {
   const res = await fetch(`${API_BASE}/api/v1/public/properties?${params.toString()}`, {
     next: { revalidate: 300 },
   });
-  if (!res.ok) return { data: [] };
+  if (!res.ok) {
+    return {
+      data: [],
+      error: `Unable to load listings (${res.status})`,
+    };
+  }
   return (await res.json()) as PublicListingResponse;
+}
+
+export async function fetchPublicSettings(tenant: string): Promise<PublicSettings | null> {
+  const res = await fetch(`${API_BASE}/api/v1/public/settings?tenant=${encodeURIComponent(tenant)}`, {
+    next: { revalidate: 300 },
+  });
+  if (!res.ok) return null;
+  const body = (await res.json()) as { data: PublicSettings };
+  return body.data;
 }
 
 export async function fetchPublicProperty(slug: string, tenant: string): Promise<PublicProperty | null> {

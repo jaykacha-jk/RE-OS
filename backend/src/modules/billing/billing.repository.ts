@@ -72,8 +72,8 @@ export class BillingRepository {
         },
       });
 
-      await tx.organizations.update({
-        where: { id: input.tenantId },
+      await tx.organizations.updateMany({
+        where: { id: input.tenantId, deleted_at: null },
         data: {
           tier: input.planCode,
           status: input.status === 'trial' ? 'trial' : 'active',
@@ -92,13 +92,18 @@ export class BillingRepository {
     orgTier?: string;
   }) {
     return this.prisma.dbClient.$transaction(async (tx) => {
-      const subscription = await tx.subscriptions.update({
-        where: { id: input.subscriptionId },
+      const result = await tx.subscriptions.updateMany({
+        where: { id: input.subscriptionId, tenant_id: input.tenantId, deleted_at: null },
         data: input.data,
       });
+      if (result.count !== 1) return null;
+      const subscription = await tx.subscriptions.findFirst({
+        where: { id: input.subscriptionId, tenant_id: input.tenantId, deleted_at: null },
+        include: subscriptionInclude,
+      });
       if (input.orgStatus || input.orgTier) {
-        await tx.organizations.update({
-          where: { id: input.tenantId },
+        await tx.organizations.updateMany({
+          where: { id: input.tenantId, deleted_at: null },
           data: {
             ...(input.orgStatus ? { status: input.orgStatus } : {}),
             ...(input.orgTier ? { tier: input.orgTier } : {}),
@@ -144,11 +149,18 @@ export class BillingRepository {
     });
   }
 
-  async listInvoices(tenantId: string) {
-    return this.prisma.dbClient.invoices.findMany({
-      where: { tenant_id: tenantId, deleted_at: null },
-      orderBy: { issued_at: 'desc' },
-    });
+  async listInvoices(tenantId: string, page = 1, perPage = 20) {
+    const where: Prisma.invoicesWhereInput = { tenant_id: tenantId, deleted_at: null };
+    const [rows, total] = await Promise.all([
+      this.prisma.dbClient.invoices.findMany({
+        where,
+        orderBy: { issued_at: 'desc' },
+        skip: (page - 1) * perPage,
+        take: perPage,
+      }),
+      this.prisma.dbClient.invoices.count({ where }),
+    ]);
+    return { rows, total };
   }
 
   async createPayment(input: {
@@ -237,6 +249,15 @@ export class BillingRepository {
       data: {
         processed_at: new Date(),
         processing_error: error ?? null,
+      },
+    });
+  }
+
+  async markWebhookFailed(id: string, error: string) {
+    return this.prisma.dbClient.billing_webhook_events.update({
+      where: { id },
+      data: {
+        processing_error: error,
       },
     });
   }

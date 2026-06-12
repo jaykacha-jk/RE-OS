@@ -22,7 +22,7 @@ export interface EmailSendResult {
 
 /**
  * Provider-agnostic email contract. Implementations: DevEmailProvider (local),
- * ProductionEmailProvider (SES/SendGrid/etc — wired in a later phase).
+ * ProductionEmailProvider (Resend-backed production delivery).
  */
 export interface EmailProvider {
   readonly name: string;

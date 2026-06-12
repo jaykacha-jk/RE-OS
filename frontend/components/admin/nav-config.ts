@@ -12,7 +12,7 @@ export type NavItem = {
   group: NavGroup;
 };
 
-export const PERFORMANCE_ROLES = ['org_owner', 'org_admin', 'marketing_user', 'sales_manager'];
+export const PERFORMANCE_ROLES = ['org_owner', 'org_admin', 'sales_manager'];
 
 export const NAV_GROUPS: NavGroup[] = ['Command', 'Sales', 'AI', 'Operations', 'Platform'];
 
@@ -25,14 +25,14 @@ export const navItems: NavItem[] = [
   { href: '/pipeline', label: 'Pipeline', icon: 'pipeline', roles: 'permission', permission: 'crm.inquiries.read', group: 'Sales' },
   { href: '/chat', label: 'Chat', icon: 'chat', roles: 'permission', permission: 'chat.conversations.read', group: 'Sales' },
   { href: '/lead-sources', label: 'Lead sources', icon: 'leadSources', roles: 'permission', permission: 'crm.lead_sources.read', group: 'Sales' },
-  { href: '/ai', label: 'AI dashboard', icon: 'ai', roles: 'permission', permission: 'ai.dashboard.read', group: 'AI' },
-  { href: '/ai/playground', label: 'AI assistant', icon: 'playground', roles: 'permission', permission: 'ai.qualify', group: 'AI' },
-  { href: '/ai/calls', label: 'Call logs', icon: 'calls', roles: 'permission', permission: 'ai.calls.read', group: 'AI' },
+  { href: '/ai', label: 'Automation dashboard', icon: 'ai', roles: 'permission', permission: 'ai.dashboard.read', group: 'AI' },
+  { href: '/ai/playground', label: 'Assistant workbench', icon: 'playground', roles: 'permission', permission: 'ai.qualify', group: 'AI' },
+  { href: '/ai/calls', label: 'Demo call logs', icon: 'calls', roles: 'permission', permission: 'ai.calls.read', group: 'AI' },
   { href: '/ai/followups', label: 'Follow-ups', icon: 'followups', roles: 'permission', permission: 'ai.followups.read', group: 'AI' },
   { href: '/ai/knowledge', label: 'Knowledge base', icon: 'knowledge', roles: 'permission', permission: 'ai.knowledge.read', group: 'AI' },
   { href: '/ai/prompts', label: 'Prompt templates', icon: 'prompts', roles: 'permission', permission: 'ai.prompts.manage', group: 'AI' },
-  { href: '/ai/settings', label: 'AI settings', icon: 'settings', roles: 'permission', permission: 'ai.settings.read', group: 'AI' },
-  { href: '/employees', label: 'Employees', icon: 'employees', roles: 'tenant', group: 'Operations' },
+  { href: '/ai/settings', label: 'Assistant settings', icon: 'settings', roles: 'permission', permission: 'ai.settings.read', group: 'AI' },
+  { href: '/employees', label: 'Employees', icon: 'employees', roles: 'permission', permission: 'employees.read', group: 'Operations' },
   { href: '/notifications', label: 'Notifications', icon: 'notifications', roles: 'permission', permission: 'notifications.read', group: 'Operations' },
   { href: '/billing', label: 'Billing', icon: 'billing', roles: 'permission', permission: 'billing.subscription.read', group: 'Platform' },
   { href: '/settings', label: 'Settings', icon: 'settings', roles: 'permission', permission: 'settings.read', group: 'Platform' },

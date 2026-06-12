@@ -2,10 +2,13 @@ import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 
 import { PrismaService } from '../../common/database/prisma.service';
+import { TenantScopedRepository } from '../../common/database/tenant-scoped.repository';
 
 @Injectable()
-export class PublicAnalyticsRepository {
-  constructor(private readonly prisma: PrismaService) {}
+export class PublicAnalyticsRepository extends TenantScopedRepository {
+  constructor(private readonly prisma: PrismaService) {
+    super();
+  }
 
   async findOrganizationBySlug(slug: string) {
     return this.prisma.dbClient.organizations.findFirst({
@@ -43,7 +46,7 @@ export class PublicAnalyticsRepository {
   }
 
   private range(tenantId: string, from: Date, to: Date): Prisma.public_analytics_eventsWhereInput {
-    return { tenant_id: tenantId, created_at: { gte: from, lte: to } };
+    return this.tenantWhere(tenantId, { created_at: { gte: from, lte: to } });
   }
 
   /** Count per event_type for the window. */

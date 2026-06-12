@@ -26,9 +26,9 @@ export default function AiDashboardPage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold text-slate-900">AI Agent Platform</h1>
+          <h1 className="text-2xl font-semibold text-slate-900">Assistant automation</h1>
           <p className="text-sm text-slate-500">
-            Voice + chat agents, lead qualification, matching, and conversation intelligence.
+            LLM-backed chat when OpenAI is configured, plus deterministic qualification, matching, and follow-up rules.
           </p>
         </div>
         <div className="flex gap-2 text-sm">
@@ -50,9 +50,9 @@ export default function AiDashboardPage() {
       {error && <div className="rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
 
       <section className="grid gap-4 md:grid-cols-3 lg:grid-cols-4">
-        <Metric label="AI conversations" value={data?.ai_conversations} />
-        <Metric label="AI conversions" value={data?.ai_conversions} />
-        <Metric label="Calls" value={data?.calls_total} sub={`${data?.calls_completed ?? 0} completed`} />
+        <Metric label="Assistant conversations" value={data?.ai_conversations} />
+        <Metric label="Assistant conversions" value={data?.ai_conversions} />
+        <Metric label="Demo voice calls" value={data?.calls_total} sub={`${data?.calls_completed ?? 0} completed`} />
         <Metric label="Qualified calls" value={data?.qualified_calls} />
         <Metric label="Qualification rate" value={data ? `${data.qualification_rate}%` : undefined} />
         <Metric label="Conversion rate" value={data ? `${data.conversion_rate}%` : undefined} />
@@ -65,7 +65,7 @@ export default function AiDashboardPage() {
 
       <section className="grid gap-4 lg:grid-cols-2">
         <div className="rounded-lg border bg-white p-4">
-          <h2 className="mb-4 font-semibold text-slate-900">Lead temperature (calls)</h2>
+          <h2 className="mb-4 font-semibold text-slate-900">Lead temperature (demo calls)</h2>
           {data?.temperature_breakdown.length ? (
             <div className="space-y-2 text-sm">
               {data.temperature_breakdown.map((t) => (
@@ -84,16 +84,16 @@ export default function AiDashboardPage() {
           <h2 className="mb-4 font-semibold text-slate-900">Quick actions</h2>
           <div className="grid gap-2 text-sm">
             <Link className="rounded border px-3 py-2 text-slate-700 hover:bg-slate-50" href="/ai/playground">
-              Open AI assistant (qualify · match · chat · intelligence)
+              Open assistant workbench (rules + LLM chat)
             </Link>
             <Link className="rounded border px-3 py-2 text-slate-700 hover:bg-slate-50" href="/ai/calls">
-              View call logs &amp; transcripts
+              View demo call logs &amp; transcripts
             </Link>
             <Link className="rounded border px-3 py-2 text-slate-700 hover:bg-slate-50" href="/ai/knowledge">
               Manage knowledge base
             </Link>
             <Link className="rounded border px-3 py-2 text-slate-700 hover:bg-slate-50" href="/ai/settings">
-              Configure AI settings &amp; provider
+              Configure assistant settings &amp; provider
             </Link>
           </div>
         </div>

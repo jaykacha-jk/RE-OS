@@ -109,7 +109,7 @@ function buildService() {
 describe('PropertiesService — RBAC scope', () => {
   it('grants full scope to org_admin / org_owner / super_admin', async () => {
     const { service, repo } = buildService();
-    for (const role of ['super_admin', 'org_owner', 'org_admin', 'marketing_user']) {
+    for (const role of ['super_admin', 'org_owner', 'org_admin']) {
       const scope: PropertyScope = await service.resolveScope(makeUser([role]), TENANT);
       expect(scope).toEqual({ type: 'all' });
     }
@@ -133,6 +133,16 @@ describe('PropertiesService — RBAC scope', () => {
     const scope = await service.resolveScope(makeUser(['sales_executive']), TENANT);
 
     expect(scope).toEqual({ type: 'employees', employeeIds: ['emp-exec'] });
+    expect(repo.findSubordinateEmployeeIds).not.toHaveBeenCalled();
+  });
+
+  it('scopes a telecaller to assigned properties only', async () => {
+    const { service, repo } = buildService();
+    repo.findEmployeeByUserId!.mockResolvedValue({ id: 'emp-call' } as never);
+
+    const scope = await service.resolveScope(makeUser(['telecaller']), TENANT);
+
+    expect(scope).toEqual({ type: 'employees', employeeIds: ['emp-call'] });
     expect(repo.findSubordinateEmployeeIds).not.toHaveBeenCalled();
   });
 

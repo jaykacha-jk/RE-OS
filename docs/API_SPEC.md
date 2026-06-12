@@ -487,7 +487,7 @@ Storage uses an S3 abstraction with a local-disk fallback for development (serve
 ## 7. CRM / Inquiries (Phase 3 — implemented)
 
 All routes are tenant-scoped and RBAC-enforced at API **and** service layer.
-**Scope:** full-access roles (super_admin, org_owner, org_admin, marketing_user) see all
+**Scope:** full-access roles (super_admin, org_owner, org_admin) see all
 inquiries; sales_manager sees self + direct reports; sales_executive and telecaller see
 assigned only. Out-of-scope inquiries return **404** (existence hidden).
 
@@ -694,10 +694,17 @@ Base path: `/api/v1`. All endpoints require JWT + tenant context unless noted.
 | POST | `/conversations/:id/messages` | `chat.messages.send` | Send text / attachments (base64) |
 | GET | `/conversations/:id/activities` | `chat.conversations.read` | Activity + assignment history |
 | PATCH | `/messages/:id/read` | `chat.messages.read` | Mark read for current participant |
+| POST | `/public/chat/conversations` | Public | Start website chat, create conversation, return HMAC visitor token |
+| GET | `/public/chat/conversations/:id/messages` | Public + chat token | List messages for the visitor conversation |
+| POST | `/public/chat/conversations/:id/messages` | Public + chat token | Send visitor message |
 
 **List filters:** `filter[status]`, `filter[type]`, `filter[assigned_employee]`, `filter[property]`, `filter[unread]`, `filter[mine]`, `search`, `sort_by`, `sort_dir`.
 
 **Send message body:** `{ "content": "…", "message_type": "text", "attachments": [{ "name", "kind", "content_base64", "content_type" }] }`
+
+**Public chat start body:** `{ "tenant": "demo", "client_identifier": "browser-session-id", "client_name": "Rahul", "client_phone": "+919876543210", "property_slug": "optional-listing-slug", "message": "I want to visit this property" }`
+
+**Public chat auth:** `POST /public/chat/conversations` returns `{ conversation, token }`. Subsequent public message calls pass the token via `Authorization: Bearer <token>` (or `?token=` for message listing). Tokens are HMAC-bound to tenant + conversation + visitor id.
 
 **Domain events (automation):** `chat.conversation.created`, `chat.conversation.assigned`, `chat.conversation.closed`, `chat.message.received`, `chat.message.read`
 
@@ -722,7 +729,7 @@ For `range=custom` pass `date_from` + `date_to` (ISO 8601).
 
 | Role | Scope of returned data |
 |------|------------------------|
-| `org_owner`, `org_admin`, `marketing_user` | Whole organization (`scope: "all"`) |
+| `org_owner`, `org_admin` | Whole organization (`scope: "all"`) |
 | `sales_manager` | Their team — self + direct reports (`scope: "team"`) |
 | `sales_executive`, `telecaller` | Only records assigned to them (`scope: "assigned"`) |
 | `client` | No access (403) |

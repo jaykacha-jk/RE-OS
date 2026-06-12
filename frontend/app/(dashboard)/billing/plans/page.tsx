@@ -3,7 +3,6 @@
 import { useEffect, useState } from 'react';
 
 import {
-  changePlan,
   fetchPlans,
   fetchSubscription,
   formatLimit,
@@ -37,13 +36,15 @@ export default function BillingPlansPage() {
     setError(null);
     setMessage(null);
     try {
+      const result = await subscribe(plan.code, cycle);
+      if (result.checkout.checkout_url) {
+        window.location.assign(result.checkout.checkout_url);
+        return;
+      }
       if (subscription) {
-        await changePlan(plan.code, cycle);
-        setMessage(`Plan changed to ${plan.name}.`);
+        setMessage(`Subscription updated to ${plan.name}.`);
       } else {
-        const result = await subscribe(plan.code, cycle);
-        const checkout = result as { checkout?: { checkout_url?: string } };
-        setMessage(checkout.checkout?.checkout_url ? `Checkout created: ${checkout.checkout.checkout_url}` : 'Subscription created.');
+        setMessage('Subscription created.');
       }
       await load();
     } catch (err) {
@@ -101,7 +102,7 @@ export default function BillingPlansPage() {
                 onClick={() => choose(plan)}
                 className="mt-6 w-full rounded bg-teal-700 px-4 py-2 text-sm font-medium text-white hover:bg-teal-800 disabled:cursor-not-allowed disabled:bg-slate-300"
               >
-                {isCurrent ? 'Current plan' : busy === plan.code ? 'Updating...' : subscription ? 'Change plan' : 'Start subscription'}
+                {isCurrent ? 'Current plan' : busy === plan.code ? 'Creating checkout...' : subscription ? 'Start checkout' : 'Start subscription'}
               </button>
             </div>
           );

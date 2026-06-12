@@ -73,7 +73,7 @@
 | Elasticsearch | Mandatory `tenant_id` filter clause |
 | S3 | Prefix `tenants/{tenant_id}/`; IAM scoped |
 | Redis keys | Include tenant_id in key |
-| Tests | CI suite `tenant-isolation.spec.ts` |
+| Tests | CI suite `tenant-isolation.integration.spec.ts` |
 
 ---
 

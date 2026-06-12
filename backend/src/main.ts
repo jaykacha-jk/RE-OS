@@ -9,12 +9,14 @@ import { ValidationPipe } from '@nestjs/common';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { resolve as resolvePath } from 'node:path';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
+import { ErrorTrackingService } from './common/observability/error-tracking.service';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import type { Request, Response } from 'express';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+    rawBody: true,
     cors: {
       origin: process.env.CORS_ORIGIN?.split(',').map((o) => o.trim()) ?? [
         'http://localhost:3000',
@@ -29,7 +31,17 @@ async function bootstrap() {
   );
   app.useStaticAssets(localStorageDir, { prefix: '/static/' });
 
-  app.useGlobalFilters(new HttpExceptionFilter());
+  const errorTracking = app.get(ErrorTrackingService);
+  app.useGlobalFilters(new HttpExceptionFilter(errorTracking));
+
+  // Flush buffered error reports before the process exits so we don't lose the
+  // exceptions that triggered the shutdown.
+  app.enableShutdownHooks();
+  const flushAndExit = () => {
+    void errorTracking.flush().finally(() => process.exit(0));
+  };
+  process.on('SIGTERM', flushAndExit);
+  process.on('SIGINT', flushAndExit);
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,

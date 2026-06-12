@@ -1,6 +1,7 @@
 import { BillingService } from './billing.service';
 
 describe('BillingService', () => {
+  const originalEnv = process.env;
   const plan = {
     id: 'plan-pro',
     code: 'pro',
@@ -51,6 +52,22 @@ describe('BillingService', () => {
         updated_at: new Date(),
         deleted_at: null,
       })),
+      findWebhookEvent: jest.fn().mockResolvedValue(null),
+      createWebhookEvent: jest.fn().mockResolvedValue({ id: 'event-row-1' }),
+      markWebhookProcessed: jest.fn().mockResolvedValue(undefined),
+      markWebhookFailed: jest.fn().mockResolvedValue(undefined),
+      findSubscriptionByProviderId: jest.fn().mockResolvedValue({
+        id: 'sub-1',
+        tenant_id: 'tenant-1',
+        plan_id: 'plan-pro',
+        status: 'trial',
+        billing_cycle: 'monthly',
+        provider: 'razorpay',
+        provider_subscription_id: 'rzp-sub-1',
+        current_period_end: new Date(),
+        plan,
+      }),
+      updateSubscription: jest.fn().mockResolvedValue(undefined),
       ...overrides,
     };
     const mockProvider = {
@@ -60,7 +77,14 @@ describe('BillingService', () => {
         checkoutUrl: 'http://checkout.test',
       }),
     };
-    const razorpayProvider = { verifyWebhookSignature: jest.fn().mockReturnValue(true) };
+    const razorpayProvider = {
+      createSubscription: jest.fn().mockResolvedValue({
+        provider: 'razorpay',
+        providerSubscriptionId: 'sub-rzp-1',
+        checkoutUrl: 'https://rzp.io/i/subscription123',
+      }),
+      verifyWebhookSignature: jest.fn().mockReturnValue(true),
+    };
     const audit = { record: jest.fn().mockResolvedValue(undefined) };
     const events = { emit: jest.fn() };
 
@@ -71,8 +95,16 @@ describe('BillingService', () => {
       audit as never,
       events as never,
     );
-    return { service, repo, mockProvider, audit, events };
+    return { service, repo, mockProvider, razorpayProvider, audit, events };
   }
+
+  beforeEach(() => {
+    process.env = { ...originalEnv };
+  });
+
+  afterAll(() => {
+    process.env = originalEnv;
+  });
 
   it('lists plans with Phase 7 limits', async () => {
     const { service } = setup();
@@ -113,6 +145,63 @@ describe('BillingService', () => {
     expect(result.checkout.checkout_url).toBe('http://checkout.test');
   });
 
+  it('creates paid checkout through Razorpay when configured', async () => {
+    process.env.PAYMENT_PROVIDER = 'razorpay';
+    const { service, repo, mockProvider, razorpayProvider } = setup();
+
+    const result = await service.subscribe(
+      'tenant-1',
+      { plan_code: 'pro', billing_cycle: 'monthly' },
+      { userId: 'user-1', tenantId: 'tenant-1', roles: ['org_owner'], permissions: [] },
+    );
+
+    expect(mockProvider.createSubscription).not.toHaveBeenCalled();
+    expect(razorpayProvider.createSubscription).toHaveBeenCalledWith(
+      expect.objectContaining({ planCode: 'pro', amount: 1499900 }),
+    );
+    expect(repo.createOrReplaceSubscription).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider: 'razorpay',
+        providerSubscriptionId: 'sub-rzp-1',
+        status: 'trial',
+      }),
+    );
+    expect(result.checkout).toEqual({
+      provider: 'razorpay',
+      subscription_id: 'sub-rzp-1',
+      checkout_url: 'https://rzp.io/i/subscription123',
+    });
+  });
+
+  it('activates zero-priced plans without calling a payment provider', async () => {
+    const freePlan = {
+      ...plan,
+      code: 'enterprise',
+      price_inr_monthly: 0,
+      price_inr_yearly: 0,
+    };
+    const { service, repo, mockProvider, razorpayProvider } = setup({
+      findPlanByCode: jest.fn().mockResolvedValue(freePlan),
+    });
+
+    const result = await service.subscribe(
+      'tenant-1',
+      { plan_code: 'enterprise', billing_cycle: 'monthly' },
+      { userId: 'user-1', tenantId: 'tenant-1', roles: ['org_owner'], permissions: [] },
+    );
+
+    expect(mockProvider.createSubscription).not.toHaveBeenCalled();
+    expect(razorpayProvider.createSubscription).not.toHaveBeenCalled();
+    expect(repo.createOrReplaceSubscription).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider: 'manual',
+        status: 'active',
+        trialEndsAt: null,
+      }),
+    );
+    expect(result.checkout.checkout_url).toBeNull();
+  });
+
   it('returns usage against current plan limits', async () => {
     const { service } = setup();
 
@@ -132,5 +221,47 @@ describe('BillingService', () => {
         },
       }),
     );
+  });
+
+  it('verifies Razorpay webhooks against the raw body and marks success processed', async () => {
+    const { service, repo } = setup();
+    const rawBody = Buffer.from('{"id":"evt-1","event":"subscription.activated","payload":{}}');
+    const dto = {
+      id: 'evt-1',
+      event: 'subscription.activated',
+      payload: { subscription: { entity: { id: 'rzp-sub-1' } } },
+    };
+
+    await expect(service.processRazorpayWebhook(dto, 'sig', rawBody)).resolves.toEqual({
+      processed: true,
+      duplicate: false,
+    });
+
+    expect(repo.createWebhookEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ providerEventId: 'evt-1', signatureValid: true }),
+    );
+    expect(repo.markWebhookProcessed).toHaveBeenCalledWith('event-row-1');
+    expect(repo.markWebhookFailed).not.toHaveBeenCalled();
+  });
+
+  it('keeps failed Razorpay webhooks retryable', async () => {
+    const { service, repo } = setup({
+      findSubscriptionByProviderId: jest.fn().mockResolvedValue(null),
+    });
+    const dto = {
+      id: 'evt-failed',
+      event: 'subscription.activated',
+      payload: { subscription: { entity: { id: 'rzp-sub-missing' } } },
+    };
+
+    await expect(service.processRazorpayWebhook(dto, 'sig', Buffer.from('{}'))).rejects.toThrow(
+      'Subscription not found',
+    );
+
+    expect(repo.markWebhookFailed).toHaveBeenCalledWith(
+      'event-row-1',
+      'Subscription not found for webhook',
+    );
+    expect(repo.markWebhookProcessed).not.toHaveBeenCalled();
   });
 });

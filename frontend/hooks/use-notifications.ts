@@ -12,7 +12,7 @@ import {
   type Notification,
 } from '../lib/notifications';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4545';
 
 export const NOTIFICATION_SOCKET_EVENTS = {
   RECEIVED: 'notification:received',

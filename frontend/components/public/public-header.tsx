@@ -97,7 +97,7 @@ export function PublicHeader() {
           <Link href="/login" className="btn-ghost px-3 py-2">
             Login
           </Link>
-          <Link href="/login" className="btn-primary px-4 py-2">
+          <Link href="/signup" className="btn-primary px-4 py-2">
             Get Started
           </Link>
         </div>
@@ -146,7 +146,7 @@ export function PublicHeader() {
               <Link href="/login" className="btn-secondary w-full">
                 Login
               </Link>
-              <Link href="/login" className="btn-primary w-full">
+              <Link href="/signup" className="btn-primary w-full">
                 Get Started
               </Link>
             </div>

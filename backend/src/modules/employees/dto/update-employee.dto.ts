@@ -23,10 +23,10 @@ export class UpdateEmployeeDto {
   status?: string;
 
   @ApiPropertyOptional({
-    enum: ['org_admin', 'sales_manager', 'sales_executive', 'telecaller', 'marketing_user'],
+    enum: ['org_admin', 'sales_manager', 'sales_executive', 'telecaller'],
   })
   @IsOptional()
-  @IsIn(['org_admin', 'sales_manager', 'sales_executive', 'telecaller', 'marketing_user'])
+  @IsIn(['org_admin', 'sales_manager', 'sales_executive', 'telecaller'])
   role_code?: string;
 
   @ApiPropertyOptional({ format: 'uuid', nullable: true })

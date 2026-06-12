@@ -184,6 +184,7 @@ export class NotificationDispatcherService implements OnModuleInit {
         to: contact.email,
         subject: rendered.emailSubject,
         text: rendered.body,
+        html: data.html ?? this.textToHtml(rendered.body),
         tenantId: data.tenantId,
       });
       await this.logEmail(
@@ -256,5 +257,18 @@ export class NotificationDispatcherService implements OnModuleInit {
       read_at: n.read_at?.toISOString() ?? null,
       created_at: n.created_at.toISOString(),
     };
+  }
+
+  private textToHtml(text: string): string {
+    const escaped = text
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+    return escaped
+      .split(/\r?\n/)
+      .map((line) => `<p>${line || '&nbsp;'}</p>`)
+      .join('');
   }
 }

@@ -120,6 +120,8 @@ export class PlatformRepository {
 
       await tx.user_invitations.create({
         data: {
+          tenant_id: input.tenantId,
+          user_id: user.id,
           email: input.email,
           role_id: input.roleId,
           token_hash: input.tokenHash,

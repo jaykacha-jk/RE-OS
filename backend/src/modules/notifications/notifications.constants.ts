@@ -372,7 +372,7 @@ export const SYSTEM_TEMPLATES: Record<DomainEventKey, SystemTemplate> = {
     type: 'SYSTEM',
     priority: 'MEDIUM',
     title: 'You have been invited',
-    body: 'You have been invited to join {{organizationName}} on RE-OS.',
+    body: 'You have been invited to join {{organizationName}} on RE-OS.\n\nAccept your invitation: {{acceptUrl}}',
     emailSubject: 'You are invited to {{organizationName}}',
   },
   [DOMAIN_EVENTS.CONVERSATION_CREATED]: {

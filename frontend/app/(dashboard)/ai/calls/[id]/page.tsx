@@ -48,7 +48,7 @@ export default function AiCallDetailPage() {
 
       {call.summary && (
         <section className="rounded-lg border bg-white p-5">
-          <h2 className="mb-2 font-semibold text-slate-900">AI summary</h2>
+          <h2 className="mb-2 font-semibold text-slate-900">Generated summary</h2>
           <p className="text-sm text-slate-700">{call.summary}</p>
         </section>
       )}

@@ -77,8 +77,13 @@ export class AiRepository {
   async updateCallBySid(callSid: string, data: Prisma.ai_callsUncheckedUpdateInput) {
     const call = await this.db.ai_calls.findFirst({ where: { call_sid: callSid } });
     if (!call) return null;
-    await this.db.ai_calls.update({ where: { id: call.id }, data });
-    return this.db.ai_calls.findUnique({ where: { id: call.id } });
+    await this.db.ai_calls.updateMany({
+      where: { id: call.id, tenant_id: call.tenant_id, deleted_at: null },
+      data,
+    });
+    return this.db.ai_calls.findFirst({
+      where: { id: call.id, tenant_id: call.tenant_id, deleted_at: null },
+    });
   }
 
   async getCall(tenantId: string, id: string) {
@@ -260,8 +265,11 @@ export class AiRepository {
   async upsertPrompt(tenantId: string, key: string, data: Prisma.ai_prompt_templatesUncheckedCreateInput) {
     const existing = await this.db.ai_prompt_templates.findFirst({ where: { tenant_id: tenantId, key } });
     if (existing) {
-      await this.db.ai_prompt_templates.update({ where: { id: existing.id }, data });
-      return this.db.ai_prompt_templates.findUnique({ where: { id: existing.id } });
+      await this.db.ai_prompt_templates.updateMany({
+        where: { id: existing.id, tenant_id: tenantId, key },
+        data,
+      });
+      return this.db.ai_prompt_templates.findFirst({ where: { id: existing.id, tenant_id: tenantId, key } });
     }
     return this.db.ai_prompt_templates.create({ data: { ...data, tenant_id: tenantId, key } });
   }

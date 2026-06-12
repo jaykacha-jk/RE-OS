@@ -84,6 +84,8 @@ export class EmployeesService {
         rule_id: 'BR-T04',
       });
     }
+
+    return org;
   }
 
   async listEmployees(tenantId: string, query: ListEmployeesQueryDto) {
@@ -121,7 +123,7 @@ export class EmployeesService {
     actor?: AuthUser,
     meta?: AuditRequestMeta,
   ) {
-    await this.assertCanCreateEmployee(tenantId);
+    const org = await this.assertCanCreateEmployee(tenantId);
 
     const existingEmail = await this.employeesRepository.findUserByEmail(tenantId, dto.email);
     if (existingEmail) {
@@ -169,9 +171,12 @@ export class EmployeesService {
 
     const response = {
       employee: this.mapEmployee(employee),
-      invitation_sent: false,
+      invitation_sent: true,
+      invitation_email_status: 'queued',
       invitation_pending: true,
-      ...this.devInvitationHint(invitationToken),
+      accept_url: this.invitationUrl(invitationToken),
+      expires_at: expiresAt.toISOString(),
+      ...this.devInvitationTokenHint(invitationToken),
     };
 
     await this.auditService.record({
@@ -184,26 +189,33 @@ export class EmployeesService {
       meta,
     });
 
-    // Phase 5: welcome/notify the invited user.
     this.events.emit(DOMAIN_EVENTS.USER_INVITED, {
       tenantId,
       actorUserId: actor?.userId ?? null,
       entityType: 'user',
       entityId: response.employee.user_id,
       recipientUserIds: [response.employee.user_id],
-      context: { email: dto.email, roleCode: dto.role_code },
+      context: {
+        email: dto.email,
+        roleCode: dto.role_code,
+        organizationName: org.name,
+        acceptUrl: this.invitationUrl(invitationToken),
+      },
     });
 
     return response;
   }
 
-  private devInvitationHint(token: string) {
+  private devInvitationTokenHint(token: string) {
     if (process.env.NODE_ENV === 'production') return {};
-    const base = process.env.APP_URL ?? 'http://localhost:3000';
     return {
       invitation_token: token,
-      accept_url: `${base}/accept-invitation?token=${encodeURIComponent(token)}`,
     };
+  }
+
+  private invitationUrl(token: string): string {
+    const base = process.env.APP_URL ?? 'http://localhost:3000';
+    return `${base.replace(/\/$/, '')}/accept-invitation?token=${encodeURIComponent(token)}`;
   }
 
   async updateEmployee(

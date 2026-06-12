@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Headers, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Headers, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { randomBytes } from 'crypto';
 import type { Request } from 'express';
@@ -13,8 +13,11 @@ import { TenantGuard } from '../../common/guards/tenant.guard';
 import { BillingService } from './billing.service';
 import { CancelSubscriptionDto } from './dto/cancel-subscription.dto';
 import { ChangePlanDto } from './dto/change-plan.dto';
+import { ListInvoicesQueryDto } from './dto/list-invoices-query.dto';
 import { RazorpayWebhookDto } from './dto/razorpay-webhook.dto';
 import { SubscribeDto } from './dto/subscribe.dto';
+
+type RawBodyRequest = Request & { rawBody?: Buffer };
 
 function envelope<T>(data: T) {
   return { data, meta: { request_id: randomBytes(16).toString('hex') } };
@@ -87,8 +90,8 @@ export class BillingController {
   @Get('invoices')
   @RequirePermissions('billing.invoices.read')
   @ApiOperation({ summary: 'List tenant invoices' })
-  async invoices(@TenantId() tenantId: string) {
-    return envelope(await this.billing.listInvoices(tenantId));
+  async invoices(@TenantId() tenantId: string, @Query() query: ListInvoicesQueryDto) {
+    return envelope(await this.billing.listInvoices(tenantId, query));
   }
 
   @Get('usage')
@@ -109,7 +112,8 @@ export class BillingWebhookController {
   async razorpay(
     @Body() dto: RazorpayWebhookDto,
     @Headers('x-razorpay-signature') signature?: string,
+    @Req() req?: RawBodyRequest,
   ) {
-    return envelope(await this.billing.processRazorpayWebhook(dto, signature));
+    return envelope(await this.billing.processRazorpayWebhook(dto, signature, req?.rawBody));
   }
 }

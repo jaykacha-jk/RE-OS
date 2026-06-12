@@ -66,7 +66,6 @@ export const PROPERTY_FULL_ACCESS_ROLES = [
   'super_admin',
   'org_owner',
   'org_admin',
-  'marketing_user',
 ];
 
 /** Roles scoped to "team" properties (self + direct reports). */

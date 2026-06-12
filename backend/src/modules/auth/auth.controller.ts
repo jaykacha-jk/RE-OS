@@ -3,6 +3,7 @@ import {
   Controller,
   Get,
   HttpCode,
+  Patch,
   Post,
   Req,
   UseGuards,
@@ -20,12 +21,30 @@ import { AcceptInvitationDto } from './dto/accept-invitation.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { LoginDto } from './dto/login.dto';
 import { RefreshDto } from './dto/refresh.dto';
+import { RegisterDto } from './dto/register.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
+import { UpdateProfileDto } from './dto/update-profile.dto';
+import { VerifyEmailDto } from './dto/verify-email.dto';
 
 @ApiTags('Auth')
 @Controller('api/v1/auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
+
+  @Post('register')
+  @Throttle({ auth: { limit: 5, ttl: 60_000 } })
+  @ApiOperation({ summary: 'Register a new agency and start a trial' })
+  async register(@Body() dto: RegisterDto, @Req() req: Request) {
+    const data = await this.authService.register(dto, {
+      userAgent: req.headers['user-agent'] as string | undefined,
+      ipAddress: req.ip,
+    });
+
+    return {
+      data,
+      meta: { request_id: randomBytes(16).toString('hex') },
+    };
+  }
 
   @Post('login')
   @Throttle({ auth: { limit: 10, ttl: 60_000 } })
@@ -113,12 +132,39 @@ export class AuthController {
     };
   }
 
+  @Post('verify-email')
+  @Throttle({ auth: { limit: 10, ttl: 60_000 } })
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Verify email with token' })
+  async verifyEmail(@Body() dto: VerifyEmailDto, @Req() req: Request) {
+    const data = await this.authService.verifyEmail(dto, {
+      userAgent: req.headers['user-agent'] as string | undefined,
+      ipAddress: req.ip,
+    });
+    return {
+      data,
+      meta: { request_id: randomBytes(16).toString('hex') },
+    };
+  }
+
   @Get('me')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get current authenticated user + roles/permissions' })
   async me(@CurrentUser() user: AuthUser) {
     const data = await this.authService.me(user);
+    return { data, meta: { request_id: randomBytes(16).toString('hex') } };
+  }
+
+  @Patch('me')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Update current user profile' })
+  async updateMe(@CurrentUser() user: AuthUser, @Body() dto: UpdateProfileDto, @Req() req: Request) {
+    const data = await this.authService.updateProfile(user, dto, {
+      userAgent: req.headers['user-agent'] as string | undefined,
+      ipAddress: req.ip,
+    });
     return { data, meta: { request_id: randomBytes(16).toString('hex') } };
   }
 }

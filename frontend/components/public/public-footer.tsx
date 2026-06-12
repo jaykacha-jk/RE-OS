@@ -2,7 +2,9 @@
 
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
+import { useEffect, useState } from 'react';
 
+import { API_BASE, type PublicSettings } from '../../lib/public-site';
 import { NewsletterForm } from './newsletter-form';
 
 const DEFAULT_CITY = 'ahmedabad';
@@ -36,16 +38,42 @@ const COLUMNS: Column[] = [
   },
 ];
 
-const SOCIALS = [
-  { label: 'LinkedIn', short: 'in' },
-  { label: 'Twitter', short: 'X' },
-  { label: 'Instagram', short: 'IG' },
-];
+const SOCIAL_LABELS: Record<string, string> = {
+  linkedin: 'LinkedIn',
+  twitter: 'Twitter',
+  instagram: 'Instagram',
+  facebook: 'Facebook',
+  youtube: 'YouTube',
+};
 
 export function PublicFooter() {
   const year = new Date().getFullYear();
   const searchParams = useSearchParams();
   const tenant = searchParams.get('tenant') ?? 'demo';
+  const [settings, setSettings] = useState<PublicSettings | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`${API_BASE}/api/v1/public/settings?tenant=${encodeURIComponent(tenant)}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((body) => {
+        if (!cancelled && body?.data) setSettings(body.data as PublicSettings);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [tenant]);
+
+  const siteName = settings?.name ?? 'RE-OS';
+  const about =
+    settings?.website?.footer?.about ??
+    'Verified listings, locality-led discovery, and CRM-backed inquiries for modern property teams.';
+  const copyright = settings?.website?.footer?.copyright;
+  const socialEntries = Object.entries(settings?.website?.social_links ?? {}).filter(
+    ([, url]) => typeof url === 'string' && url.length > 0,
+  ) as Array<[string, string]>;
+  const showPoweredBy = settings?.powered_by_reos !== false;
 
   function hrefFor(path: string) {
     if (path === '/login') return path;
@@ -59,14 +87,11 @@ export function PublicFooter() {
           <div>
             <div className="flex items-center gap-2.5">
               <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-teal-600 text-sm font-bold text-white">
-                RE
+                {siteName.slice(0, 2).toUpperCase()}
               </span>
-              <span className="text-lg font-bold text-white">RE-OS</span>
+              <span className="text-lg font-bold text-white">{siteName}</span>
             </div>
-            <p className="mt-4 max-w-sm text-sm leading-6 text-slate-400">
-              The real estate operating system. Verified listings, locality-led discovery, and
-              CRM-backed inquiries for modern property teams.
-            </p>
+            <p className="mt-4 max-w-sm text-sm leading-6 text-slate-400">{about}</p>
 
             <p className="mt-6 text-xs font-bold uppercase tracking-[0.16em] text-slate-500">
               Newsletter
@@ -100,20 +125,25 @@ export function PublicFooter() {
 
         <div className="mt-12 flex flex-col gap-4 border-t border-white/10 pt-6 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-xs text-slate-500">
-            © {year} RE-OS. All rights reserved. · Powered by RE-OS
+            © {year} {siteName}. {copyright ?? 'All rights reserved.'}
+            {showPoweredBy ? ' · Powered by RE-OS' : ''}
           </p>
-          <div className="flex items-center gap-2">
-            {SOCIALS.map((social) => (
-              <a
-                key={social.label}
-                href="#"
-                aria-label={social.label}
-                className="flex h-9 w-9 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-xs font-bold text-slate-300 transition hover:border-teal-400/40 hover:text-white"
-              >
-                {social.short}
-              </a>
-            ))}
-          </div>
+          {socialEntries.length ? (
+            <div className="flex flex-wrap items-center gap-2">
+              {socialEntries.map(([key, url]) => (
+                <a
+                  key={key}
+                  href={url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label={SOCIAL_LABELS[key] ?? key}
+                  className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-semibold text-slate-300 transition hover:border-teal-400/40 hover:text-white"
+                >
+                  {SOCIAL_LABELS[key] ?? key}
+                </a>
+              ))}
+            </div>
+          ) : null}
         </div>
       </div>
     </footer>

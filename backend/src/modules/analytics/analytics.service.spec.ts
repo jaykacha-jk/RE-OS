@@ -59,9 +59,9 @@ describe('AnalyticsService', () => {
   // RBAC scope resolution
   // ===========================================================================
   describe('resolveScope (RBAC visibility)', () => {
-    it('org owner / admin / marketing get org-wide scope', async () => {
+    it('org owner / admin get org-wide scope', async () => {
       const { service, repo } = buildService();
-      for (const role of ['super_admin', 'org_owner', 'org_admin', 'marketing_user']) {
+      for (const role of ['super_admin', 'org_owner', 'org_admin']) {
         const scope = await service.resolveScope(makeUser([role]), TENANT);
         expect(scope).toEqual({ type: 'all' });
       }

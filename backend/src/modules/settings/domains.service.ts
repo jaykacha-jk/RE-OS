@@ -116,6 +116,7 @@ export class DomainsService {
       isPrimary: dto.is_primary,
       sslStatus: dto.ssl_status,
     });
+    if (!row) throw new NotFoundException('Domain not found');
 
     await this.audit.record({
       actor,
@@ -175,6 +176,7 @@ export class DomainsService {
       verifiedAt: verified ? new Date() : null,
       lastCheckedAt: new Date(),
     });
+    if (!row) throw new NotFoundException('Domain not found');
 
     await this.audit.record({
       actor,

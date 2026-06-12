@@ -48,6 +48,7 @@ export default function ChatInboxPage() {
   const canAssign = hasPermission(getSession(), 'chat.conversations.assign');
   const canConvert = hasPermission(getSession(), 'chat.conversations.convert');
   const canSend = hasPermission(getSession(), 'chat.messages.send');
+  const canClose = hasPermission(getSession(), 'chat.conversations.update');
 
   const loadList = useCallback(async () => {
     setLoadingList(true);
@@ -296,7 +297,7 @@ export default function ChatInboxPage() {
                       Assign
                     </button>
                   )}
-                  {active.status !== 'closed' && active.status !== 'archived' && (
+                  {canClose && active.status !== 'closed' && active.status !== 'archived' && (
                     <button
                       type="button"
                       onClick={() => void closeConversation(active.id).then(() => loadThread(active.id))}

@@ -9,15 +9,21 @@ import {
 import { randomBytes } from 'crypto';
 import type { Request, Response } from 'express';
 
+import type { ErrorTrackingService } from '../observability/error-tracking.service';
+
 @Catch()
 export class HttpExceptionFilter implements ExceptionFilter {
   private readonly logger = new Logger('HttpExceptionFilter');
+
+  constructor(private readonly errorTracking?: ErrorTrackingService) {}
 
   catch(exception: unknown, host: ArgumentsHost) {
     const ctx = host.switchToHttp();
     const response = ctx.getResponse<Response>();
     const request = ctx.getRequest<Request>();
-    const requestId = randomBytes(16).toString('hex');
+    const requestId =
+      (request as (Request & { requestId?: string }) | undefined)?.requestId ??
+      randomBytes(16).toString('hex');
 
     let status = HttpStatus.INTERNAL_SERVER_ERROR;
     let code = 'INTERNAL_ERROR';
@@ -61,6 +67,14 @@ export class HttpExceptionFilter implements ExceptionFilter {
         `${method} ${url} -> ${status} [${requestId}] ${message}`,
         stack,
       );
+      this.errorTracking?.captureException(exception, {
+        requestId,
+        method,
+        url,
+        statusCode: status,
+        tenantId:
+          (request as (Request & { tenantId?: string | null }) | undefined)?.tenantId ?? null,
+      });
     } else {
       this.logger.debug(`${method} ${url} -> ${status} [${requestId}] ${message}`);
     }

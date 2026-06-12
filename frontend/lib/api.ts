@@ -1,6 +1,6 @@
 import { clearSession, getSession, saveSession, type AuthSession } from './auth';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4545';
 
 export type ApiEnvelope<T> = {
   data: T;

@@ -13,7 +13,9 @@ import { DomainEventBus } from '../../events/domain-event-bus';
 import { DOMAIN_EVENTS } from '../../events/domain-events';
 import { AuditService, type AuditRequestMeta } from '../audit/audit.service';
 import {
+  CRM_CONTACT_PII_ACCESS_ROLES,
   CRM_FULL_ACCESS_ROLES,
+  CRM_OPERATIONAL_PII_ACCESS_ROLES,
   CRM_STAGE_JUMP_ROLES,
   CRM_TEAM_ACCESS_ROLES,
   INQUIRY_ACTIVITY_TYPES,
@@ -173,28 +175,43 @@ export class CrmService {
     );
   }
 
+  private hasAnyRole(user: AuthUser | null | undefined, roles: readonly string[]): boolean {
+    if (!user) return true;
+    return user.roles.some((role) => roles.includes(role));
+  }
+
+  private canSeeContactPii(user: AuthUser | null | undefined): boolean {
+    return this.hasAnyRole(user, CRM_CONTACT_PII_ACCESS_ROLES);
+  }
+
+  private canSeeOperationalPii(user: AuthUser | null | undefined): boolean {
+    return this.hasAnyRole(user, CRM_OPERATIONAL_PII_ACCESS_ROLES);
+  }
+
   // ===========================================================================
   // Mappers
   // ===========================================================================
 
-  private mapListItem(i: InquiryBasic) {
+  private mapListItem(i: InquiryBasic, user?: AuthUser | null) {
+    const contactVisible = this.canSeeContactPii(user);
+    const operationalVisible = this.canSeeOperationalPii(user);
     return {
       id: i.id,
       inquiry_code: i.inquiry_code,
       client_name: i.client_name,
-      phone: i.phone,
-      email: i.email,
-      whatsapp: i.whatsapp,
+      phone: contactVisible ? i.phone : null,
+      email: operationalVisible ? i.email : null,
+      whatsapp: contactVisible ? i.whatsapp : null,
       stage: i.stage,
       priority: i.priority,
       temperature: i.temperature,
-      lead_score: i.lead_score,
+      lead_score: operationalVisible ? i.lead_score : null,
       requirement_type: i.requirement_type,
       property_type: i.property_type,
       preferred_location: i.preferred_location,
       bedrooms: i.bedrooms,
-      budget_min: this.toNum(i.budget_min),
-      budget_max: this.toNum(i.budget_max),
+      budget_min: operationalVisible ? this.toNum(i.budget_min) : null,
+      budget_max: operationalVisible ? this.toNum(i.budget_max) : null,
       purchase_timeline: i.purchase_timeline,
       source_id: i.source_id,
       source_name: i.source?.name ?? i.source_name ?? null,
@@ -210,23 +227,24 @@ export class CrmService {
     };
   }
 
-  private mapDetail(i: InquiryDetail) {
+  private mapDetail(i: InquiryDetail, user?: AuthUser | null) {
+    const operationalVisible = this.canSeeOperationalPii(user);
     return {
-      ...this.mapListItem(i as unknown as InquiryBasic),
-      remarks: i.remarks,
-      lost_reason: i.lost_reason,
-      no_property_reason: i.no_property_reason,
-      created_by: i.created_by,
-      updated_by: i.updated_by,
+      ...this.mapListItem(i as unknown as InquiryBasic, user),
+      remarks: operationalVisible ? i.remarks : null,
+      lost_reason: operationalVisible ? i.lost_reason : null,
+      no_property_reason: operationalVisible ? i.no_property_reason : null,
+      created_by: operationalVisible ? i.created_by : null,
+      updated_by: operationalVisible ? i.updated_by : null,
       notes: i.notes.map((n) => ({
         id: n.id,
-        note: n.note,
-        created_by: n.created_by,
-        created_by_email: n.created_by_email,
+        note: operationalVisible ? n.note : null,
+        created_by: operationalVisible ? n.created_by : null,
+        created_by_email: operationalVisible ? n.created_by_email : null,
         created_at: n.created_at.toISOString(),
       })),
-      followups: i.followups.map((f) => this.mapFollowup(f)),
-      site_visits: i.site_visits.map((s) => this.mapSiteVisit(s)),
+      followups: i.followups.map((f) => this.mapFollowup(f, user)),
+      site_visits: i.site_visits.map((s) => this.mapSiteVisit(s, user)),
     };
   }
 
@@ -243,14 +261,15 @@ export class CrmService {
     employee?: {
       user?: { first_name: string | null; last_name: string | null; email: string } | null;
     } | null;
-  }) {
+  }, user?: AuthUser | null) {
+    const operationalVisible = this.canSeeOperationalPii(user);
     return {
       id: f.id,
       followup_date: f.followup_date.toISOString().slice(0, 10),
       followup_time: f.followup_time,
       followup_type: f.followup_type,
       status: f.status,
-      notes: f.notes,
+      notes: operationalVisible ? f.notes : null,
       completed_at: f.completed_at?.toISOString() ?? null,
       assigned_employee_id: f.assigned_employee_id,
       assigned_employee_name: this.employeeName(f.employee),
@@ -271,13 +290,14 @@ export class CrmService {
       user?: { first_name: string | null; last_name: string | null; email: string } | null;
     } | null;
     property?: { id: string; property_code: string; title: string } | null;
-  }) {
+  }, user?: AuthUser | null) {
+    const operationalVisible = this.canSeeOperationalPii(user);
     return {
       id: s.id,
       scheduled_at: s.scheduled_at.toISOString(),
       completed_at: s.completed_at?.toISOString() ?? null,
       status: s.status,
-      notes: s.notes,
+      notes: operationalVisible ? s.notes : null,
       property_id: s.property_id,
       property: s.property
         ? { id: s.property.id, property_code: s.property.property_code, title: s.property.title }
@@ -357,7 +377,7 @@ export class CrmService {
     });
 
     const created = await this.repo.findById(tenantId, id);
-    const mapped = this.mapDetail(created!);
+    const mapped = this.mapDetail(created!, actor);
 
     await this.auditService.record({
       actor,
@@ -449,7 +469,7 @@ export class CrmService {
       actorEmail: null,
     });
     const created = await this.repo.findById(org.id, id);
-    const mapped = this.mapDetail(created!);
+    const mapped = this.mapDetail(created!, null);
 
     await this.auditService.record({
       actor: null,
@@ -511,7 +531,7 @@ export class CrmService {
     });
 
     return {
-      data: rows.map((row) => this.mapListItem(row as InquiryBasic)),
+      data: rows.map((row) => this.mapListItem(row as InquiryBasic, user)),
       meta: { page, per_page: perPage, total, total_pages: Math.ceil(total / perPage) || 1 },
     };
   }
@@ -520,7 +540,7 @@ export class CrmService {
     const inquiry = await this.repo.findById(tenantId, id);
     if (!inquiry) throw new NotFoundException('Inquiry not found');
     await this.assertCanAccess(user, tenantId, inquiry);
-    return this.mapDetail(inquiry);
+    return this.mapDetail(inquiry, user);
   }
 
   async update(
@@ -604,7 +624,7 @@ export class CrmService {
     await this.repo.updateInquiry({ tenantId, id, data, historyEntries });
 
     const updated = await this.repo.findById(tenantId, id);
-    const mapped = this.mapDetail(updated!);
+    const mapped = this.mapDetail(updated!, user);
 
     await this.auditService.record({
       actor: user,
@@ -658,7 +678,7 @@ export class CrmService {
     const from = existing.stage;
     const to = dto.stage;
 
-    if (from === to) return this.mapDetail(existing);
+    if (from === to) return this.mapDetail(existing, user);
 
     this.validateStageTransition(from, to, this.canJumpStages(user));
 
@@ -716,7 +736,7 @@ export class CrmService {
       meta,
     });
 
-    return this.mapDetail(updated!);
+    return this.mapDetail(updated!, user);
   }
 
   // ===========================================================================
@@ -770,7 +790,7 @@ export class CrmService {
     });
 
     const updated = await this.repo.findById(tenantId, id);
-    return this.mapDetail(updated!);
+    return this.mapDetail(updated!, user);
   }
 
   // ===========================================================================
@@ -886,11 +906,12 @@ export class CrmService {
   async listNotes(tenantId: string, user: AuthUser, id: string) {
     await this.getAccessibleInquiry(tenantId, user, id);
     const rows = await this.repo.listNotes(tenantId, id);
+    const operationalVisible = this.canSeeOperationalPii(user);
     return rows.map((n) => ({
       id: n.id,
-      note: n.note,
-      created_by: n.created_by,
-      created_by_email: n.created_by_email,
+      note: operationalVisible ? n.note : null,
+      created_by: operationalVisible ? n.created_by : null,
+      created_by_email: operationalVisible ? n.created_by_email : null,
       created_at: n.created_at.toISOString(),
     }));
   }
@@ -961,13 +982,13 @@ export class CrmService {
     }
 
     const full = await this.repo.findFollowup(tenantId, id, followup.id);
-    return this.mapFollowup({ ...followup, employee: null, ...(full ?? {}) });
+    return this.mapFollowup({ ...followup, employee: null, ...(full ?? {}) }, user);
   }
 
   async listFollowups(tenantId: string, user: AuthUser, id: string) {
     await this.getAccessibleInquiry(tenantId, user, id);
     const rows = await this.repo.listFollowups(tenantId, id);
-    return rows.map((f) => this.mapFollowup(f));
+    return rows.map((f) => this.mapFollowup(f, user));
   }
 
   async updateFollowup(
@@ -992,7 +1013,8 @@ export class CrmService {
       data.completed_at = dto.status === 'completed' ? new Date() : null;
     }
 
-    const updated = await this.repo.updateFollowup(followupId, data);
+    const updated = await this.repo.updateFollowup(tenantId, id, followupId, data);
+    if (!updated) throw new NotFoundException('Follow-up not found');
 
     await this.auditService.record({
       actor: user,
@@ -1018,7 +1040,7 @@ export class CrmService {
       }
     }
 
-    return this.mapFollowup(updated);
+    return this.mapFollowup(updated, user);
   }
 
   // ===========================================================================
@@ -1096,13 +1118,13 @@ export class CrmService {
     }
 
     const full = await this.repo.findSiteVisit(tenantId, id, visit.id);
-    return this.mapSiteVisit({ ...visit, employee: null, property: null, ...(full ?? {}) });
+    return this.mapSiteVisit({ ...visit, employee: null, property: null, ...(full ?? {}) }, user);
   }
 
   async listSiteVisits(tenantId: string, user: AuthUser, id: string) {
     await this.getAccessibleInquiry(tenantId, user, id);
     const rows = await this.repo.listSiteVisits(tenantId, id);
-    return rows.map((s) => this.mapSiteVisit(s));
+    return rows.map((s) => this.mapSiteVisit(s, user));
   }
 
   async updateSiteVisit(
@@ -1142,6 +1164,7 @@ export class CrmService {
       markCompleted: willComplete,
       actorId: user.userId,
     });
+    if (!updated) throw new NotFoundException('Site visit not found');
 
     await this.auditService.record({
       actor: user,
@@ -1153,7 +1176,7 @@ export class CrmService {
       meta,
     });
 
-    return this.mapSiteVisit(updated);
+    return this.mapSiteVisit(updated, user);
   }
 
   // ===========================================================================
@@ -1259,7 +1282,8 @@ export class CrmService {
     if (dto.code !== undefined) data.code = dto.code ?? null;
     if (dto.is_active !== undefined) data.is_active = dto.is_active;
 
-    const updated = await this.repo.updateLeadSource(id, data);
+    const updated = await this.repo.updateLeadSource(tenantId, id, data);
+    if (!updated) throw new NotFoundException('Lead source not found');
 
     await this.auditService.record({
       actor: user,

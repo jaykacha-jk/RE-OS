@@ -16,6 +16,10 @@ function qs(params: Record<string, string | number | undefined>) {
   return s ? `?${s}` : '';
 }
 
+export function isRealVoiceProviderAvailable() {
+  return ['twilio', 'exotel'].includes((process.env.NEXT_PUBLIC_VOICE_PROVIDER ?? '').toLowerCase());
+}
+
 // --- Types -------------------------------------------------------------------
 
 export type AiDashboard = {

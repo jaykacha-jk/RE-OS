@@ -12,6 +12,11 @@ describe('QueueService (in-memory driver)', () => {
     process.env = { ...OLD_ENV };
     delete process.env.REDIS_URL;
     delete process.env.REDIS_HOST;
+    delete process.env.NODE_ENV;
+  });
+
+  afterEach(() => {
+    jest.dontMock('bullmq');
   });
 
   afterAll(() => {
@@ -22,6 +27,15 @@ describe('QueueService (in-memory driver)', () => {
     const svc = new QueueService();
     svc.onModuleInit();
     expect(svc.activeDriver).toBe('memory');
+  });
+
+  it('fails fast in production when Redis is not configured', () => {
+    process.env.NODE_ENV = 'production';
+    const svc = new QueueService();
+
+    expect(() => svc.onModuleInit()).toThrow(
+      'REDIS_URL or REDIS_HOST is required in production for QueueService',
+    );
   });
 
   it('processes an enqueued job asynchronously via the registered handler', async () => {
@@ -76,9 +90,29 @@ describe('QueueService (in-memory driver)', () => {
   });
 
   it('uses the memory driver even if REDIS_HOST is set but bullmq import fails gracefully', () => {
+    process.env.REDIS_HOST = '127.0.0.1';
+    jest.doMock('bullmq', () => {
+      throw new Error('module not installed');
+    });
+
     // Memory fallback is the safety net; without a reachable redis the driver
     // may still initialise bullmq lazily, so we only assert it does not throw.
     const svc = new QueueService();
     expect(() => svc.onModuleInit()).not.toThrow();
+    expect(svc.activeDriver).toBe('memory');
+  });
+
+  it('fails fast in production when BullMQ cannot initialize', () => {
+    process.env.NODE_ENV = 'production';
+    process.env.REDIS_HOST = '127.0.0.1';
+    jest.doMock('bullmq', () => {
+      throw new Error('module not installed');
+    });
+
+    const svc = new QueueService();
+
+    expect(() => svc.onModuleInit()).toThrow(
+      'BullMQ queue initialization failed in production: module not installed',
+    );
   });
 });

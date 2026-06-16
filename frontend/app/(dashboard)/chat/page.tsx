@@ -22,7 +22,7 @@ import {
   type ConversationActivities,
   type Message,
 } from '../../../lib/chat';
-import { employeeLabel, fetchEmployees, type EmployeeOption } from '../../../lib/crm-api';
+import { fetchEmployees, type EmployeeOption } from '../../../lib/crm-api';
 
 export default function ChatInboxPage() {
   const [conversations, setConversations] = useState<Conversation[]>([]);

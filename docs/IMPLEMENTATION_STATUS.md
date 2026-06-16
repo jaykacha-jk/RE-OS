@@ -1,6 +1,6 @@
 # RE-OS Implementation Status
 
-**Last updated:** 2026-06-12 (Phase 0 hardening — honest assistant labels)  
+**Last updated:** 2026-06-13 (Phase 0 RBAC/navigation/auth production hardening)  
 **Current phase:** Phase 0 go-to-market hardening after Phase 10 assistant automation  
 **Legend:** ✅ Done · 🟡 Partial / scaffold only · ❌ Not started
 
@@ -94,13 +94,13 @@
 |---|------|--------|-------|
 | 1 | `POST /api/v1/auth/login` | ✅ | RS256 + bcrypt; super admin + tenant |
 | 2 | `POST /api/v1/auth/refresh` | ✅ | Single-use rotation + token-family revocation/audit on reuse |
-| 3 | `POST /api/v1/auth/logout` | ✅ | Revokes refresh token |
-| 4 | `GET /api/v1/auth/me` | ✅ | JWT guard wired |
+| 3 | `POST /api/v1/auth/logout` | ✅ | Revokes refresh token + clears auth cookies |
+| 4 | `GET /api/v1/auth/me` | ✅ | JWT guard wired; returns roles, permissions, feature flags |
 | 5 | Login / refresh / logout DTOs | ✅ | class-validator |
 | 6 | bcrypt password verify | ✅ | BR-A02 ready |
 | 7 | JWT RS256 sign (access token) | ✅ | `.keys/` or env PEM |
 | 8 | JWT RS256 verify (guard) | ✅ | `.keys/` or env PEM |
-| 9 | Refresh token storage (hashed) | ✅ | Prisma model + repo, with `token_family_id` |
+| 9 | Refresh token storage (hashed) | ✅ | Prisma model + repo, with `token_family_id`; browser auth uses httpOnly cookies |
 | 10 | `POST /auth/forgot-password` | 🟡 | Creates reset token; email dispatch deferred |
 | 11 | `POST /auth/reset-password` | ✅ | Consumes token + resets password |
 | 12 | Failed login lockout (BR-A03) | ✅ | Locks after 5 failed attempts |
@@ -112,11 +112,11 @@
 | # | Item | Status |
 |---|------|--------|
 | 1 | `JwtAuthGuard` | ✅ |
-| 2 | `PermissionsGuard` | ✅ |
+| 2 | `PermissionsGuard` | ✅ | Fail-closed; routes require explicit permissions |
 | 3 | `@RequirePermissions()` decorator | ✅ |
 | 4 | `@CurrentUser()` / `@TenantId()` decorators | ✅ |
 | 5 | `TenantGuard` (middleware) | ✅ |
-| 6 | RBAC seed in database | ✅ | Platform + employee permissions; super_admin mapped |
+| 6 | RBAC seed in database | ✅ | Platform + employee permissions; super_admin mapped; notification preference write permission split |
 | 7 | Role/permission load on login | ✅ | Platform super_admin permissions loaded from DB |
 | 8 | Tenant isolation integration tests | ✅ | `tenant-isolation.integration.spec.ts` covers public listings, slug lookups, and public inquiry property lookup across tenants |
 | 9 | Rate limiting | ✅ | Global + stricter auth throttles |
@@ -548,7 +548,7 @@ Notifications, Chat, Billing, AI Agent — intentionally not started in Phase 4.
 |------|-------|
 | Prisma models: `notifications`, `notification_preferences`, `notification_templates`, `notification_delivery_logs`, `notification_queue` | Migration `20260609140000_add_notifications_domain` |
 | Domain event bus (`DomainEventBus`) + `DOMAIN_EVENTS` keys | `backend/src/events/` |
-| Queue abstraction (`QueueService`) — BullMQ when Redis configured, in-memory fallback otherwise | `backend/src/jobs/` |
+| Queue abstraction (`QueueService`) — BullMQ/Redis required in production; in-memory fallback is local/test-only | `backend/src/jobs/` |
 | Email provider interface + dev logger + production stub | `backend/src/providers/email/` |
 | Automation engine (`AutomationService`) — `AUTOMATION_RULES` + recipient strategies | Subscribes to all domain events |
 | Notification dispatcher (in-app persist + realtime + email enqueue) | `NotificationDispatcherService` |
@@ -800,8 +800,8 @@ AI Agent and Mobile Apps — intentionally not started in Phase 9.
 | Structured logging | ✅ `RequestLoggingMiddleware` emits JSON request logs (`LOG_FORMAT=json`) with `request_id` correlation echoed in responses + error bodies |
 | Postgres backups + restore | ✅ `scripts/db-backup.sh` / `scripts/db-restore.sh` (pg_dump custom format, integrity check, retention, optional S3), compose `backup` service, runbook `docs/BACKUP_RUNBOOK.md` |
 
-### 🟡 Remaining Production Hardening
+### ✅ Production Hardening Completed
 
 | Item | Notes |
 |------|-------|
-| Redis-backed queues/caches | Deployed environments still need Redis as the default queue/cache backend (P0-7). |
+| Redis-backed queues/caches | BullMQ queues and shared TTL caches require Redis in production; local/test retain in-memory fallback. |

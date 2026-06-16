@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
   UnprocessableEntityException,
@@ -17,6 +18,13 @@ import { DOMAIN_EVENTS } from '../../events/domain-events';
 import { AuditService, type AuditRequestMeta } from '../audit/audit.service';
 
 const INVITATION_TTL_DAYS = 7;
+const ROLE_RANK: Record<string, number> = {
+  telecaller: 1,
+  sales_executive: 2,
+  sales_manager: 3,
+  org_admin: 4,
+  org_owner: 5,
+};
 
 @Injectable()
 export class EmployeesService {
@@ -88,6 +96,36 @@ export class EmployeesService {
     return org;
   }
 
+  private assertCanAssignRole(actor: AuthUser | undefined, targetRoleCode: string) {
+    const targetRank = ROLE_RANK[targetRoleCode] ?? 0;
+    if (!actor || targetRank === 0) {
+      throw new ForbiddenException('Insufficient role hierarchy to assign employee role');
+    }
+
+    const actorRank = Math.max(...actor.roles.map((role) => ROLE_RANK[role] ?? 0), 0);
+    if (actorRank <= targetRank) {
+      throw new ForbiddenException('Insufficient role hierarchy to assign employee role');
+    }
+  }
+
+  private roleCodeFor(employee: {
+    user: { user_roles: { role: { code: string } }[] };
+  }): string | null {
+    return employee.user.user_roles[0]?.role.code ?? null;
+  }
+
+  private assertCanModifyEmployeeRole(actor: AuthUser | undefined, targetRoleCode: string | null) {
+    const targetRank = targetRoleCode ? ROLE_RANK[targetRoleCode] ?? 0 : 0;
+    if (!actor || targetRank === 0) {
+      throw new ForbiddenException('Insufficient role hierarchy to modify employee role');
+    }
+
+    const actorRank = Math.max(...actor.roles.map((role) => ROLE_RANK[role] ?? 0), 0);
+    if (actorRank <= targetRank) {
+      throw new ForbiddenException('Insufficient role hierarchy to modify employee role');
+    }
+  }
+
   async listEmployees(tenantId: string, query: ListEmployeesQueryDto) {
     const page = query.page ?? 1;
     const perPage = query.per_page ?? 20;
@@ -146,6 +184,7 @@ export class EmployeesService {
 
     const role = await this.employeesRepository.findRoleByCode(dto.role_code);
     if (!role) throw new NotFoundException('Role is not seeded');
+    this.assertCanAssignRole(actor, dto.role_code);
 
     const invitationToken = randomBytes(32).toString('base64url');
     const tokenHash = createHash('sha256').update(invitationToken).digest('hex');
@@ -227,6 +266,7 @@ export class EmployeesService {
   ) {
     const existing = await this.employeesRepository.findEmployeeById(tenantId, employeeId);
     if (!existing) throw new NotFoundException('Employee not found');
+    this.assertCanModifyEmployeeRole(actor, this.roleCodeFor(existing));
 
     if (dto.manager_id) {
       const manager = await this.employeesRepository.findEmployeeById(tenantId, dto.manager_id);
@@ -242,6 +282,7 @@ export class EmployeesService {
     if (dto.role_code) {
       const role = await this.employeesRepository.findRoleByCode(dto.role_code);
       if (!role) throw new NotFoundException('Role is not seeded');
+      this.assertCanAssignRole(actor, dto.role_code);
       roleId = role.id;
     }
 
@@ -278,6 +319,7 @@ export class EmployeesService {
   ) {
     const existing = await this.employeesRepository.findEmployeeById(tenantId, employeeId);
     if (!existing) throw new NotFoundException('Employee not found');
+    this.assertCanModifyEmployeeRole(actor, this.roleCodeFor(existing));
 
     // BR-E02: inquiry reassignment enforced when inquiries module ships (Phase 3).
     const deleted = await this.employeesRepository.softDeleteEmployee(tenantId, employeeId);

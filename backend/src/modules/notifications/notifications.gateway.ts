@@ -7,6 +7,8 @@ import {
 import { importSPKI, jwtVerify } from 'jose';
 import type { Server, Socket } from 'socket.io';
 
+import { AUTH_ACCESS_COOKIE } from '../../common/constants/auth.constants';
+import { readCookie } from '../../common/utils/auth-cookies.util';
 import { getJwtPublicKeyPem } from '../../config/jwt-keys';
 
 type JwtPayload = {
@@ -28,8 +30,9 @@ function userRoom(userId: string) {
 /**
  * Socket.io gateway for realtime notification delivery.
  *
- * Auth: clients pass their access token via `handshake.auth.token` (or
- * `?token=`); it is verified with the same RS256 public key as the HTTP guard.
+ * Auth: clients pass their access token via `handshake.auth.token`, `?token=`,
+ * Authorization header, or the httpOnly access cookie. The token is verified
+ * with the same RS256 public key as the HTTP guard.
  * Each socket joins a private `user:{id}` room (tenant isolation by
  * construction — a user only ever receives events targeted at their own room),
  * and Super Admins additionally join the `platform` room.
@@ -94,7 +97,7 @@ export class NotificationsGateway implements OnGatewayConnection {
     if (typeof header === 'string' && header.startsWith('Bearer ')) {
       return header.slice('Bearer '.length);
     }
-    return null;
+    return readCookie({ headers: client.handshake.headers }, AUTH_ACCESS_COOKIE) ?? null;
   }
 
   // ---- Emit helpers (called by the dispatcher) -----------------------------

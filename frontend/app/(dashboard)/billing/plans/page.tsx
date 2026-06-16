@@ -8,10 +8,13 @@ import {
   formatLimit,
   formatMoney,
   formatStorage,
+  isAssistedBillingMode,
   subscribe,
   type BillingPlan,
   type BillingSubscription,
 } from '../../../../lib/billing';
+import { ActionGuard } from '../../../../components/shared/ActionGuard';
+import { getSession, hasPermission, isFeatureEnabled } from '../../../../lib/auth';
 
 export default function BillingPlansPage() {
   const [plans, setPlans] = useState<BillingPlan[]>([]);
@@ -20,6 +23,7 @@ export default function BillingPlansPage() {
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const assistedBilling = isAssistedBillingMode();
 
   async function load() {
     const [planRows, subscriptionRow] = await Promise.all([fetchPlans(), fetchSubscription()]);
@@ -32,13 +36,20 @@ export default function BillingPlansPage() {
   }, []);
 
   async function choose(plan: BillingPlan) {
+    const session = getSession();
+    if (!hasPermission(session, 'billing.subscription.update') || !isFeatureEnabled(session, 'billing')) return;
     setBusy(plan.code);
     setError(null);
     setMessage(null);
     try {
       const result = await subscribe(plan.code, cycle);
-      if (result.checkout.checkout_url) {
+      if (result.checkout.checkout_url && !assistedBilling) {
         window.location.assign(result.checkout.checkout_url);
+        return;
+      }
+      if (assistedBilling || result.checkout.provider === 'assisted') {
+        setMessage(`Assisted billing request recorded for ${plan.name}. RE-OS will activate payment and GST invoice handling offline for launch.`);
+        await load();
         return;
       }
       if (subscription) {
@@ -59,7 +70,11 @@ export default function BillingPlansPage() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold text-slate-900">Plan comparison</h1>
-          <p className="text-sm text-slate-500">Upgrade or downgrade based on properties, team size, and storage.</p>
+          <p className="text-sm text-slate-500">
+            {assistedBilling
+              ? 'Launch billing is assisted: choose a plan to record the request; payment and GST invoicing are handled offline.'
+              : 'Upgrade or downgrade based on properties, team size, and storage.'}
+          </p>
         </div>
         <div className="rounded border bg-white p-1 text-sm">
           {(['monthly', 'yearly'] as const).map((value) => (
@@ -82,6 +97,12 @@ export default function BillingPlansPage() {
         {plans.map((plan) => {
           const isCurrent = subscription?.plan.code === plan.code;
           const price = cycle === 'yearly' ? plan.yearly_price : plan.monthly_price;
+          const buttonLabel = planButtonLabel({
+            assistedBilling,
+            busy: busy === plan.code,
+            current: isCurrent,
+            hasSubscription: !!subscription,
+          });
           return (
             <div key={plan.id} className={`rounded-lg border bg-white p-5 ${isCurrent ? 'border-teal-500 ring-1 ring-teal-500' : ''}`}>
               <div className="flex items-center justify-between">
@@ -96,18 +117,45 @@ export default function BillingPlansPage() {
                 <li>{formatStorage(plan.storage_limit)} storage</li>
                 <li>{plan.features.priority_support ? 'Priority support' : 'Standard support'}</li>
               </ul>
-              <button
-                type="button"
-                disabled={busy === plan.code || isCurrent}
-                onClick={() => choose(plan)}
-                className="mt-6 w-full rounded bg-teal-700 px-4 py-2 text-sm font-medium text-white hover:bg-teal-800 disabled:cursor-not-allowed disabled:bg-slate-300"
+              <ActionGuard
+                permission="billing.subscription.update"
+                featureFlag="billing"
+                fallback={
+                  <p className="mt-6 rounded bg-slate-100 px-4 py-2 text-center text-sm font-medium text-slate-600">
+                    Billing changes require owner approval.
+                  </p>
+                }
               >
-                {isCurrent ? 'Current plan' : busy === plan.code ? 'Creating checkout...' : subscription ? 'Start checkout' : 'Start subscription'}
-              </button>
+                <button
+                  type="button"
+                  disabled={busy === plan.code || isCurrent}
+                  onClick={() => choose(plan)}
+                  className="mt-6 w-full rounded bg-teal-700 px-4 py-2 text-sm font-medium text-white hover:bg-teal-800 disabled:cursor-not-allowed disabled:bg-slate-300"
+                >
+                  {buttonLabel}
+                </button>
+              </ActionGuard>
             </div>
           );
         })}
       </div>
     </div>
   );
+}
+
+function planButtonLabel({
+  assistedBilling,
+  busy,
+  current,
+  hasSubscription,
+}: {
+  assistedBilling: boolean;
+  busy: boolean;
+  current: boolean;
+  hasSubscription: boolean;
+}) {
+  if (current) return 'Current plan';
+  if (busy) return assistedBilling ? 'Recording request...' : 'Creating checkout...';
+  if (assistedBilling) return hasSubscription ? 'Request plan change' : 'Request activation';
+  return hasSubscription ? 'Start checkout' : 'Start subscription';
 }

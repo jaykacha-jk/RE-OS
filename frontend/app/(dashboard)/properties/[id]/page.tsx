@@ -1,11 +1,13 @@
 'use client';
 
 import Link from 'next/link';
+import Image from 'next/image';
 import { useParams, useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
 
+import { ActionGuard } from '../../../../components/shared/ActionGuard';
 import { apiFetch } from '../../../../lib/api';
-import { getSession, hasPermission } from '../../../../lib/auth';
+import { getSession } from '../../../../lib/auth';
 import {
   formatINR,
   humanize,
@@ -37,17 +39,6 @@ export default function PropertyDetailPage() {
   const [loading, setLoading] = useState(true);
   const [showAssign, setShowAssign] = useState(false);
   const [imageUrl, setImageUrl] = useState('');
-
-  const [canUpdate, setCanUpdate] = useState(false);
-  const [canDelete, setCanDelete] = useState(false);
-  const [canAssign, setCanAssign] = useState(false);
-
-  useEffect(() => {
-    const s = getSession();
-    setCanUpdate(hasPermission(s, 'properties.update'));
-    setCanDelete(hasPermission(s, 'properties.delete'));
-    setCanAssign(hasPermission(s, 'properties.assign'));
-  }, []);
 
   const load = useCallback(() => {
     const session = getSession();
@@ -168,21 +159,21 @@ export default function PropertyDetailPage() {
           <p className="mt-1 font-mono text-xs text-slate-500">{property.property_code}</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          {canAssign ? (
+          <ActionGuard permission="properties.assign">
             <button onClick={() => setShowAssign(true)} className="rounded border border-slate-300 px-4 py-2 text-sm hover:bg-slate-50">
               Assign
             </button>
-          ) : null}
-          {canUpdate ? (
+          </ActionGuard>
+          <ActionGuard permission="properties.update">
             <Link href={`/properties/${id}/edit`} className="rounded bg-teal-700 px-4 py-2 text-sm font-medium text-white">
               Edit
             </Link>
-          ) : null}
-          {canDelete ? (
+          </ActionGuard>
+          <ActionGuard permission="properties.delete">
             <button onClick={remove} className="rounded border border-red-300 px-4 py-2 text-sm text-red-700 hover:bg-red-50">
               Delete
             </button>
-          ) : null}
+          </ActionGuard>
         </div>
       </div>
 
@@ -196,15 +187,21 @@ export default function PropertyDetailPage() {
             ) : (
               <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
                 {property.images.map((img) => (
-                  // eslint-disable-next-line @next/next/no-img-element
                   <div key={img.id} className="group relative overflow-hidden rounded border border-slate-200">
-                    <img src={img.url} alt={img.alt_text ?? property.title} className="h-32 w-full object-cover" />
+                    <Image
+                      src={img.url}
+                      alt={img.alt_text ?? property.title}
+                      width={320}
+                      height={128}
+                      unoptimized
+                      className="h-32 w-full object-cover"
+                    />
                     {img.is_cover ? (
                       <span className="absolute left-1 top-1 rounded bg-teal-700 px-1.5 py-0.5 text-[10px] font-medium text-white">
                         Cover
                       </span>
                     ) : null}
-                    {canUpdate ? (
+                    <ActionGuard permission="properties.update">
                       <div className="absolute inset-x-0 bottom-0 flex justify-between gap-1 bg-black/50 p-1 opacity-0 transition group-hover:opacity-100">
                         {!img.is_cover ? (
                           <button onClick={() => setCover(img.id)} className="text-[11px] text-white hover:underline">
@@ -215,12 +212,12 @@ export default function PropertyDetailPage() {
                           Delete
                         </button>
                       </div>
-                    ) : null}
+                    </ActionGuard>
                   </div>
                 ))}
               </div>
             )}
-            {canUpdate ? (
+            <ActionGuard permission="properties.update">
               <div className="mt-3 flex gap-2">
                 <input
                   value={imageUrl}
@@ -232,7 +229,7 @@ export default function PropertyDetailPage() {
                   Add image
                 </button>
               </div>
-            ) : null}
+            </ActionGuard>
           </section>
 
           {/* Details */}

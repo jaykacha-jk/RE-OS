@@ -16,6 +16,8 @@ describe('EmployeesService invitations', () => {
       findRoleByCode: jest.fn(),
       createEmployee: jest.fn(),
       findEmployeeById: jest.fn(),
+      updateEmployee: jest.fn(),
+      softDeleteEmployee: jest.fn(),
     };
     const auditService = { record: jest.fn() };
     const events = { emit: jest.fn() };
@@ -107,6 +109,109 @@ describe('EmployeesService invitations', () => {
         }),
       }),
     );
+  });
+
+  it('prevents org_admin users from creating another org_admin', async () => {
+    const { service, employeesRepository } = buildService();
+    employeesRepository.findOrganizationWithUsage.mockResolvedValue({
+      id: 'tenant_1',
+      name: 'Acme Realty',
+      tier: 'starter',
+      organization_usage: { employees_count: 1 },
+    });
+    employeesRepository.findPlanMaxEmployees.mockResolvedValue({ max_employees: 5 });
+    employeesRepository.findUserByEmail.mockResolvedValue(null);
+    employeesRepository.findRoleByCode.mockResolvedValue({
+      id: 'role_admin',
+      code: 'org_admin',
+    });
+
+    await expect(
+      service.createEmployee(
+        'tenant_1',
+        {
+          first_name: 'Asha',
+          last_name: 'Rao',
+          email: 'asha@acme.in',
+          role_code: 'org_admin',
+        },
+        {
+          userId: 'admin_1',
+          tenantId: 'tenant_1',
+          roles: ['org_admin'],
+          permissions: ['employees.create'],
+        },
+      ),
+    ).rejects.toThrow('Insufficient role hierarchy');
+  });
+
+  it('prevents org_admin users from updating an owner account', async () => {
+    const { service, employeesRepository } = buildService();
+    employeesRepository.findEmployeeById.mockResolvedValue({
+      id: 'employee_owner',
+      status: 'active',
+      manager_id: null,
+      joined_at: new Date('2026-06-12T14:00:00.000Z'),
+      user: {
+        id: 'owner_1',
+        email: 'owner@acme.in',
+        phone: '+919876543210',
+        first_name: 'Owner',
+        last_name: 'User',
+        status: 'active',
+        user_roles: [{ role: { code: 'org_owner', name: 'Owner' } }],
+      },
+      manager: null,
+    });
+
+    await expect(
+      service.updateEmployee(
+        'tenant_1',
+        'employee_owner',
+        { first_name: 'Edited' },
+        {
+          userId: 'admin_1',
+          tenantId: 'tenant_1',
+          roles: ['org_admin'],
+          permissions: ['employees.update'],
+        },
+      ),
+    ).rejects.toThrow('Insufficient role hierarchy');
+    expect(employeesRepository.updateEmployee).not.toHaveBeenCalled();
+  });
+
+  it('prevents org_admin users from deleting an owner account', async () => {
+    const { service, employeesRepository } = buildService();
+    employeesRepository.findEmployeeById.mockResolvedValue({
+      id: 'employee_owner',
+      status: 'active',
+      manager_id: null,
+      joined_at: new Date('2026-06-12T14:00:00.000Z'),
+      user: {
+        id: 'owner_1',
+        email: 'owner@acme.in',
+        phone: '+919876543210',
+        first_name: 'Owner',
+        last_name: 'User',
+        status: 'active',
+        user_roles: [{ role: { code: 'org_owner', name: 'Owner' } }],
+      },
+      manager: null,
+    });
+
+    await expect(
+      service.deleteEmployee(
+        'tenant_1',
+        'employee_owner',
+        {
+          userId: 'admin_1',
+          tenantId: 'tenant_1',
+          roles: ['org_admin'],
+          permissions: ['employees.delete'],
+        },
+      ),
+    ).rejects.toThrow('Insufficient role hierarchy');
+    expect(employeesRepository.softDeleteEmployee).not.toHaveBeenCalled();
   });
 });
 

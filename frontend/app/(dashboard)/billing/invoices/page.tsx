@@ -2,11 +2,12 @@
 
 import { useEffect, useState } from 'react';
 
-import { fetchInvoices, formatMoney, type Invoice } from '../../../../lib/billing';
+import { fetchInvoices, formatMoney, isAssistedBillingMode, type Invoice } from '../../../../lib/billing';
 
 export default function InvoicesPage() {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const assistedBilling = isAssistedBillingMode();
 
   useEffect(() => {
     fetchInvoices()
@@ -22,6 +23,15 @@ export default function InvoicesPage() {
       </div>
 
       {error && <div className="rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
+
+      {assistedBilling ? (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900">
+          <p className="font-bold">Invoice PDFs are assisted during launch.</p>
+          <p className="mt-1">
+            The product stores invoice records when payments are processed, but GST PDF generation/upload is handled offline until live billing mode is enabled.
+          </p>
+        </div>
+      ) : null}
 
       <div className="scrollbar-thin overflow-x-auto rounded-lg border bg-white">
         <table className="min-w-full divide-y divide-slate-200 text-sm">

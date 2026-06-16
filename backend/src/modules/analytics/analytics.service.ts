@@ -9,6 +9,7 @@ import {
   ANALYTICS_TEAM_ACCESS_ROLES,
   CURRENCY,
   FUNNEL_STEPS,
+  NO_MATCH_UUID,
   PROPERTY_STATUS_KEYS,
   QUALIFIED_PLUS_STAGES,
   STAGE_RANK,
@@ -28,8 +29,8 @@ import { AnalyticsQueryDto } from './dto/analytics-query.dto';
 const TIER_TO_PLAN: Record<string, string> = {
   basic: 'starter',
   starter: 'starter',
-  pro: 'growth',
-  growth: 'growth',
+  pro: 'pro',
+  growth: 'pro',
   enterprise: 'enterprise',
 };
 
@@ -200,6 +201,9 @@ export class AnalyticsService {
     let won_amount = 0;
     for (const deal of deals) {
       const value =
+        this.toNum(deal.received_commission) ||
+        this.toNum(deal.expected_commission) ||
+        this.toNum(deal.booking_amount) ||
         this.toNum(deal.property?.price) ||
         this.toNum(deal.budget_max) ||
         this.toNum(deal.budget_min);
@@ -234,6 +238,74 @@ export class AnalyticsService {
       .sort((a, b) => b.won - a.won || b.leads - a.leads);
   }
 
+  private async slaData(tenantId: string, scope: AnalyticsScope) {
+    const now = new Date();
+    const staleCutoff = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    const { start: today, end: tomorrow } = this.kolkataDayWindow(now);
+
+    const scopedInquiryWhere = this.repo.buildInquiryWhere(tenantId, scope, {});
+    const followupScope: Prisma.inquiry_followupsWhereInput =
+      scope.type === 'employees'
+        ? { assigned_employee_id: scope.employeeIds.length ? { in: scope.employeeIds } : NO_MATCH_UUID }
+        : {};
+
+    const [staleNewLeads, unassignedLeads, dueTodayFollowups, overdueFollowups, missedFollowups] = await Promise.all([
+      this.repo.countInquiries({
+        ...scopedInquiryWhere,
+        stage: 'NEW',
+        created_at: { lte: staleCutoff },
+      }),
+      scope.type === 'all'
+        ? this.repo.countInquiries({
+            tenant_id: tenantId,
+            deleted_at: null,
+            assigned_employee_id: null,
+            stage: { notIn: ['CLOSED_WON', 'CLOSED_LOST'] },
+          })
+        : Promise.resolve(0),
+      this.repo.countFollowups({
+        tenant_id: tenantId,
+        ...followupScope,
+        status: 'pending',
+        followup_date: { gte: today, lt: tomorrow },
+      }),
+      this.repo.countFollowups({
+        tenant_id: tenantId,
+        ...followupScope,
+        status: 'pending',
+        followup_date: { lt: today },
+      }),
+      this.repo.countFollowups({
+        tenant_id: tenantId,
+        ...followupScope,
+        status: 'missed',
+      }),
+    ]);
+
+    return {
+      stale_new_leads: staleNewLeads,
+      unassigned_leads: unassignedLeads,
+      due_today_followups: dueTodayFollowups,
+      overdue_followups: overdueFollowups,
+      missed_followups: missedFollowups,
+    };
+  }
+
+  private kolkataDayWindow(date: Date) {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Kolkata',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).formatToParts(date);
+    const part = (type: Intl.DateTimeFormatPartTypes) =>
+      Number(parts.find((item) => item.type === type)?.value);
+    const start = new Date(Date.UTC(part('year'), part('month') - 1, part('day')));
+    const end = new Date(start);
+    end.setUTCDate(end.getUTCDate() + 1);
+    return { start, end };
+  }
+
   private trendSince(months: number): Date {
     const since = new Date();
     since.setMonth(since.getMonth() - (months - 1));
@@ -264,6 +336,7 @@ export class AnalyticsService {
         monthlyConv,
         employees,
         teamSize,
+        sla,
       ] = await Promise.all([
         this.propertyKpis(tenantId, scope),
         this.leadKpis(tenantId, scope, range),
@@ -274,6 +347,7 @@ export class AnalyticsService {
         this.repo.monthlyConversion(tenantId, scope, since),
         showPerformance ? this.employeeTable(tenantId, scope, range) : Promise.resolve([]),
         this.repo.countEmployees(tenantId, scope),
+        this.slaData(tenantId, scope),
       ]);
 
       return {
@@ -293,6 +367,7 @@ export class AnalyticsService {
         })),
         employees,
         team_size: teamSize,
+        sla,
         generated_at: new Date().toISOString(),
       };
     });

@@ -14,8 +14,10 @@ import type { Request } from 'express';
 
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RequirePermissions } from '../../common/decorators/require-permissions.decorator';
+import { RequireFeature } from '../../common/decorators/require-feature.decorator';
 import { TenantId } from '../../common/decorators/tenant-id.decorator';
 import type { AuthUser } from '../../common/context/auth-user';
+import { FeatureFlagGuard } from '../../common/guards/feature-flag.guard';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
 import { TenantGuard } from '../../common/guards/tenant.guard';
@@ -44,7 +46,8 @@ function requestMeta(req: Request) {
 
 @ApiTags('AI')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard, TenantGuard, PermissionsGuard)
+@UseGuards(JwtAuthGuard, TenantGuard, PermissionsGuard, FeatureFlagGuard)
+@RequireFeature('ai')
 @Controller('api/v1/ai')
 export class AiController {
   constructor(
@@ -97,7 +100,8 @@ export class AiController {
 
 @ApiTags('AI Voice Agents')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard, TenantGuard, PermissionsGuard)
+@UseGuards(JwtAuthGuard, TenantGuard, PermissionsGuard, FeatureFlagGuard)
+@RequireFeature('ai')
 @Controller('api/v1/ai/agents')
 export class AiAgentsController {
   constructor(private readonly calls: AiCallService) {}
@@ -137,7 +141,8 @@ export class AiAgentsController {
 
 @ApiTags('AI Calls')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard, TenantGuard, PermissionsGuard)
+@UseGuards(JwtAuthGuard, TenantGuard, PermissionsGuard, FeatureFlagGuard)
+@RequireFeature('ai')
 @Controller('api/v1/ai/calls')
 export class AiCallsController {
   constructor(private readonly calls: AiCallService) {}
@@ -182,7 +187,8 @@ export class AiCallsController {
 
 @ApiTags('AI Chat Assistant')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard, TenantGuard, PermissionsGuard)
+@UseGuards(JwtAuthGuard, TenantGuard, PermissionsGuard, FeatureFlagGuard)
+@RequireFeature('ai')
 @Controller('api/v1/ai/chat')
 export class AiChatController {
   constructor(private readonly chat: AiChatService) {}

@@ -82,6 +82,9 @@ export const INQUIRY_PURCHASE_TIMELINES = [
 export const LEAD_SCORE_MIN = 0;
 export const LEAD_SCORE_MAX = 100;
 
+export const COMMISSION_STATUSES = ['pending', 'partial', 'received', 'waived'] as const;
+export type CommissionStatus = (typeof COMMISSION_STATUSES)[number];
+
 // ===========================================================================
 // Follow-ups
 // ===========================================================================

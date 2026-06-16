@@ -32,7 +32,8 @@ const permissions = [
   { code: 'analytics.read', module: 'analytics', description: 'Read organization / team / assigned analytics' },
   { code: 'platform.analytics.read', module: 'platform', description: 'Read platform-wide analytics (Super Admin)' },
   { code: 'audit.logs.read', module: 'audit', description: 'Read audit logs' },
-  { code: 'notifications.read', module: 'notifications', description: 'Read own notifications + manage own preferences' },
+  { code: 'notifications.read', module: 'notifications', description: 'Read own notifications' },
+  { code: 'notifications.preferences.update', module: 'notifications', description: 'Manage own notification preferences' },
   { code: 'notifications.templates.manage', module: 'notifications', description: 'Manage notification templates (admin)' },
   { code: 'chat.conversations.create', module: 'chat', description: 'Create conversations' },
   { code: 'chat.conversations.read', module: 'chat', description: 'Read conversations and messages' },
@@ -190,9 +191,15 @@ const chatAssignedPermissions = [
 ];
 
 // Every authenticated role can read its own notifications + set preferences.
-const notificationSelfPermissions = ['notifications.read'];
+const notificationSelfPermissions = [
+  'notifications.read',
+  'notifications.preferences.update',
+];
 // Admin roles can manage notification templates.
-const notificationAdminPermissions = ['notifications.read', 'notifications.templates.manage'];
+const notificationAdminPermissions = [
+  ...notificationSelfPermissions,
+  'notifications.templates.manage',
+];
 
 const billingAdminPermissions = [
   'billing.plans.read',
@@ -348,8 +355,8 @@ const plans = [
     max_properties: 100,
     max_employees: 5,
     storage_limit_bytes: 5368709120,
-    max_ai_minutes_monthly: 60,
-    features: { crm: true, dashboard: true, notifications: true, chat: true, ai: true, priority_support: false },
+    max_ai_minutes_monthly: 0,
+    features: { crm: true, dashboard: true, notifications: true, chat: true, ai: false, priority_support: false },
   },
   {
     code: 'pro',
@@ -357,10 +364,10 @@ const plans = [
     price_inr_monthly: 1499900,
     price_inr_yearly: 14999000,
     max_properties: 1000,
-    max_employees: 25,
+    max_employees: 50,
     storage_limit_bytes: 53687091200,
-    max_ai_minutes_monthly: 1000,
-    features: { crm: true, dashboard: true, notifications: true, chat: true, ai: true, priority_support: true },
+    max_ai_minutes_monthly: 0,
+    features: { crm: true, dashboard: true, notifications: true, chat: true, ai: false, priority_support: true },
   },
   {
     code: 'enterprise',
@@ -987,7 +994,7 @@ async function seedTenantSettings(org) {
       },
     ],
     ['seo', { meta_title: `${org.name} | Verified properties in ${org.city}`, meta_description: `Browse verified ${org.city} properties from ${org.name}.` }],
-    ['features', { crm: true, chat: true, publicWebsite: true, billing: true, ai: true }],
+    ['features', { crm: true, chat: true, website: true, billing: true, ai: false }],
     ['configuration', { currency: 'INR', timezone: 'Asia/Kolkata', locale: 'en-IN' }],
     ['white_label', { enabled: org.tier !== 'starter', hideReosBranding: org.tier === 'enterprise' }],
   ];

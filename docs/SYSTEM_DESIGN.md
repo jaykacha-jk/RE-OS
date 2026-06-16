@@ -200,6 +200,7 @@ Event envelope standard:
 ## 6. Queue Strategy
 
 - **Default:** BullMQ on Redis  
+- **Production invariant:** API and worker startup fail if Redis/BullMQ is unavailable; the in-memory queue driver is local/test-only.  
 - **Retries:** Exponential backoff, max 5 attempts  
 - **DLQ:** `*-failed` queues monitored by Grafana alert  
 - **Idempotency:** Job payload includes `idempotency_key`; workers check processed keys in Redis  
@@ -287,12 +288,17 @@ Templates stored per tenant with platform defaults. Unsubscribe honored for mark
 
 ## 10. Realtime (Socket.io)
 
-- **Namespaces:** `/tenant/{tenant_id}`  
-- **Auth:** JWT in handshake; validate `tenant_id` match  
-- **Rooms:** `user:{id}`, `chat:{conversation_id}`, `org:broadcast` (managers)  
-- **Scale:** Redis adapter; sticky sessions on ALB  
+- **Namespaces:** `/notifications`, `/chat`
+- **Auth:** RS256 access token from `handshake.auth.token`, `?token=`,
+  `Authorization: Bearer`, or the httpOnly `reos_access` cookie. Cookie auth is
+  the production path through the same-origin Next.js proxy; bearer auth remains
+  a dev/API-client fallback.
+- **Rooms:** `user:{id}` for private delivery and `conv:{conversation_id}` for
+  chat threads after tenant/member access checks.
+- **Scale:** Redis adapter; sticky sessions on ALB.
 
-Events: `notification.new`, `chat.message`, `inquiry.updated` (assigned agent only).
+Events: `notification:received`, `notification:unread_count`,
+`chat:message_new`, `chat:typing`, `chat:conversation_updated`.
 
 ---
 
@@ -307,8 +313,20 @@ Public vs internal:
 | Surface | Auth |
 |---------|------|
 | `/api/v1/public/*` | Optional JWT, rate limited by IP |
-| `/api/v1/*` | JWT required |
+| `/api/v1/*` | RS256 JWT from Bearer token or httpOnly access cookie |
 | `/api/v1/platform/*` | Super Admin role |
+
+The dashboard uses a same-origin Next.js `/api/*` rewrite to the Nest API so
+login, refresh, logout, and authenticated fetches can use httpOnly cookies
+without exposing refresh tokens to browser storage. Next middleware performs an
+early cookie presence check for dashboard routes, while controller guards remain
+the source of truth for authorization.
+
+Protected controllers use fail-closed `PermissionsGuard`: every route must
+declare `@RequirePermissions()` unless it is explicitly marked auth-only.
+Tenant feature gates use `@RequireFeature()` with `FeatureFlagGuard`; AI,
+billing, chat, CRM, analytics, notifications, and custom domains are enforced
+server-side and mirrored in frontend navigation/deep-link guards.
 
 ---
 
@@ -393,10 +411,10 @@ query scoped by `tenant_id`).
 
 **Resolution & caching:** `FeatureFlagsService` and `TenantConfigService` are the
 single source of truth — flags/config are always resolved from the DB (no hard-coded
-flags) and merged over defaults. Reads pass through a Redis-shaped TTL cache
-(`SettingsCacheService`, `PublicAnalyticsCacheService`); writes invalidate the
-tenant's keys. The interface (`wrap()` / `invalidate()`) is swappable to Redis with
-no call-site changes.
+flags) and merged over defaults. Settings, analytics, and public-analytics reads
+pass through shared Redis-backed TTL caches in production; local/test use the
+same `wrap()` / `invalidate()` interface with an in-memory fallback. Writes
+invalidate the tenant's keys.
 
 **Settings categories** are stored generically (one upsert path, one audit path) so
 adding a category is config-only. Each category maps to a write permission

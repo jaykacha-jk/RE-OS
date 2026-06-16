@@ -9,7 +9,7 @@ describe('BillingService', () => {
     price_inr_monthly: 1499900,
     price_inr_yearly: 14999000,
     max_properties: 1000,
-    max_employees: 25,
+    max_employees: 50,
     storage_limit_bytes: 53687091200n,
     max_ai_minutes_monthly: 0,
     features: { chat: true },
@@ -114,7 +114,7 @@ describe('BillingService', () => {
         code: 'pro',
         monthly_price: 1499900,
         property_limit: 1000,
-        employee_limit: 25,
+        employee_limit: 50,
         storage_limit: 53687091200,
       }),
     ]);
@@ -173,6 +173,32 @@ describe('BillingService', () => {
     });
   });
 
+  it('uses assisted billing mode without creating provider checkout', async () => {
+    process.env.BILLING_LAUNCH_MODE = 'assisted';
+    process.env.NODE_ENV = 'production';
+    const { service, repo, mockProvider, razorpayProvider } = setup();
+
+    const result = await service.subscribe(
+      'tenant-1',
+      { plan_code: 'pro', billing_cycle: 'monthly' },
+      { userId: 'user-1', tenantId: 'tenant-1', roles: ['org_owner'], permissions: [] },
+    );
+
+    expect(mockProvider.createSubscription).not.toHaveBeenCalled();
+    expect(razorpayProvider.createSubscription).not.toHaveBeenCalled();
+    expect(repo.createOrReplaceSubscription).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider: 'assisted',
+        status: 'trial',
+      }),
+    );
+    expect(result.checkout).toEqual({
+      provider: 'assisted',
+      subscription_id: expect.stringMatching(/^assisted_tenant-1_/),
+      checkout_url: null,
+    });
+  });
+
   it('activates zero-priced plans without calling a payment provider', async () => {
     const freePlan = {
       ...plan,
@@ -215,7 +241,7 @@ describe('BillingService', () => {
         },
         limits: {
           properties: 1000,
-          employees: 25,
+          employees: 50,
           storage_bytes: 53687091200,
           ai_minutes: 0,
         },

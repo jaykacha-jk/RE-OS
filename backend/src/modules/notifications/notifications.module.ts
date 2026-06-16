@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 
+import { FeatureFlagsModule } from '../../common/feature-flags.module';
 import { AuditModule } from '../audit/audit.module';
 import { EmailModule } from '../../providers/email/email.module';
 import { AutomationService } from './automation.service';
@@ -22,7 +23,7 @@ import { TemplateRenderer } from './template-renderer';
  * decoupled — they emit domain events; this module reacts to them.
  */
 @Module({
-  imports: [AuditModule, EmailModule],
+  imports: [AuditModule, EmailModule, FeatureFlagsModule],
   controllers: [
     NotificationsController,
     NotificationPreferencesController,

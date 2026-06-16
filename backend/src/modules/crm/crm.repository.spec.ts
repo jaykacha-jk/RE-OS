@@ -36,6 +36,22 @@ describe('CrmRepository tenant isolation', () => {
     });
   });
 
+  it('supports an explicit unassigned inquiry filter', () => {
+    const { repo } = setup();
+
+    expect(
+      repo.buildWhere(
+        'tenant-1',
+        { assignedEmployee: 'unassigned' },
+        { type: 'all' },
+      ),
+    ).toEqual({
+      tenant_id: 'tenant-1',
+      deleted_at: null,
+      assigned_employee_id: null,
+    });
+  });
+
   it('rejects list predicates that are missing tenant scope', async () => {
     const { repo } = setup();
 

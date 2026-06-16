@@ -238,7 +238,9 @@ export class CrmRepository extends TenantScopedRepository {
 
     // RBAC scope + explicit assignee filter intersect on assigned_employee_id.
     const scopeIds = scope.type === 'employees' ? scope.employeeIds : null;
-    if (filters.assignedEmployee) {
+    if (filters.assignedEmployee === 'unassigned') {
+      where.assigned_employee_id = null;
+    } else if (filters.assignedEmployee) {
       where.assigned_employee_id =
         scopeIds && !scopeIds.includes(filters.assignedEmployee)
           ? '00000000-0000-0000-0000-000000000000'
@@ -327,6 +329,7 @@ export class CrmRepository extends TenantScopedRepository {
     fromStage: string;
     toStage: string;
     activityType: string;
+    changedFields?: Prisma.InputJsonObject;
     actorId?: string | null;
     actorEmail?: string | null;
   }) {
@@ -341,7 +344,7 @@ export class CrmRepository extends TenantScopedRepository {
           tenant_id: input.tenantId,
           inquiry_id: input.id,
           change_type: INQUIRY_HISTORY_TYPES.STAGE_CHANGED,
-          changed_fields: { from: input.fromStage, to: input.toStage } as Prisma.InputJsonValue,
+          changed_fields: input.changedFields ?? ({ from: input.fromStage, to: input.toStage } as Prisma.InputJsonObject),
           changed_by: input.actorId ?? null,
           changed_by_email: input.actorEmail ?? null,
         },
@@ -352,7 +355,7 @@ export class CrmRepository extends TenantScopedRepository {
           inquiry_id: input.id,
           activity_type: input.activityType,
           content: `Stage changed: ${input.fromStage} → ${input.toStage}`,
-          metadata: { from: input.fromStage, to: input.toStage } as Prisma.InputJsonValue,
+          metadata: input.changedFields ?? ({ from: input.fromStage, to: input.toStage } as Prisma.InputJsonObject),
           actor_id: input.actorId ?? null,
           actor_email: input.actorEmail ?? null,
         },

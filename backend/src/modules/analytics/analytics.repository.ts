@@ -161,6 +161,11 @@ export class AnalyticsRepository extends TenantScopedRepository {
     return this.prisma.dbClient.site_visits.count({ where });
   }
 
+  async countFollowups(where: Prisma.inquiry_followupsWhereInput) {
+    this.assertTenantWhere('AnalyticsRepository.countFollowups', where as Record<string, unknown>);
+    return this.prisma.dbClient.inquiry_followups.count({ where });
+  }
+
   async sourceCounts(where: Prisma.inquiriesWhereInput) {
     this.assertTenantWhere('AnalyticsRepository.sourceCounts', where as Record<string, unknown>);
     return this.prisma.dbClient.inquiries.groupBy({
@@ -177,6 +182,9 @@ export class AnalyticsRepository extends TenantScopedRepository {
       where: { ...where, stage: 'CLOSED_WON' },
       select: {
         id: true,
+        booking_amount: true,
+        expected_commission: true,
+        received_commission: true,
         budget_max: true,
         budget_min: true,
         property: { select: { price: true } },

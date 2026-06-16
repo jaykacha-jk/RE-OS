@@ -212,6 +212,10 @@ export class CrmService {
       bedrooms: i.bedrooms,
       budget_min: operationalVisible ? this.toNum(i.budget_min) : null,
       budget_max: operationalVisible ? this.toNum(i.budget_max) : null,
+      booking_amount: operationalVisible ? this.toNum(i.booking_amount) : null,
+      expected_commission: operationalVisible ? this.toNum(i.expected_commission) : null,
+      received_commission: operationalVisible ? this.toNum(i.received_commission) : null,
+      commission_status: operationalVisible ? i.commission_status : null,
       purchase_timeline: i.purchase_timeline,
       source_id: i.source_id,
       source_name: i.source?.name ?? i.source_name ?? null,
@@ -592,6 +596,34 @@ export class CrmService {
       data.budget_max = dto.budget_max ?? null;
       changedFields.budget_max = { from: this.toNum(existing.budget_max), to: dto.budget_max ?? null };
     }
+    if (dto.booking_amount !== undefined) {
+      data.booking_amount = dto.booking_amount ?? null;
+      changedFields.booking_amount = {
+        from: this.toNum(existing.booking_amount),
+        to: dto.booking_amount ?? null,
+      };
+    }
+    if (dto.expected_commission !== undefined) {
+      data.expected_commission = dto.expected_commission ?? null;
+      changedFields.expected_commission = {
+        from: this.toNum(existing.expected_commission),
+        to: dto.expected_commission ?? null,
+      };
+    }
+    if (dto.received_commission !== undefined) {
+      data.received_commission = dto.received_commission ?? null;
+      changedFields.received_commission = {
+        from: this.toNum(existing.received_commission),
+        to: dto.received_commission ?? null,
+      };
+    }
+    if (dto.commission_status !== undefined) {
+      data.commission_status = dto.commission_status ?? null;
+      changedFields.commission_status = {
+        from: existing.commission_status,
+        to: dto.commission_status ?? null,
+      };
+    }
 
     if (dto.property_id !== undefined) {
       data.property = dto.property_id ? { connect: { id: dto.property_id } } : { disconnect: true };
@@ -684,6 +716,36 @@ export class CrmService {
 
     const data: Prisma.inquiriesUpdateInput = { stage: to, updated_by: user.userId };
     let activityType: string = INQUIRY_ACTIVITY_TYPES.STAGE_CHANGED;
+    const stageChangedFields: Record<string, unknown> = { from, to };
+
+    if (dto.booking_amount !== undefined) {
+      data.booking_amount = dto.booking_amount ?? null;
+      stageChangedFields.booking_amount = {
+        from: this.toNum(existing.booking_amount),
+        to: dto.booking_amount ?? null,
+      };
+    }
+    if (dto.expected_commission !== undefined) {
+      data.expected_commission = dto.expected_commission ?? null;
+      stageChangedFields.expected_commission = {
+        from: this.toNum(existing.expected_commission),
+        to: dto.expected_commission ?? null,
+      };
+    }
+    if (dto.received_commission !== undefined) {
+      data.received_commission = dto.received_commission ?? null;
+      stageChangedFields.received_commission = {
+        from: this.toNum(existing.received_commission),
+        to: dto.received_commission ?? null,
+      };
+    }
+    if (dto.commission_status !== undefined) {
+      data.commission_status = dto.commission_status ?? null;
+      stageChangedFields.commission_status = {
+        from: existing.commission_status,
+        to: dto.commission_status ?? null,
+      };
+    }
 
     if (to === INQUIRY_WON_STAGE) {
       // BR-C03: requires linked property or explicit reason.
@@ -720,6 +782,7 @@ export class CrmService {
       fromStage: from,
       toStage: to,
       activityType,
+      changedFields: stageChangedFields as Prisma.InputJsonObject,
       actorId: user.userId,
     });
 

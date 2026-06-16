@@ -16,11 +16,12 @@ import {
 /**
  * Queue transport abstraction.
  *
- * - When Redis is configured (REDIS_URL or REDIS_HOST), uses **BullMQ** for
- *   durable, distributed, retryable job processing.
- * - Otherwise falls back to an in-process async queue (timers) so local dev,
- *   CI and tests run without Redis. Either way work is asynchronous — nothing
- *   is processed synchronously in the request path ("everything queued").
+ * - In production, Redis-backed **BullMQ** is required for durable,
+ *   distributed, retryable job processing.
+ * - Outside production, falls back to an in-process async queue (timers) when
+ *   Redis is not configured so local dev, CI and tests run without Redis. Either
+ *   way work is asynchronous — nothing is processed synchronously in the
+ *   request path ("everything queued").
  *
  * This mirrors the codebase's existing "abstraction + local fallback" pattern
  * (S3/local storage, in-memory analytics cache) and keeps a single seam to
@@ -46,6 +47,11 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
       process.env.REDIS_URL || process.env.REDIS_HOST,
     );
     if (!redisConfigured) {
+      if (this.isProduction) {
+        throw new Error(
+          'REDIS_URL or REDIS_HOST is required in production for QueueService',
+        );
+      }
       this.driver = 'memory';
       this.logger.log('QueueService using in-memory driver (no Redis configured).');
       return;
@@ -58,6 +64,13 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
       this.driver = 'bullmq';
       this.logger.log('QueueService using BullMQ driver (Redis configured).');
     } catch (err) {
+      if (this.isProduction) {
+        throw new Error(
+          `BullMQ queue initialization failed in production: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+      }
       this.driver = 'memory';
       this.logger.warn(
         `BullMQ unavailable (${
@@ -69,6 +82,10 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
 
   get activeDriver(): 'bullmq' | 'memory' {
     return this.driver;
+  }
+
+  private get isProduction(): boolean {
+    return process.env.NODE_ENV === 'production';
   }
 
   private resolveConnection() {

@@ -15,6 +15,7 @@ import {
 } from 'class-validator';
 
 import {
+  COMMISSION_STATUSES,
   INQUIRY_CLIENT_NAME_MAX,
   INQUIRY_PRIORITIES,
   INQUIRY_PROPERTY_TYPES,
@@ -82,6 +83,32 @@ export class UpdateInquiryDto {
   @IsNumber()
   @Min(0)
   budget_max?: number;
+
+  @ApiPropertyOptional({ description: 'Booking/token amount captured when lead reaches BOOKED or CLOSED_WON' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  booking_amount?: number;
+
+  @ApiPropertyOptional({ description: 'Expected agency commission for this inquiry/deal' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  expected_commission?: number;
+
+  @ApiPropertyOptional({ description: 'Commission actually received by the agency' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  received_commission?: number;
+
+  @ApiPropertyOptional({ enum: COMMISSION_STATUSES })
+  @IsOptional()
+  @IsIn(COMMISSION_STATUSES as unknown as string[])
+  commission_status?: string;
 
   @ApiPropertyOptional({ enum: INQUIRY_REQUIREMENT_TYPES })
   @IsOptional()

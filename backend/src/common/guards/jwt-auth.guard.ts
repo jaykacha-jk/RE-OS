@@ -8,6 +8,7 @@ import { importSPKI, jwtVerify } from 'jose';
 import { getJwtPublicKeyPem } from '../../config/jwt-keys';
 import type { AuthUser } from '../context/auth-user';
 import type { TenantContext } from '../context/tenant-context';
+import { readAccessToken } from '../utils/auth-cookies.util';
 
 type JwtPayload = {
   sub: string;
@@ -21,12 +22,11 @@ export class JwtAuthGuard implements CanActivate {
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const req = context.switchToHttp().getRequest();
 
-    const authHeader = req.headers?.authorization as string | undefined;
-    if (!authHeader?.startsWith('Bearer ')) {
-      throw new UnauthorizedException('Missing Authorization header');
+    const token = readAccessToken(req);
+    if (!token) {
+      throw new UnauthorizedException('Missing access token');
     }
 
-    const token = authHeader.slice('Bearer '.length).trim();
     const publicKeyPem = getJwtPublicKeyPem();
     if (!publicKeyPem) {
       throw new UnauthorizedException('JWT_PUBLIC_KEY not configured');

@@ -757,6 +757,10 @@ model inquiries {
   // Closure
   no_property_reason String? // BR-C03 (Closed Won w/o property)
   lost_reason        String? // BR-C04
+  booking_amount     Decimal? @db.Decimal(14, 2)
+  expected_commission Decimal? @db.Decimal(14, 2)
+  received_commission Decimal? @db.Decimal(14, 2)
+  commission_status  String? // pending | partial | received | waived
   closed_at          DateTime?
 
   // Notes

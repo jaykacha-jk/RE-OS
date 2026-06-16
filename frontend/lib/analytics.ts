@@ -46,6 +46,14 @@ export type RevenueKpis = {
   avg_deal_value: number;
 };
 
+export type SlaKpis = {
+  stale_new_leads: number;
+  unassigned_leads: number;
+  due_today_followups: number;
+  overdue_followups: number;
+  missed_followups: number;
+};
+
 export type FunnelStep = { key: string; label: string; count: number };
 export type SourceRow = { source: string; count: number };
 export type MonthlyLead = { month: string; leads: number };
@@ -78,6 +86,7 @@ export type DashboardData = {
   monthly_conversion: MonthlyConversion[];
   employees: EmployeePerformance[];
   team_size: number;
+  sla: SlaKpis;
   generated_at: string;
 };
 

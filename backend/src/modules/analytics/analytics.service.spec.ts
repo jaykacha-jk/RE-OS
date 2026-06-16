@@ -24,6 +24,7 @@ function buildService() {
     buildPropertyWhere: jest.fn((tenantId) => ({ tenant_id: tenantId })) as any,
     stageCounts: jest.fn().mockResolvedValue([]),
     countInquiries: jest.fn().mockResolvedValue(0),
+    countFollowups: jest.fn().mockResolvedValue(0),
     countSiteVisits: jest.fn().mockResolvedValue(0),
     sourceCounts: jest.fn().mockResolvedValue([]),
     wonDeals: jest.fn().mockResolvedValue([]),
@@ -234,17 +235,46 @@ describe('AnalyticsService', () => {
   // Revenue
   // ===========================================================================
   describe('getRevenue', () => {
-    it('sums property price, falling back to budget_max then budget_min', async () => {
+    it('sums explicit commission first, falling back to booking, property price, then budget', async () => {
       const { service, repo } = buildService();
       repo.wonDeals!.mockResolvedValue([
-        { property: { price: 5_000_000 }, budget_max: 9_000_000, budget_min: 1 },
-        { property: null, budget_max: 3_000_000, budget_min: 1 },
-        { property: null, budget_max: null, budget_min: 2_000_000 },
+        {
+          received_commission: 150_000,
+          expected_commission: 250_000,
+          booking_amount: 500_000,
+          property: { price: 5_000_000 },
+          budget_max: 9_000_000,
+          budget_min: 1,
+        },
+        {
+          received_commission: null,
+          expected_commission: 120_000,
+          booking_amount: 300_000,
+          property: null,
+          budget_max: 3_000_000,
+          budget_min: 1,
+        },
+        {
+          received_commission: null,
+          expected_commission: null,
+          booking_amount: 75_000,
+          property: null,
+          budget_max: null,
+          budget_min: 2_000_000,
+        },
+        {
+          received_commission: null,
+          expected_commission: null,
+          booking_amount: null,
+          property: { price: 4_000_000 },
+          budget_max: 6_000_000,
+          budget_min: 1,
+        },
       ] as any);
       const res = (await service.getRevenue(TENANT, makeUser(['org_owner']), {} as any)) as any;
-      expect(res.won_deals).toBe(3);
-      expect(res.won_amount).toBe(10_000_000);
-      expect(res.avg_deal_value).toBeCloseTo(3_333_333.33, 1);
+      expect(res.won_deals).toBe(4);
+      expect(res.won_amount).toBe(4_345_000);
+      expect(res.avg_deal_value).toBeCloseTo(1_086_250, 1);
       expect(res.currency).toBe('INR');
     });
 
@@ -310,7 +340,38 @@ describe('AnalyticsService', () => {
       expect(res).toHaveProperty('monthly_leads');
       expect(res).toHaveProperty('monthly_conversion');
       expect(res).toHaveProperty('employees');
+      expect(res).toHaveProperty('sla');
       expect(res).toHaveProperty('generated_at');
+    });
+
+    it('returns role-scoped SLA timers for stale leads and follow-ups', async () => {
+      const { service, repo } = buildService();
+      repo.findEmployeeByUserId!.mockResolvedValue({ id: 'emp-mgr' } as any);
+      repo.findSubordinateEmployeeIds!.mockResolvedValue(['emp-a']);
+      repo.countInquiries!
+        .mockResolvedValueOnce(100)
+        .mockResolvedValueOnce(7);
+      repo.countFollowups!
+        .mockResolvedValueOnce(3)
+        .mockResolvedValueOnce(2)
+        .mockResolvedValueOnce(1);
+
+      const res = (await service.getDashboard(TENANT, makeUser(['sales_manager']), {} as any)) as any;
+
+      expect(res.sla).toEqual({
+        stale_new_leads: 7,
+        unassigned_leads: 0,
+        due_today_followups: 3,
+        overdue_followups: 2,
+        missed_followups: 1,
+      });
+      expect(repo.countFollowups).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tenant_id: TENANT,
+          assigned_employee_id: { in: ['emp-mgr', 'emp-a'] },
+          status: 'pending',
+        }),
+      );
     });
   });
 
@@ -331,7 +392,7 @@ describe('AnalyticsService', () => {
       ] as any);
       repo.activePlans!.mockResolvedValue([
         { code: 'starter', price_inr_monthly: 2999 },
-        { code: 'growth', price_inr_monthly: 6999 },
+        { code: 'pro', price_inr_monthly: 14999 },
         { code: 'enterprise', price_inr_monthly: 14999 },
       ]);
       repo.countAllUsers!.mockResolvedValue(42);
@@ -342,9 +403,9 @@ describe('AnalyticsService', () => {
       expect(res.organizations.total).toBe(10);
       expect(res.organizations.active).toBe(6);
       expect(res.organizations.trial).toBe(3);
-      // MRR = pro(4 → growth 6999) + basic(2 → starter 2999) = 27996 + 5998 = 33994
-      expect(res.revenue.mrr).toBe(33994);
-      expect(res.revenue.arr).toBe(33994 * 12);
+      // MRR = pro(4 → pro 14999) + basic(2 → starter 2999) = 59996 + 5998 = 65994
+      expect(res.revenue.mrr).toBe(65994);
+      expect(res.revenue.arr).toBe(65994 * 12);
       expect(res.totals).toEqual({ users: 42, properties: 120, leads: 310 });
       expect(res.platform_health.status).toBe('healthy');
     });

@@ -8,6 +8,7 @@ import { INQUIRY_STAGES, stageLabel, type Inquiry } from '../../../../lib/crm';
 import { ModalShell } from './modal-shell';
 
 const inputClass = 'mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm';
+const COMMISSION_STATUSES = ['pending', 'partial', 'received', 'waived'] as const;
 
 export function StageModal({
   inquiry,
@@ -21,11 +22,16 @@ export function StageModal({
   const [stage, setStage] = useState(inquiry.stage);
   const [lostReason, setLostReason] = useState('');
   const [noPropertyReason, setNoPropertyReason] = useState('');
+  const [bookingAmount, setBookingAmount] = useState(inquiry.booking_amount != null ? String(inquiry.booking_amount) : '');
+  const [expectedCommission, setExpectedCommission] = useState(inquiry.expected_commission != null ? String(inquiry.expected_commission) : '');
+  const [receivedCommission, setReceivedCommission] = useState(inquiry.received_commission != null ? String(inquiry.received_commission) : '');
+  const [commissionStatus, setCommissionStatus] = useState(inquiry.commission_status ?? '');
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   const isLost = stage === 'CLOSED_LOST';
   const isWon = stage === 'CLOSED_WON';
+  const capturesDealEconomics = stage === 'BOOKED' || isWon;
   const needsNoPropertyReason = isWon && !inquiry.property_id;
 
   async function save() {
@@ -41,6 +47,10 @@ export function StageModal({
           stage,
           lost_reason: isLost ? lostReason.trim() || undefined : undefined,
           no_property_reason: needsNoPropertyReason ? noPropertyReason.trim() || undefined : undefined,
+          booking_amount: capturesDealEconomics && bookingAmount ? Number(bookingAmount) : undefined,
+          expected_commission: capturesDealEconomics && expectedCommission ? Number(expectedCommission) : undefined,
+          received_commission: capturesDealEconomics && receivedCommission ? Number(receivedCommission) : undefined,
+          commission_status: capturesDealEconomics && commissionStatus ? commissionStatus : undefined,
         }),
       });
       onDone();
@@ -72,6 +82,37 @@ export function StageModal({
         <div>
           <label className="block text-sm font-medium text-slate-700">No-property reason *</label>
           <input value={noPropertyReason} onChange={(e) => setNoPropertyReason(e.target.value)} className={inputClass} placeholder="Closed Won without a linked property (BR-C03)" />
+        </div>
+      ) : null}
+      {capturesDealEconomics ? (
+        <div className="rounded-lg border border-emerald-100 bg-emerald-50 p-3">
+          <p className="text-sm font-semibold text-emerald-900">Deal economics</p>
+          <p className="mt-1 text-xs text-emerald-800">
+            Capture booking and commission values so revenue dashboards reflect agency earnings.
+          </p>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            <div>
+              <label className="block text-xs font-medium text-slate-700">Booking amount</label>
+              <input type="number" min="0" value={bookingAmount} onChange={(e) => setBookingAmount(e.target.value)} className={inputClass} placeholder="100000" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-700">Expected commission</label>
+              <input type="number" min="0" value={expectedCommission} onChange={(e) => setExpectedCommission(e.target.value)} className={inputClass} placeholder="250000" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-700">Received commission</label>
+              <input type="number" min="0" value={receivedCommission} onChange={(e) => setReceivedCommission(e.target.value)} className={inputClass} placeholder="0" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-700">Commission status</label>
+              <select value={commissionStatus} onChange={(e) => setCommissionStatus(e.target.value)} className={inputClass}>
+                <option value="">Not set</option>
+                {COMMISSION_STATUSES.map((status) => (
+                  <option key={status} value={status}>{stageLabel(status)}</option>
+                ))}
+              </select>
+            </div>
+          </div>
         </div>
       ) : null}
     </ModalShell>

@@ -4,8 +4,10 @@ import { randomBytes } from 'crypto';
 
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RequirePermissions } from '../../common/decorators/require-permissions.decorator';
+import { RequireFeature } from '../../common/decorators/require-feature.decorator';
 import { TenantId } from '../../common/decorators/tenant-id.decorator';
 import type { AuthUser } from '../../common/context/auth-user';
+import { FeatureFlagGuard } from '../../common/guards/feature-flag.guard';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
 import { TenantGuard } from '../../common/guards/tenant.guard';
@@ -27,7 +29,8 @@ function envelope<T>(data: T) {
  */
 @ApiTags('Analytics')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard, TenantGuard, PermissionsGuard)
+@UseGuards(JwtAuthGuard, TenantGuard, PermissionsGuard, FeatureFlagGuard)
+@RequireFeature('analytics')
 @Controller('api/v1/analytics')
 export class AnalyticsController {
   constructor(private readonly analytics: AnalyticsService) {}

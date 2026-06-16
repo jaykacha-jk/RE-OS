@@ -3,8 +3,9 @@
 import Link from 'next/link';
 import { FormEvent, type ReactNode, useCallback, useEffect, useState } from 'react';
 
+import { ActionGuard } from '../../../components/shared/ActionGuard';
 import { apiFetch } from '../../../lib/api';
-import { getSession, hasPermission } from '../../../lib/auth';
+import { getSession } from '../../../lib/auth';
 import {
   formatINR,
   humanize,
@@ -21,7 +22,6 @@ export default function PropertiesPage() {
   const [meta, setMeta] = useState<ListMeta | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [canCreate, setCanCreate] = useState(false);
 
   // Filters
   const [search, setSearch] = useState('');
@@ -33,10 +33,6 @@ export default function PropertiesPage() {
   const [maxPrice, setMaxPrice] = useState('');
   const [sortBy, setSortBy] = useState('created_at');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
-
-  useEffect(() => {
-    setCanCreate(hasPermission(getSession(), 'properties.create'));
-  }, []);
 
   const load = useCallback(
     (page = 1) => {
@@ -113,11 +109,11 @@ export default function PropertiesPage() {
             <p className="text-sm text-slate-200">
               Demo-ready inventory needs images, locality, price, status, and a clear owner.
             </p>
-            {canCreate ? (
+            <ActionGuard permission="properties.create">
               <Link href="/properties/new" className="inline-flex items-center justify-center rounded-xl bg-white px-4 py-2 text-sm font-bold text-teal-900 shadow-card transition hover:bg-teal-50 focus:outline-none focus:ring-4 focus:ring-white/30">
                 Add property
               </Link>
-            ) : null}
+            </ActionGuard>
           </div>
         </div>
       </section>
@@ -197,7 +193,7 @@ export default function PropertiesPage() {
         </div>
       ) : null}
 
-      {!loading && !error && rows.length === 0 ? <EmptyProperties canCreate={canCreate} /> : null}
+      {!loading && !error && rows.length === 0 ? <EmptyProperties /> : null}
 
       {!loading && !error && rows.length > 0 ? (
         <>
@@ -448,7 +444,7 @@ function PropertyLoadingState() {
   );
 }
 
-function EmptyProperties({ canCreate }: { canCreate: boolean }) {
+function EmptyProperties() {
   return (
     <section className="rounded-3xl border border-dashed border-teal-200 bg-gradient-to-br from-teal-50 to-white p-10 text-center shadow-card">
       <p className="text-sm font-bold uppercase tracking-[0.18em] text-teal-700">No listings found</p>
@@ -456,11 +452,11 @@ function EmptyProperties({ canCreate }: { canCreate: boolean }) {
       <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-slate-600">
         Add demo-ready listings with images, prices, amenities, and locality context so the dashboard, public website, and CRM matching all feel alive.
       </p>
-      {canCreate ? (
+      <ActionGuard permission="properties.create">
         <Link href="/properties/new" className="btn-primary mt-6">
           Add first property
         </Link>
-      ) : null}
+      </ActionGuard>
     </section>
   );
 }

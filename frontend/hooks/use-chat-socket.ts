@@ -3,7 +3,7 @@
 import { useEffect, useRef } from 'react';
 import { io, type Socket } from 'socket.io-client';
 
-import { getSession } from '../lib/auth';
+import { getBearerToken, getSession, hasActiveSession, usesCookieAuth } from '../lib/auth';
 import type { Conversation, Message } from '../lib/chat';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4545';
@@ -38,12 +38,15 @@ export function useChatSocket(
   useEffect(() => {
     if (!enabled) return;
     const session = getSession();
-    if (!session?.access_token) return;
+    if (!hasActiveSession(session)) return;
+
+    const token = getBearerToken(session);
 
     const socket = io(`${API_BASE}/chat`, {
-      auth: { token: session.access_token },
+      auth: token ? { token } : undefined,
       transports: ['websocket', 'polling'],
       reconnection: true,
+      withCredentials: usesCookieAuth(),
     });
     socketRef.current = socket;
 

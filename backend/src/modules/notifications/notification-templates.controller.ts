@@ -20,7 +20,9 @@ import type { Request } from 'express';
 
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RequirePermissions } from '../../common/decorators/require-permissions.decorator';
+import { RequireFeature } from '../../common/decorators/require-feature.decorator';
 import type { AuthUser } from '../../common/context/auth-user';
+import { FeatureFlagGuard } from '../../common/guards/feature-flag.guard';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
 import { NotificationTemplatesService } from './notification-templates.service';
@@ -45,7 +47,8 @@ function envelope<T>(data: T) {
  */
 @ApiTags('Notifications — Templates (Admin)')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard, PermissionsGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard, FeatureFlagGuard)
+@RequireFeature('notifications')
 @Controller('api/v1/notification-templates')
 export class NotificationTemplatesController {
   constructor(private readonly templates: NotificationTemplatesService) {}

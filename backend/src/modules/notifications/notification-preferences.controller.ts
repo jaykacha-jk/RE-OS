@@ -9,7 +9,9 @@ import { randomBytes } from 'node:crypto';
 
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RequirePermissions } from '../../common/decorators/require-permissions.decorator';
+import { RequireFeature } from '../../common/decorators/require-feature.decorator';
 import type { AuthUser } from '../../common/context/auth-user';
+import { FeatureFlagGuard } from '../../common/guards/feature-flag.guard';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
 import { NotificationPreferencesService } from './notification-preferences.service';
@@ -21,7 +23,8 @@ function envelope<T>(data: T) {
 
 @ApiTags('Notifications — Preferences')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard, PermissionsGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard, FeatureFlagGuard)
+@RequireFeature('notifications')
 @Controller('api/v1/notification-preferences')
 export class NotificationPreferencesController {
   constructor(private readonly preferences: NotificationPreferencesService) {}
@@ -35,7 +38,7 @@ export class NotificationPreferencesController {
   }
 
   @Patch()
-  @RequirePermissions('notifications.read')
+  @RequirePermissions('notifications.preferences.update')
   @ApiOperation({ summary: 'Update my notification channel preferences' })
   async update(@CurrentUser() user: AuthUser, @Body() dto: UpdatePreferencesDto) {
     return envelope(

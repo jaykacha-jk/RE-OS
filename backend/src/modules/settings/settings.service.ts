@@ -88,7 +88,7 @@ export class SettingsService {
       updatedBy: actor.userId,
     });
 
-    this.cache.invalidate(`settings:${tenantId}:`);
+    await this.cache.invalidate(`settings:${tenantId}:`);
 
     const after = await this.getCategory(tenantId, category);
 

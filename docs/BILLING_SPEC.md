@@ -4,6 +4,12 @@
 **Currency:** INR  
 **Version:** 1.0
 
+> **Launch decision:** RE-OS ships first-customer billing in **assisted mode**.
+> Owners can request/record a plan in the app, but payment collection and GST
+> invoice PDFs are handled offline until `BILLING_LAUNCH_MODE=live` /
+> `NEXT_PUBLIC_REOS_BILLING_MODE=live` is enabled with verified Razorpay keys,
+> webhook secret, and invoice PDF generation/upload.
+
 ---
 
 ## 1. Plans
@@ -11,7 +17,7 @@
 | Code | Name | Monthly (INR) | Yearly (INR) | Properties | Employees | Storage | AI min/mo |
 |------|------|---------------|--------------|------------|-----------|---------|-----------|
 | `starter` | Starter | ₹4,999 | ₹49,990 | 100 | 5 | 5GB | 0 |
-| `pro` | Pro | ₹14,999 | ₹1,49,990 | 1000 | 25 | 50GB | 0 |
+| `pro` | Pro | ₹14,999 | ₹1,49,990 | 1000 | 50 | 50GB | 0 |
 | `enterprise` | Enterprise | Custom | Custom | Unlimited* | Unlimited* | Unlimited* | Custom |
 
 *Fair use policy applies.
@@ -39,10 +45,19 @@ trial (14d) → active → past_due → suspended → cancelled
 
 ### 3.1 Checkout Flow
 
-1. Org Owner selects plan on `/settings/billing`  
-2. `POST /billing/subscribe` creates provider subscription checkout  
-3. Client completes payment on Razorpay hosted page  
-4. Webhook `subscription.activated` → activate tenant  
+**Assisted launch mode (`BILLING_LAUNCH_MODE=assisted`):**
+
+1. Org Owner selects plan on `/billing/plans`
+2. `POST /billing/subscribe` records a trial subscription with provider `assisted`
+3. RE-OS operations collects payment offline and issues GST invoice outside the app
+4. Super Admin updates organization/subscription status after payment confirmation
+
+**Live mode (`BILLING_LAUNCH_MODE=live`, `PAYMENT_PROVIDER=razorpay`):**
+
+1. Org Owner selects plan on `/billing/plans`
+2. `POST /billing/subscribe` creates provider subscription checkout
+3. Client completes payment on Razorpay hosted page
+4. Webhook `subscription.activated` → activate tenant
 
 ### 3.2 Webhooks (Verify HMAC)
 
@@ -72,9 +87,10 @@ Plan limits come from active `subscription_plans`. Current implementation reads 
 ## 5. Invoices
 
 - GST line item 18% (configurable per org GSTIN Phase 9)  
-- PDF template: logo, line items, Razorpay payment ref  
-- Stored S3 `tenants/{id}/invoices/{id}.pdf`  
-- Email to `billing_email` on payment success  
+- Launch mode: invoice records are visible; GST PDFs are issued offline  
+- Live mode target: PDF template with logo, line items, Razorpay payment ref  
+- Live mode target: store S3 `tenants/{id}/invoices/{id}.pdf`  
+- Live mode target: email to `billing_email` on payment success  
 
 ---
 

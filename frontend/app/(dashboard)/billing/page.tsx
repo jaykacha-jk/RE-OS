@@ -11,6 +11,7 @@ import {
   formatLimit,
   formatMoney,
   formatStorage,
+  isAssistedBillingMode,
   type BillingPlan,
   type BillingSubscription,
   type BillingUsage,
@@ -37,6 +38,7 @@ export default function BillingDashboardPage() {
 
   const currentPlan = subscription?.plan ?? usage?.plan;
   const paidInvoices = invoices.filter((invoice) => invoice.status === 'paid').length;
+  const assistedBilling = isAssistedBillingMode();
 
   return (
     <div className="space-y-6">
@@ -68,6 +70,15 @@ export default function BillingDashboardPage() {
       </section>
 
       {error && <div className="rounded-2xl border border-red-200 bg-red-50 p-3 text-sm text-red-700 shadow-sm">{error}</div>}
+
+      {assistedBilling ? (
+        <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900 shadow-sm">
+          <p className="font-bold">Assisted billing launch mode</p>
+          <p className="mt-1">
+            Plan selection records the commercial intent. RE-OS will collect payment and issue GST invoices offline until live Razorpay checkout and invoice PDF generation are enabled.
+          </p>
+        </section>
+      ) : null}
 
       <section className="grid gap-4 md:grid-cols-3">
         <BillingMetric label="Current plan" value={currentPlan?.name ?? 'No plan'}>

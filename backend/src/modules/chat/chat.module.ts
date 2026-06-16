@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 
+import { FeatureFlagsModule } from '../../common/feature-flags.module';
 import { AuditModule } from '../audit/audit.module';
 import { CrmModule } from '../crm/crm.module';
 import { StorageService } from '../properties/storage/storage.service';
@@ -17,7 +18,7 @@ import { ChatService } from './chat.service';
  * notification automation engine.
  */
 @Module({
-  imports: [AuditModule, CrmModule],
+  imports: [AuditModule, CrmModule, FeatureFlagsModule],
   controllers: [ChatController, ChatMessagesController, PublicChatController],
   providers: [ChatService, ChatRepository, ChatGateway, StorageService],
   exports: [ChatService],

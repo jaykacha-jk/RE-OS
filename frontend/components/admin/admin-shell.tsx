@@ -5,10 +5,11 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { NotificationBell } from '../notifications/notification-bell';
+import { ActionGuard } from '../shared/ActionGuard';
 import { Icon } from '../ui/icons';
-import { getSession, hasPermission, isSuperAdmin, type AuthSession } from '../../lib/auth';
-import { logout as revokeAndClearSession } from '../../lib/api';
-import { NAV_GROUPS, isTenantOnlyPath, visibleNavFor, type NavGroup } from './nav-config';
+import { getSession, hasActiveSession, isSuperAdmin, type AuthSession } from '../../lib/auth';
+import { hydrateSession, logout as revokeAndClearSession } from '../../lib/api';
+import { NAV_GROUPS, getDashboardRouteAccess, isTenantOnlyPath, visibleNavFor, type NavGroup } from './nav-config';
 import { CommandPalette } from './command-palette';
 import { UserMenu } from './user-menu';
 
@@ -30,12 +31,20 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
-    const current = getSession();
-    if (!current) {
+    const boot = async () => {
+      const current = getSession();
+      if (hasActiveSession(current)) {
+        setSession(current);
+        return;
+      }
+      const hydrated = await hydrateSession();
+      if (hydrated) {
+        setSession(hydrated);
+        return;
+      }
       router.replace('/login');
-      return;
-    }
-    setSession(current);
+    };
+    void boot();
   }, [router]);
 
   useEffect(() => {
@@ -104,6 +113,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   }
 
   const superAdmin = isSuperAdmin(session);
+  const routeAccess = getDashboardRouteAccess(session, pathname);
 
   if (superAdmin && isTenantOnlyPath(pathname)) {
     return (
@@ -171,22 +181,42 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
           </button>
 
           <div className="flex flex-1 items-center justify-end gap-2 sm:gap-3">
-            {hasPermission(session, 'properties.create') ? (
+            <ActionGuard permission="properties.create">
               <Link href="/properties/new" className="hidden btn-primary px-3 py-2 md:inline-flex">
                 <Icon name="plus" className="h-4 w-4" /> Add property
               </Link>
-            ) : null}
-            {hasPermission(session, 'notifications.read') && <NotificationBell />}
+            </ActionGuard>
+            <ActionGuard permission="notifications.read" featureFlag="notifications">
+              <NotificationBell />
+            </ActionGuard>
             <UserMenu session={session} onLogout={logout} />
           </div>
         </header>
 
         <main className="scrollbar-thin flex-1 overflow-y-auto">
-          <div className="mx-auto w-full max-w-[88rem] px-4 py-6 sm:px-6 lg:px-8 lg:py-8">{children}</div>
+          <div className="mx-auto w-full max-w-[88rem] px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+            {routeAccess.allowed ? children : <AccessDenied reason={routeAccess.reason} />}
+          </div>
         </main>
       </div>
 
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} session={session} />
+    </div>
+  );
+}
+
+function AccessDenied({ reason }: { reason?: string }) {
+  return (
+    <div className="mx-auto flex min-h-[55vh] max-w-xl items-center justify-center">
+      <div className="panel w-full p-6 text-center">
+        <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-rose-100 text-sm font-bold text-rose-700">
+          403
+        </div>
+        <h1 className="text-xl font-bold tracking-tight text-slate-950">You do not have access to this page</h1>
+        <p className="mt-2 text-sm leading-6 text-slate-600">
+          {reason ?? 'Ask an owner or administrator to grant the required permission.'}
+        </p>
+      </div>
     </div>
   );
 }

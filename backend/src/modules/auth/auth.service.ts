@@ -25,6 +25,7 @@ import { QUEUES } from '../../jobs/queue.constants';
 import { QueueService } from '../../jobs/queue.service';
 import { AuditService, type AuditRequestMeta } from '../audit/audit.service';
 import { EMAIL_JOB, type EmailJobData } from '../notifications/notifications.types';
+import { FeatureFlagsService } from '../settings/feature-flags.service';
 
 const ACCESS_TOKEN_TTL_SECONDS = 15 * 60;
 const REFRESH_TOKEN_TTL_DAYS = 7;
@@ -49,7 +50,22 @@ export class AuthService {
     private readonly authRepository: AuthRepository,
     private readonly auditService: AuditService,
     private readonly queue: QueueService,
+    private readonly featureFlags: FeatureFlagsService,
   ) {}
+
+  private async withFeatureFlags<T extends { user?: { tenant_id?: string | null } }>(payload: T) {
+    const tenantId = payload.user?.tenant_id;
+    if (!tenantId) return payload;
+    const feature_flags = await this.featureFlags.getFlags(tenantId);
+    if (!payload.user) return payload;
+    return {
+      ...payload,
+      user: {
+        ...payload.user,
+        feature_flags,
+      },
+    };
+  }
 
   private async signAccessToken(input: {
     userId: string;
@@ -231,7 +247,7 @@ export class AuthService {
       meta,
     });
 
-    return {
+    return this.withFeatureFlags({
       access_token,
       refresh_token: refresh_token_raw,
       expires_in: ACCESS_TOKEN_TTL_SECONDS,
@@ -243,7 +259,7 @@ export class AuthService {
         tenant_id: userTenantId,
         permissions,
       },
-    };
+    });
   }
 
   async register(dto: RegisterDto, meta?: AuditRequestMeta) {
@@ -355,8 +371,8 @@ export class AuthService {
     };
   }
 
-  async refresh(dto: RefreshDto, meta?: AuditRequestMeta) {
-    const tokenHash = this.hashToken(dto.refresh_token);
+  async refresh(refreshToken: string, meta?: AuditRequestMeta) {
+    const tokenHash = this.hashToken(refreshToken);
     const existing = await this.authRepository.findRefreshTokenByHash(tokenHash);
     if (!existing) {
       throw new UnauthorizedException('Invalid refresh token');
@@ -431,7 +447,7 @@ export class AuthService {
       meta,
     });
 
-    return {
+    return this.withFeatureFlags({
       access_token,
       refresh_token: refresh_token_raw,
       expires_in: ACCESS_TOKEN_TTL_SECONDS,
@@ -443,11 +459,12 @@ export class AuthService {
         tenant_id: tenantId,
         permissions,
       },
-    };
+    });
   }
 
-  async logout(dto: RefreshDto, meta?: AuditRequestMeta) {
-    const tokenHash = this.hashToken(dto.refresh_token);
+  async logout(refreshToken: string | undefined, meta?: AuditRequestMeta) {
+    if (!refreshToken) return;
+    const tokenHash = this.hashToken(refreshToken);
     const existing = await this.authRepository.findRefreshTokenByHash(tokenHash);
     const now = new Date();
     await this.authRepository.revokeRefreshToken(tokenHash, now);
@@ -467,6 +484,9 @@ export class AuthService {
   async me(user: AuthUser) {
     const current = await this.authRepository.findActiveUserById(user.userId);
     if (!current) throw new NotFoundException('User not found');
+    const feature_flags = user.tenantId
+      ? await this.featureFlags.getFlags(user.tenantId)
+      : {};
     return {
       user_id: user.userId,
       tenant_id: user.tenantId,
@@ -476,6 +496,7 @@ export class AuthService {
       phone: current.phone,
       roles: user.roles,
       permissions: user.permissions,
+      feature_flags,
     };
   }
 
@@ -586,7 +607,7 @@ export class AuthService {
       meta,
     });
 
-    return {
+    return this.withFeatureFlags({
       access_token,
       refresh_token: refresh_token_raw,
       expires_in: ACCESS_TOKEN_TTL_SECONDS,
@@ -598,7 +619,7 @@ export class AuthService {
         tenant_id: tenantId,
         permissions,
       },
-    };
+    });
   }
 
   async forgotPassword(dto: ForgotPasswordDto, meta?: AuditRequestMeta) {

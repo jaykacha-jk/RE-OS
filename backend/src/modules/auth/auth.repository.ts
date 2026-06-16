@@ -75,6 +75,16 @@ export class AuthRepository {
 
   async getRolesAndPermissions(userId: string, tenantId: string | null) {
     if (!tenantId) {
+      const platformUser = await this.prisma.dbClient.users.findFirst({
+        where: {
+          id: userId,
+          tenant_id: null,
+          user_type: 'super_admin',
+          deleted_at: null,
+        },
+      });
+      if (!platformUser) return { roles: [], permissions: [] };
+
       const superAdminRole = await this.prisma.dbClient.roles.findFirst({
         where: { tenant_id: null, code: 'super_admin', deleted_at: null },
         include: {
@@ -85,7 +95,7 @@ export class AuthRepository {
       const permissions =
         superAdminRole?.role_permissions.map((rp) => rp.permissions.code) ?? [];
 
-      return { roles: ['super_admin'], permissions };
+      return { roles: superAdminRole ? ['super_admin'] : [], permissions };
     }
 
     const userRoles = await this.prisma.dbClient.user_roles.findMany({

@@ -3,13 +3,15 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 
-import { getSession, hasPermission, type AuthSession } from '../../../lib/auth';
+import { getSession, hasPermission, isFeatureEnabled, type AuthSession } from '../../../lib/auth';
 
 type Card = {
   href: string;
   title: string;
   description: string;
   permission: string;
+  featureFlag?: string;
+  hiddenInLaunch?: boolean;
   group: 'Brand' | 'Growth' | 'Platform' | 'Trust';
   accent: string;
 };
@@ -19,15 +21,16 @@ const CARDS: Card[] = [
     href: '/settings/branding',
     title: 'Branding',
     description: 'Logo, favicon, colors, typography, email & PDF branding.',
-    permission: 'settings.read',
+    permission: 'settings.branding.manage',
+    hiddenInLaunch: true,
     group: 'Brand',
     accent: 'bg-teal-100 text-teal-800',
   },
   {
     href: '/settings/website',
-    title: 'Website content',
-    description: 'Hero, contact info, social links, testimonials, footer.',
-    permission: 'settings.read',
+    title: 'Website Setup',
+    description: 'Launch-ready brand, homepage, contact, social, and SEO basics.',
+    permission: 'settings.website.manage',
     group: 'Brand',
     accent: 'bg-amber-100 text-amber-800',
   },
@@ -35,7 +38,8 @@ const CARDS: Card[] = [
     href: '/settings/seo',
     title: 'SEO',
     description: 'Meta tags, Open Graph, Twitter cards, schema, robots, sitemap.',
-    permission: 'settings.read',
+    permission: 'settings.seo.manage',
+    hiddenInLaunch: true,
     group: 'Growth',
     accent: 'bg-blue-100 text-blue-800',
   },
@@ -44,6 +48,8 @@ const CARDS: Card[] = [
     title: 'Custom domains',
     description: 'Connect white-label domains with DNS verification + SSL.',
     permission: 'settings.read',
+    featureFlag: 'domains',
+    hiddenInLaunch: true,
     group: 'Trust',
     accent: 'bg-slate-100 text-slate-800',
   },
@@ -52,6 +58,7 @@ const CARDS: Card[] = [
     title: 'Feature flags',
     description: 'Enable or disable platform capabilities per organization.',
     permission: 'settings.features.manage',
+    hiddenInLaunch: true,
     group: 'Platform',
     accent: 'bg-purple-100 text-purple-800',
   },
@@ -59,7 +66,8 @@ const CARDS: Card[] = [
     href: '/settings/configuration',
     title: 'Configuration',
     description: 'Timezone, currency, language, date & number formats.',
-    permission: 'settings.read',
+    permission: 'settings.configuration.manage',
+    hiddenInLaunch: true,
     group: 'Platform',
     accent: 'bg-teal-100 text-teal-800',
   },
@@ -68,6 +76,7 @@ const CARDS: Card[] = [
     title: 'White label',
     description: 'Resell under your own brand, hide RE-OS, custom login.',
     permission: 'settings.whitelabel.manage',
+    hiddenInLaunch: true,
     group: 'Brand',
     accent: 'bg-amber-100 text-amber-800',
   },
@@ -76,6 +85,7 @@ const CARDS: Card[] = [
     title: 'Public analytics',
     description: 'Website views, clicks, conversions, traffic sources.',
     permission: 'analytics.public.read',
+    hiddenInLaunch: true,
     group: 'Growth',
     accent: 'bg-blue-100 text-blue-800',
   },
@@ -92,10 +102,15 @@ const CARDS: Card[] = [
     title: 'Audit logs',
     description: 'Full activity trail with before/after, IP, and CSV export.',
     permission: 'audit.logs.read',
+    hiddenInLaunch: true,
     group: 'Trust',
     accent: 'bg-rose-100 text-rose-800',
   },
 ];
+
+function isLaunchMode(): boolean {
+  return process.env.NEXT_PUBLIC_REOS_LAUNCH_MODE !== 'false';
+}
 
 export default function SettingsHubPage() {
   const [session, setSession] = useState<AuthSession | null>(null);
@@ -104,9 +119,11 @@ export default function SettingsHubPage() {
     setSession(getSession());
   }, []);
 
-  const visible = CARDS.filter((c) =>
-    c.href === '/settings/profile' ? true : hasPermission(session, c.permission),
-  );
+  const visible = CARDS.filter((c) => {
+    if (c.href === '/settings/profile') return true;
+    if (isLaunchMode() && c.hiddenInLaunch) return false;
+    return hasPermission(session, c.permission) && isFeatureEnabled(session, c.featureFlag);
+  });
   const groups = ['Brand', 'Growth', 'Platform', 'Trust'] as const;
 
   return (
@@ -114,16 +131,16 @@ export default function SettingsHubPage() {
       <section className="overflow-hidden rounded-3xl border border-teal-100 bg-white shadow-card">
         <div className="grid gap-6 bg-gradient-to-br from-slate-950 via-teal-950 to-slate-900 p-6 text-white lg:grid-cols-[1.4fr_1fr] lg:p-8">
           <div>
-            <p className="text-xs font-bold uppercase tracking-[0.2em] text-teal-200">Enterprise control center</p>
+            <p className="text-xs font-bold uppercase tracking-[0.2em] text-teal-200">Launch settings</p>
             <h1 className="mt-3 text-3xl font-bold tracking-tight sm:text-4xl">Settings</h1>
             <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-200">
-              Manage brand, public website, SEO, domains, white label, feature flags, audit logs, and tenant configuration.
+              Manage the essentials needed to launch the agency workspace: profile, website setup, and alerts.
             </p>
           </div>
           <div className="rounded-2xl border border-white/10 bg-white/10 p-4 backdrop-blur">
             <p className="text-sm font-semibold text-white">Configuration health</p>
             <p className="mt-2 text-sm leading-6 text-slate-200">
-              {visible.length} available settings areas for this role. Keep brand, domain, and audit settings complete before customer demos.
+              {visible.length} available settings areas for this role. Keep the first-customer setup focused on publishing inventory and capturing leads.
             </p>
           </div>
         </div>

@@ -2,8 +2,9 @@
 
 import { useCallback, useEffect, useState } from 'react';
 
+import { ActionGuard } from '../../../components/shared/ActionGuard';
 import { apiFetch } from '../../../lib/api';
-import { getSession, hasPermission } from '../../../lib/auth';
+import { getSession } from '../../../lib/auth';
 import { CreateEmployeeForm } from './create-employee-form';
 
 type EmployeeRow = {
@@ -19,9 +20,6 @@ export default function EmployeesPage() {
   const [rows, setRows] = useState<EmployeeRow[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  // Permission flags are resolved after mount to avoid SSR/localStorage hydration mismatch.
-  const [canCreate, setCanCreate] = useState(false);
-  const [canDelete, setCanDelete] = useState(false);
 
   async function removeEmployee(id: string) {
     const session = getSession();
@@ -52,9 +50,6 @@ export default function EmployeesPage() {
   }, []);
 
   useEffect(() => {
-    const session = getSession();
-    setCanCreate(hasPermission(session, 'employees.create'));
-    setCanDelete(hasPermission(session, 'employees.delete'));
     load();
   }, [load]);
 
@@ -63,11 +58,11 @@ export default function EmployeesPage() {
       <h1 className="text-2xl font-semibold">Employees</h1>
       <p className="mt-1 text-sm text-slate-600">Tenant-scoped employee list</p>
 
-      {canCreate ? (
+      <ActionGuard permission="employees.create">
         <div className="mt-4">
           <CreateEmployeeForm onCreated={load} />
         </div>
-      ) : null}
+      </ActionGuard>
 
       {loading ? <p className="mt-6 text-slate-500">Loading…</p> : null}
       {error ? (
@@ -103,7 +98,10 @@ export default function EmployeesPage() {
                     <td className="px-4 py-3">{row.role_code ?? '—'}</td>
                     <td className="px-4 py-3">{row.status}</td>
                     <td className="px-4 py-3">
-                      {canDelete ? (
+                      <ActionGuard
+                        permission="employees.delete"
+                        fallback={<span className="text-sm text-slate-400">—</span>}
+                      >
                         <button
                           type="button"
                           onClick={() => removeEmployee(row.id)}
@@ -111,9 +109,7 @@ export default function EmployeesPage() {
                         >
                           Remove
                         </button>
-                      ) : (
-                        <span className="text-sm text-slate-400">—</span>
-                      )}
+                      </ActionGuard>
                     </td>
                   </tr>
                 ))

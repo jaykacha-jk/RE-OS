@@ -177,7 +177,9 @@ function OrgDashboard({ session }: { session: AuthSession }) {
         { label: 'CRM pipeline', detail: `${formatNumber(data.leads.qualified)} qualified in motion`, status: data.leads.total ? 'ok' : 'warn', icon: 'inquiries' },
         { label: 'Inventory', detail: `${formatNumber(data.properties.published)} published listings`, status: data.properties.published ? 'ok' : 'warn', icon: 'properties' },
         { label: 'Conversion', detail: `${formatPercent(data.leads.conversion_rate)} lead → won`, status: data.leads.conversion_rate >= 10 ? 'ok' : 'warn', icon: 'performance' },
-        { label: 'Assistant automation', detail: 'Rule scoring & chat configured', status: 'ok', icon: 'ai' },
+        ...(!isLaunchMode()
+          ? [{ label: 'Assistant automation', detail: 'Rule scoring & chat configured', status: 'ok' as const, icon: 'ai' as const }]
+          : []),
       ]
     : [];
 
@@ -204,6 +206,8 @@ function OrgDashboard({ session }: { session: AuthSession }) {
             <KPICard label="Won deals" value={formatNumber(data.leads.won)} tone="green" icon={<Icon name="performance" />} hint={`${formatNumber(data.leads.lost)} lost`} />
             <KPICard label="Conversion" value={formatPercent(data.leads.conversion_rate)} tone="amber" icon={<Icon name="analytics" />} hint={`${formatInr(data.revenue.won_amount)} won`} />
           </div>
+
+          {data.scope !== 'assigned' ? <LaunchReadiness data={data} session={session} /> : null}
 
           <div className="grid gap-5 lg:grid-cols-12">
             {/* Main column */}
@@ -248,6 +252,7 @@ function OrgDashboard({ session }: { session: AuthSession }) {
 
             {/* Right rail */}
             <aside className="space-y-5 lg:col-span-4">
+              <LeadDiscipline data={data} />
               <QuickActions session={session} />
               <ActivityFeed />
               <SystemHealth rows={healthRows} updatedAt={data.generated_at} />
@@ -264,6 +269,10 @@ function OrgDashboard({ session }: { session: AuthSession }) {
       )}
     </div>
   );
+}
+
+function isLaunchMode(): boolean {
+  return process.env.NEXT_PUBLIC_REOS_LAUNCH_MODE !== 'false';
 }
 
 // ===========================================================================
@@ -373,7 +382,7 @@ function QuickActions({ session }: { session: AuthSession }) {
       label: 'Live chat',
       helper: 'Respond to website & WhatsApp visitors',
       icon: 'chat',
-      show: hasPermission(session, 'chat.conversations.read'),
+      show: !isLaunchMode() && hasPermission(session, 'chat.conversations.read'),
     },
   ] as QuickAction[]).filter((action) => action.show);
 
@@ -402,6 +411,121 @@ function QuickActions({ session }: { session: AuthSession }) {
             <Icon name="arrowUpRight" className="h-4 w-4 text-slate-300 transition group-hover:text-teal-500" />
           </Link>
         ))}
+      </div>
+    </section>
+  );
+}
+
+function LaunchReadiness({ data, session }: { data: DashboardData; session: AuthSession }) {
+  const items = [
+    {
+      label: 'Publish 5 properties',
+      done: data.properties.published >= 5,
+      progress: `${formatNumber(data.properties.published)} / 5 published`,
+      href: '/properties',
+      show: hasPermission(session, 'properties.read'),
+    },
+    {
+      label: 'Invite 2 team members',
+      done: data.team_size >= 2,
+      progress: `${formatNumber(data.team_size)} team members`,
+      href: '/employees',
+      show: hasPermission(session, 'employees.read'),
+    },
+    {
+      label: 'Complete Website Setup',
+      done: data.properties.published > 0,
+      progress: data.properties.published > 0 ? 'Public website has inventory' : 'Add brand, contact and SEO basics',
+      href: '/settings/website',
+      show: hasPermission(session, 'settings.website.manage'),
+    },
+    {
+      label: 'Capture first lead',
+      done: data.leads.total > 0,
+      progress: `${formatNumber(data.leads.total)} leads captured`,
+      href: '/inquiries',
+      show: hasPermission(session, 'crm.inquiries.read'),
+    },
+    {
+      label: 'Assign first lead',
+      done: data.leads.total > 0 && data.sla.unassigned_leads === 0,
+      progress: data.leads.total > 0 ? `${formatNumber(data.sla.unassigned_leads)} unassigned leads` : 'Capture a lead first',
+      href: '/inquiries',
+      show: hasPermission(session, 'crm.inquiries.read'),
+    },
+    {
+      label: 'Close first win',
+      done: data.leads.won > 0,
+      progress: `${formatNumber(data.leads.won)} won deals`,
+      href: '/pipeline',
+      show: hasPermission(session, 'crm.inquiries.read'),
+    },
+  ].filter((item) => item.show);
+
+  if (!items.length) return null;
+  const completed = items.filter((item) => item.done).length;
+
+  return (
+    <section className="rounded-3xl border border-teal-100 bg-gradient-to-br from-white to-teal-50 p-5 shadow-card">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <p className="eyebrow text-teal-700">Launch activation</p>
+          <h2 className="mt-2 text-xl font-bold tracking-tight text-slate-950">Get the agency to first value</h2>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
+            First customers should reach a working sales loop before seeing advanced platform controls.
+          </p>
+        </div>
+        <div className="rounded-2xl bg-white px-4 py-3 text-right shadow-sm">
+          <p className="text-2xs font-bold uppercase tracking-[0.16em] text-slate-500">Progress</p>
+          <p className="mt-1 text-2xl font-bold text-teal-800">{completed}/{items.length}</p>
+        </div>
+      </div>
+      <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-6">
+        {items.map((item) => (
+          <Link
+            key={item.label}
+            href={item.href}
+            className="rounded-2xl border border-white/80 bg-white p-4 transition hover:-translate-y-0.5 hover:border-teal-200 hover:shadow-card"
+          >
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-sm font-bold text-slate-900">{item.label}</p>
+              <span className={`rounded-full px-2 py-0.5 text-2xs font-bold uppercase tracking-wide ${item.done ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'}`}>
+                {item.done ? 'Done' : 'Next'}
+              </span>
+            </div>
+            <p className="mt-2 text-xs text-slate-500">{item.progress}</p>
+          </Link>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function LeadDiscipline({ data }: { data: DashboardData }) {
+  const atRisk = data.sla.stale_new_leads + data.sla.unassigned_leads + data.sla.overdue_followups + data.sla.missed_followups;
+  const needsAttention = atRisk > 0 || data.sla.due_today_followups > 0;
+  return (
+    <section className={`card overflow-hidden ${atRisk ? 'border-rose-200' : needsAttention ? 'border-amber-200' : ''}`}>
+      <div className="p-5">
+        <p className="eyebrow">SLA discipline</p>
+        <h3 className="mt-2 text-lg font-bold tracking-tight text-slate-950">
+          {atRisk ? 'Leads need attention now' : needsAttention ? 'Follow-ups due today' : 'No stale lead work'}
+        </h3>
+        <p className="mt-2 text-sm leading-6 text-slate-600">
+          Launch retention depends on a simple rule: contact every new lead within 24 hours and never let scheduled follow-ups slip.
+        </p>
+      </div>
+      <div className="grid grid-cols-2 divide-x divide-y divide-reos-border border-t border-reos-border">
+        <BriefStat label="Unassigned" value={formatNumber(data.sla.unassigned_leads)} detail="needs owner" />
+        <BriefStat label="Stale new" value={formatNumber(data.sla.stale_new_leads)} detail="24h+ untouched" />
+        <BriefStat label="Due today" value={formatNumber(data.sla.due_today_followups)} detail="pending follow-ups" />
+        <BriefStat label="Overdue" value={formatNumber(data.sla.overdue_followups)} detail="pending past date" />
+        <BriefStat label="Missed" value={formatNumber(data.sla.missed_followups)} detail="marked missed" />
+      </div>
+      <div className="border-t border-reos-border bg-slate-50 px-5 py-3">
+        <Link href="/inquiries" className="text-sm font-semibold text-teal-700 hover:underline">
+          Review lead follow-up queue →
+        </Link>
       </div>
     </section>
   );

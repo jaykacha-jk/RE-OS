@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 
 import { fetchAiDashboard, type AiDashboard } from '../../../lib/ai';
+import { getSession, hasPermission } from '../../../lib/auth';
 
 const RANGES = [
   { value: '7d', label: '7 days' },
@@ -11,12 +12,38 @@ const RANGES = [
   { value: '90d', label: '90 days' },
 ];
 
+const QUICK_ACTIONS = [
+  {
+    href: '/ai/playground',
+    label: 'Open assistant workbench (rules + LLM chat)',
+    permission: 'ai.qualify',
+  },
+  {
+    href: '/ai/calls',
+    label: 'View demo call logs & transcripts',
+    permission: 'ai.calls.read',
+  },
+  {
+    href: '/ai/knowledge',
+    label: 'View knowledge base',
+    permission: 'ai.knowledge.read',
+  },
+  {
+    href: '/ai/settings',
+    label: 'Configure assistant settings & provider',
+    permission: 'ai.settings.read',
+  },
+];
+
 export default function AiDashboardPage() {
   const [range, setRange] = useState('30d');
   const [data, setData] = useState<AiDashboard | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [quickActions, setQuickActions] = useState<typeof QUICK_ACTIONS>([]);
 
   useEffect(() => {
+    const session = getSession();
+    setQuickActions(QUICK_ACTIONS.filter((action) => hasPermission(session, action.permission)));
     fetchAiDashboard(range)
       .then(setData)
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load AI dashboard'));
@@ -83,18 +110,16 @@ export default function AiDashboardPage() {
         <div className="rounded-lg border bg-white p-4">
           <h2 className="mb-4 font-semibold text-slate-900">Quick actions</h2>
           <div className="grid gap-2 text-sm">
-            <Link className="rounded border px-3 py-2 text-slate-700 hover:bg-slate-50" href="/ai/playground">
-              Open assistant workbench (rules + LLM chat)
-            </Link>
-            <Link className="rounded border px-3 py-2 text-slate-700 hover:bg-slate-50" href="/ai/calls">
-              View demo call logs &amp; transcripts
-            </Link>
-            <Link className="rounded border px-3 py-2 text-slate-700 hover:bg-slate-50" href="/ai/knowledge">
-              Manage knowledge base
-            </Link>
-            <Link className="rounded border px-3 py-2 text-slate-700 hover:bg-slate-50" href="/ai/settings">
-              Configure assistant settings &amp; provider
-            </Link>
+            {quickActions.map((action) => (
+              <Link key={action.href} className="rounded border px-3 py-2 text-slate-700 hover:bg-slate-50" href={action.href}>
+                {action.label}
+              </Link>
+            ))}
+            {!quickActions.length && (
+              <p className="rounded border border-slate-200 bg-slate-50 px-3 py-2 text-slate-500">
+                No AI actions are available for your role.
+              </p>
+            )}
           </div>
         </div>
       </section>

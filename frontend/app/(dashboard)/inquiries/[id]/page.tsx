@@ -4,10 +4,12 @@ import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
 
+import { ActionGuard } from '../../../../components/shared/ActionGuard';
 import { apiFetch } from '../../../../lib/api';
-import { getSession, hasPermission } from '../../../../lib/auth';
+import { getSession } from '../../../../lib/auth';
 import {
   budgetLabel,
+  formatINR,
   humanize,
   priorityBadgeClass,
   stageBadgeClass,
@@ -39,27 +41,6 @@ export default function InquiryDetailPage() {
 
   const [newNote, setNewNote] = useState('');
   const [noteSaving, setNoteSaving] = useState(false);
-
-  const [perms, setPerms] = useState({
-    update: false,
-    delete: false,
-    assign: false,
-    notes: false,
-    followups: false,
-    siteVisits: false,
-  });
-
-  useEffect(() => {
-    const session = getSession();
-    setPerms({
-      update: hasPermission(session, 'crm.inquiries.update'),
-      delete: hasPermission(session, 'crm.inquiries.delete'),
-      assign: hasPermission(session, 'crm.inquiries.assign'),
-      notes: hasPermission(session, 'crm.notes.create'),
-      followups: hasPermission(session, 'crm.followups.create'),
-      siteVisits: hasPermission(session, 'crm.sitevisits.create'),
-    });
-  }, []);
 
   const load = useCallback(() => {
     const session = getSession();
@@ -168,26 +149,26 @@ export default function InquiryDetailPage() {
           <p className="mt-1 font-mono text-xs text-slate-500">{inquiry.inquiry_code}</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          {perms.update ? (
+          <ActionGuard permission="crm.inquiries.update" featureFlag="crm">
             <button type="button" onClick={() => setModal('stage')} className="rounded border border-slate-300 px-3 py-2 text-sm">
               Change stage
             </button>
-          ) : null}
-          {perms.assign ? (
+          </ActionGuard>
+          <ActionGuard permission="crm.inquiries.assign" featureFlag="crm">
             <button type="button" onClick={() => setModal('assign')} className="rounded border border-slate-300 px-3 py-2 text-sm">
               Assign
             </button>
-          ) : null}
-          {perms.update ? (
+          </ActionGuard>
+          <ActionGuard permission="crm.inquiries.update" featureFlag="crm">
             <Link href={`/inquiries/${id}/edit`} className="rounded border border-slate-300 px-3 py-2 text-sm">
               Edit
             </Link>
-          ) : null}
-          {perms.delete ? (
+          </ActionGuard>
+          <ActionGuard permission="crm.inquiries.delete" featureFlag="crm">
             <button type="button" onClick={remove} className="rounded border border-red-300 px-3 py-2 text-sm text-red-700 hover:bg-red-50">
               Delete
             </button>
-          ) : null}
+          </ActionGuard>
         </div>
       </div>
 
@@ -214,6 +195,10 @@ export default function InquiryDetailPage() {
               </Field>
               <Field label="Lead score" value={inquiry.lead_score != null ? String(inquiry.lead_score) : null} />
               <Field label="Budget" value={budgetLabel(inquiry.budget_min, inquiry.budget_max)} />
+              <Field label="Booking amount" value={formatINR(inquiry.booking_amount)} />
+              <Field label="Expected commission" value={formatINR(inquiry.expected_commission)} />
+              <Field label="Received commission" value={formatINR(inquiry.received_commission)} />
+              <Field label="Commission status" value={inquiry.commission_status ? humanize(inquiry.commission_status) : null} />
               <Field label="Requirement" value={inquiry.requirement_type ? humanize(inquiry.requirement_type) : null} />
               <Field label="Property type" value={inquiry.property_type ? humanize(inquiry.property_type) : null} />
               <Field label="Bedrooms" value={inquiry.bedrooms != null ? String(inquiry.bedrooms) : null} />
@@ -246,11 +231,11 @@ export default function InquiryDetailPage() {
           <section className="rounded-lg border border-slate-200 p-4">
             <div className="flex items-center justify-between">
               <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Follow-ups</h2>
-              {perms.followups ? (
+              <ActionGuard permission="crm.followups.create" featureFlag="crm">
                 <button type="button" onClick={() => setModal('followup')} className="text-sm text-teal-700 hover:underline">
                   + Add
                 </button>
-              ) : null}
+              </ActionGuard>
             </div>
             <div className="mt-3 space-y-2">
               {inquiry.followups && inquiry.followups.length > 0 ? (
@@ -266,7 +251,8 @@ export default function InquiryDetailPage() {
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs">{humanize(f.status)}</span>
-                      {perms.followups && f.status === 'pending' ? (
+                      {f.status === 'pending' ? (
+                        <ActionGuard permission="crm.followups.update" featureFlag="crm">
                         <>
                           <button type="button" onClick={() => updateFollowupStatus(f.id, 'completed')} className="text-xs text-teal-700 hover:underline">
                             Complete
@@ -275,6 +261,7 @@ export default function InquiryDetailPage() {
                             Miss
                           </button>
                         </>
+                        </ActionGuard>
                       ) : null}
                     </div>
                   </div>
@@ -289,11 +276,11 @@ export default function InquiryDetailPage() {
           <section className="rounded-lg border border-slate-200 p-4">
             <div className="flex items-center justify-between">
               <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Site visits</h2>
-              {perms.siteVisits ? (
+              <ActionGuard permission="crm.sitevisits.create" featureFlag="crm">
                 <button type="button" onClick={() => setModal('site-visit')} className="text-sm text-teal-700 hover:underline">
                   + Schedule
                 </button>
-              ) : null}
+              </ActionGuard>
             </div>
             <div className="mt-3 space-y-2">
               {inquiry.site_visits && inquiry.site_visits.length > 0 ? (
@@ -307,7 +294,8 @@ export default function InquiryDetailPage() {
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs">{humanize(s.status)}</span>
-                      {perms.siteVisits && s.status === 'scheduled' ? (
+                      {s.status === 'scheduled' ? (
+                        <ActionGuard permission="crm.sitevisits.update" featureFlag="crm">
                         <>
                           <button type="button" onClick={() => updateSiteVisitStatus(s.id, 'completed')} className="text-xs text-teal-700 hover:underline">
                             Complete
@@ -319,6 +307,7 @@ export default function InquiryDetailPage() {
                             Cancel
                           </button>
                         </>
+                        </ActionGuard>
                       ) : null}
                     </div>
                   </div>
@@ -332,7 +321,7 @@ export default function InquiryDetailPage() {
           {/* Notes */}
           <section className="rounded-lg border border-slate-200 p-4">
             <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Notes</h2>
-            {perms.notes ? (
+            <ActionGuard permission="crm.notes.create" featureFlag="crm">
               <div className="mt-3 flex gap-2">
                 <input
                   value={newNote}
@@ -344,7 +333,7 @@ export default function InquiryDetailPage() {
                   Add
                 </button>
               </div>
-            ) : null}
+            </ActionGuard>
             <div className="mt-3 space-y-2">
               {inquiry.notes && inquiry.notes.length > 0 ? (
                 inquiry.notes.map((n) => (

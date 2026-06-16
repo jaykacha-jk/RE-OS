@@ -5,10 +5,8 @@ import { EMAIL_PROVIDER } from './email-provider.interface';
 import { ProductionEmailProvider } from './production-email-provider';
 
 /**
- * Binds the `EMAIL_PROVIDER` token to a concrete implementation based on the
- * EMAIL_PROVIDER env var. Defaults to the dev provider so the pipeline works
- * out-of-the-box locally. Set EMAIL_PROVIDER=production with RESEND_API_KEY
- * and EMAIL_FROM to send through Resend.
+ * Binds the `EMAIL_PROVIDER` token to a concrete implementation. Production
+ * always selects the real provider so a deploy cannot silently use dev email.
  */
 @Module({
   providers: [
@@ -16,8 +14,12 @@ import { ProductionEmailProvider } from './production-email-provider';
     ProductionEmailProvider,
     {
       provide: EMAIL_PROVIDER,
-      useFactory: (dev: DevEmailProvider, prod: ProductionEmailProvider) =>
-        process.env.EMAIL_PROVIDER === 'production' ? prod : dev,
+      useFactory: (dev: DevEmailProvider, prod: ProductionEmailProvider) => {
+        if (process.env.NODE_ENV === 'production' && process.env.EMAIL_PROVIDER !== 'production') {
+          throw new Error('EMAIL_PROVIDER=production is required in production');
+        }
+        return process.env.EMAIL_PROVIDER === 'production' ? prod : dev;
+      },
       inject: [DevEmailProvider, ProductionEmailProvider],
     },
   ],

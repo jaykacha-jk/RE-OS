@@ -7,7 +7,7 @@ import {
 import { Reflector } from '@nestjs/core';
 
 import { AuthUser } from '../context/auth-user';
-import { REQUIRE_PERMISSIONS_KEY } from '../constants/rbac.constants';
+import { AUTH_ONLY_KEY, REQUIRE_PERMISSIONS_KEY } from '../constants/rbac.constants';
 
 @Injectable()
 export class PermissionsGuard implements CanActivate {
@@ -20,8 +20,15 @@ export class PermissionsGuard implements CanActivate {
         context.getClass(),
       ]) ?? [];
 
-    // No decorator => public route for authz purposes
-    if (requiredPermissions.length === 0) return true;
+    const authOnly = this.reflector.getAllAndOverride<boolean>(AUTH_ONLY_KEY, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
+
+    if (requiredPermissions.length === 0) {
+      if (authOnly) return true;
+      throw new ForbiddenException('Route missing permission configuration');
+    }
 
     const req = context.switchToHttp().getRequest();
     const user = req.user as AuthUser | undefined;

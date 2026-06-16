@@ -1,2 +1,4 @@
 export const REQUIRE_PERMISSIONS_KEY = Symbol('REQUIRE_PERMISSIONS_KEY');
+export const REQUIRE_FEATURE_KEY = Symbol('REQUIRE_FEATURE_KEY');
+export const AUTH_ONLY_KEY = Symbol('AUTH_ONLY_KEY');
 

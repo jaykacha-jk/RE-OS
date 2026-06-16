@@ -31,10 +31,12 @@ describe('AuthService password reset email dispatch', () => {
     };
     const auditService = { record: jest.fn() };
     const queue = { enqueue: jest.fn() };
+    const featureFlags = { getFlags: jest.fn().mockResolvedValue({}) };
     const service = new AuthService(
       authRepository as never,
       auditService as never,
       queue as never,
+      featureFlags as never,
     );
     return { service, authRepository, auditService, queue };
   };
@@ -119,6 +121,7 @@ describe('AuthService password reset email dispatch', () => {
       phone: '+919876543210',
       roles: ['org_owner'],
       permissions: ['settings.read'],
+      feature_flags: {},
     });
   });
 
@@ -332,7 +335,7 @@ describe('AuthService password reset email dispatch', () => {
     authRepository.createRefreshToken.mockResolvedValue({});
 
     const result = await service.refresh(
-      { refresh_token: 'refresh-token-123456' },
+      'refresh-token-123456',
       { userAgent: 'Jest', ipAddress: '127.0.0.1' },
     );
 
@@ -374,7 +377,7 @@ describe('AuthService password reset email dispatch', () => {
 
     await expect(
       service.refresh(
-        { refresh_token: 'refresh-token-123456' },
+        'refresh-token-123456',
         { userAgent: 'Jest', ipAddress: '127.0.0.1' },
       ),
     ).rejects.toThrow('Invalid refresh token');

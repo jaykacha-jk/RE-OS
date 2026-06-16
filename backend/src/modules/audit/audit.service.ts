@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, ForbiddenException } from '@nestjs/common';
 
 import type { AuthUser } from '../../common/context/auth-user';
 import { ListAuditLogsQueryDto } from './dto/list-audit-logs-query.dto';
@@ -49,8 +49,24 @@ export class AuditService {
   }
 
   private filtersFrom(user: AuthUser, query: ListAuditLogsQueryDto) {
+    if (user.roles.includes('super_admin')) {
+      return {
+        tenantId: query.tenant_id,
+        action: query.action,
+        entityType: query.entity_type,
+        actorEmail: query.actor_email,
+        entityId: query.entity_id,
+        dateFrom: query.date_from,
+        dateTo: query.date_to,
+      };
+    }
+
+    if (!user.tenantId) {
+      throw new ForbiddenException('Tenant context required');
+    }
+
     return {
-      tenantId: user.tenantId ?? query.tenant_id ?? undefined,
+      tenantId: user.tenantId,
       action: query.action,
       entityType: query.entity_type,
       actorEmail: query.actor_email,

@@ -17,7 +17,9 @@ export default function NotificationSettingsPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const canRead = hasPermission(getSession(), 'notifications.read');
+  const session = getSession();
+  const canRead = hasPermission(session, 'notifications.read');
+  const canUpdate = hasPermission(session, 'notifications.preferences.update');
 
   const load = useCallback(async () => {
     if (!canRead) {
@@ -40,6 +42,7 @@ export default function NotificationSettingsPage() {
   }, [load]);
 
   function toggle(eventKey: string, field: 'in_app' | 'email') {
+    if (!canUpdate) return;
     setPrefs((prev) =>
       prev.map((p) =>
         p.event_key === eventKey ? { ...p, [field]: !p[field] } : p,
@@ -48,6 +51,7 @@ export default function NotificationSettingsPage() {
   }
 
   async function save() {
+    if (!canUpdate) return;
     setSaving(true);
     setMessage(null);
     setError(null);
@@ -117,6 +121,7 @@ export default function NotificationSettingsPage() {
                     <input
                       type="checkbox"
                       checked={p.in_app}
+                      disabled={!canUpdate}
                       onChange={() => toggle(p.event_key, 'in_app')}
                       className="h-4 w-4 rounded border-slate-300 text-teal-700"
                     />
@@ -125,6 +130,7 @@ export default function NotificationSettingsPage() {
                     <input
                       type="checkbox"
                       checked={p.email}
+                      disabled={!canUpdate}
                       onChange={() => toggle(p.event_key, 'email')}
                       className="h-4 w-4 rounded border-slate-300 text-teal-700"
                     />
@@ -138,11 +144,11 @@ export default function NotificationSettingsPage() {
 
       <button
         type="button"
-        disabled={saving || loading}
+        disabled={saving || loading || !canUpdate}
         onClick={() => void save()}
         className="mt-6 rounded-lg bg-teal-700 px-4 py-2 text-sm font-medium text-white hover:bg-teal-800 disabled:opacity-50"
       >
-        {saving ? 'Saving…' : 'Save preferences'}
+        {saving ? 'Saving…' : canUpdate ? 'Save preferences' : 'Preference changes require permission'}
       </button>
     </div>
   );

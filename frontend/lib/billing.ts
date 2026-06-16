@@ -100,6 +100,10 @@ export async function subscribe(planCode: string, billingCycle: 'monthly' | 'yea
   ).data;
 }
 
+export function isAssistedBillingMode() {
+  return process.env.NEXT_PUBLIC_REOS_BILLING_MODE !== 'live';
+}
+
 export async function changePlan(planCode: string, billingCycle: 'monthly' | 'yearly') {
   return (
     await apiFetch<BillingSubscription>('/api/v1/billing/change-plan', {

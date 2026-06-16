@@ -98,6 +98,10 @@ export type Inquiry = {
   bedrooms: number | null;
   budget_min: number | null;
   budget_max: number | null;
+  booking_amount: number | null;
+  expected_commission: number | null;
+  received_commission: number | null;
+  commission_status: string | null;
   purchase_timeline: string | null;
   source_id: string | null;
   source_name: string | null;

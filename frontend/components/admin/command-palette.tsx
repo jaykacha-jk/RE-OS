@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
 import { Icon, type IconName } from '../ui/icons';
-import { hasPermission, type AuthSession } from '../../lib/auth';
+import { hasPermission, isFeatureEnabled, type AuthSession } from '../../lib/auth';
 import { visibleNavFor } from './nav-config';
 
 type Command = {
@@ -53,7 +53,7 @@ export function CommandPalette({
     if (hasPermission(session, 'properties.create')) {
       actions.push({ id: 'act:new-property', label: 'Add property', hint: 'Create', icon: 'plus', group: 'Actions', run: go('/properties/new') });
     }
-    if (hasPermission(session, 'crm.inquiries.create')) {
+    if (hasPermission(session, 'crm.inquiries.create') && isFeatureEnabled(session, 'crm')) {
       actions.push({ id: 'act:new-inquiry', label: 'New inquiry', hint: 'Create', icon: 'plus', group: 'Actions', run: go('/inquiries/new') });
     }
     return [...actions, ...navCommands];

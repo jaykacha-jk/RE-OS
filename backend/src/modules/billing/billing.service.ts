@@ -24,7 +24,7 @@ import { ListInvoicesQueryDto } from './dto/list-invoices-query.dto';
 import { RazorpayWebhookDto } from './dto/razorpay-webhook.dto';
 import { SubscribeDto } from './dto/subscribe.dto';
 import { MockProvider } from './providers/mock.provider';
-import type { PaymentProvider } from './providers/payment-provider';
+import type { PaymentProvider, ProviderSubscriptionResult } from './providers/payment-provider';
 import { RazorpayProvider } from './providers/razorpay.provider';
 
 type SubscriptionRow = NonNullable<Awaited<ReturnType<BillingRepository['findCurrentSubscription']>>>;
@@ -40,7 +40,14 @@ export class BillingService {
   ) {}
 
   private provider(): PaymentProvider {
+    if (process.env.NODE_ENV === 'production' && process.env.PAYMENT_PROVIDER !== 'razorpay') {
+      throw new Error('PAYMENT_PROVIDER=razorpay is required in production');
+    }
     return process.env.PAYMENT_PROVIDER === 'razorpay' ? this.razorpayProvider : this.mockProvider;
+  }
+
+  private isAssistedBillingMode(): boolean {
+    return process.env.BILLING_LAUNCH_MODE === 'assisted';
   }
 
   private addDays(date: Date, days: number): Date {
@@ -159,21 +166,29 @@ export class BillingService {
     if (!plan || !plan.is_active) throw new NotFoundException('Plan not found');
 
     const amount = this.amountForPlan(plan, dto.billing_cycle);
-    const providerResult =
-      amount === 0
-        ? {
-            provider: 'manual',
-            providerSubscriptionId: `manual_${tenantId}_${Date.now()}`,
-            checkoutUrl: null,
-          }
-        : await this.provider().createSubscription({
-            tenantId,
-            planCode: plan.code,
-            planName: plan.name,
-            billingCycle: dto.billing_cycle,
-            amount,
-            currency: 'INR',
-          });
+    let providerResult: ProviderSubscriptionResult;
+    if (amount === 0) {
+      providerResult = {
+        provider: 'manual',
+        providerSubscriptionId: `manual_${tenantId}_${Date.now()}`,
+        checkoutUrl: null,
+      };
+    } else if (this.isAssistedBillingMode()) {
+      providerResult = {
+        provider: 'assisted',
+        providerSubscriptionId: `assisted_${tenantId}_${Date.now()}`,
+        checkoutUrl: null,
+      };
+    } else {
+      providerResult = await this.provider().createSubscription({
+        tenantId,
+        planCode: plan.code,
+        planName: plan.name,
+        billingCycle: dto.billing_cycle,
+        amount,
+        currency: 'INR',
+      });
+    }
 
     const now = new Date();
     const subscription = await this.repo.createOrReplaceSubscription({

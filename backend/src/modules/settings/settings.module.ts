@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 
+import { FeatureFlagGuard } from '../../common/guards/feature-flag.guard';
 import { AuditModule } from '../audit/audit.module';
 import { DomainsController } from './domains.controller';
 import { DomainsService } from './domains.service';
@@ -27,6 +28,7 @@ import { TenantConfigService } from './tenant-config.service';
     SettingsRepository,
     SettingsCacheService,
     FeatureFlagsService,
+    FeatureFlagGuard,
     TenantConfigService,
     DomainsService,
   ],

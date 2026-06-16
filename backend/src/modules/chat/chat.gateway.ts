@@ -10,6 +10,8 @@ import {
 import { importSPKI, jwtVerify } from 'jose';
 import type { Server, Socket } from 'socket.io';
 
+import { AUTH_ACCESS_COOKIE } from '../../common/constants/auth.constants';
+import { readCookie } from '../../common/utils/auth-cookies.util';
 import { getJwtPublicKeyPem } from '../../config/jwt-keys';
 import { CHAT_FULL_ACCESS_ROLES } from './chat.constants';
 import { ChatRepository } from './chat.repository';
@@ -39,7 +41,8 @@ function conversationRoom(conversationId: string) {
 
 /**
  * Socket.io gateway for realtime chat. Mirrors the notifications gateway auth
- * handshake (RS256 access token via `handshake.auth.token` / `?token=`).
+ * handshake (RS256 access token via auth payload, query string, Authorization
+ * header, or the httpOnly access cookie).
  *
  * Rooms:
  *  - `user:{id}`  — private per-user room (inbox badges, targeted events).
@@ -159,7 +162,7 @@ export class ChatGateway implements OnGatewayConnection {
     if (typeof header === 'string' && header.startsWith('Bearer ')) {
       return header.slice('Bearer '.length);
     }
-    return null;
+    return readCookie({ headers: client.handshake.headers }, AUTH_ACCESS_COOKIE) ?? null;
   }
 
   // ---- Emit helpers (called by ChatService) --------------------------------

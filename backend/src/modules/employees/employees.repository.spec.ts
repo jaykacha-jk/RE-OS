@@ -19,7 +19,7 @@ describe('EmployeesRepository tenant isolation', () => {
     const db = {
       $transaction: jest.fn((callback: (client: typeof tx) => unknown) => callback(tx)),
       employees: { findFirst: jest.fn().mockResolvedValue(employee) },
-      subscription_plans: { findUnique: jest.fn().mockResolvedValue({ max_employees: 25 }) },
+      subscription_plans: { findUnique: jest.fn().mockResolvedValue({ max_employees: 50 }) },
     };
     const repo = new EmployeesRepository({ dbClient: db } as never);
     return { repo, db, tx };

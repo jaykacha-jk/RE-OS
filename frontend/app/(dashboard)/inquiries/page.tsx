@@ -3,8 +3,9 @@
 import Link from 'next/link';
 import { FormEvent, type ReactNode, useCallback, useEffect, useState } from 'react';
 
+import { ActionGuard } from '../../../components/shared/ActionGuard';
 import { apiFetch } from '../../../lib/api';
-import { getSession, hasPermission } from '../../../lib/auth';
+import { getSession } from '../../../lib/auth';
 import {
   budgetLabel,
   humanize,
@@ -33,7 +34,6 @@ export default function InquiriesPage() {
   const [meta, setMeta] = useState<ListMeta | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [canCreate, setCanCreate] = useState(false);
 
   const [sources, setSources] = useState<LeadSource[]>([]);
   const [employees, setEmployees] = useState<EmployeeOption[]>([]);
@@ -50,9 +50,9 @@ export default function InquiriesPage() {
   const [dateTo, setDateTo] = useState('');
   const [sortBy, setSortBy] = useState('created_at');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+  const [quickFilterVersion, setQuickFilterVersion] = useState(0);
 
   useEffect(() => {
-    setCanCreate(hasPermission(getSession(), 'crm.inquiries.create'));
     fetchLeadSources().then(setSources).catch(() => undefined);
     fetchEmployees().then(setEmployees).catch(() => undefined);
     fetchProperties().then(setProperties).catch(() => undefined);
@@ -99,6 +99,10 @@ export default function InquiriesPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sortBy, sortDir]);
 
+  useEffect(() => {
+    if (quickFilterVersion > 0) load(1);
+  }, [load, quickFilterVersion]);
+
   function onFilter(e: FormEvent) {
     e.preventDefault();
     load(1);
@@ -118,6 +122,8 @@ export default function InquiriesPage() {
 
   const total = meta?.total ?? rows.length;
   const hot = rows.filter((row) => row.temperature === 'hot').length;
+  const unassigned = rows.filter((row) => !row.assigned_employee_id).length;
+  const staleNew = rows.filter((row) => row.stage === 'NEW' && leadAgeHours(row.created_at) >= 24).length;
   const qualified = rows.filter((row) => ['QUALIFIED', 'SITE_VISIT_SCHEDULED', 'SITE_VISIT_COMPLETED', 'NEGOTIATION'].includes(row.stage)).length;
   const won = rows.filter((row) => row.stage === 'CLOSED_WON' || row.stage === 'BOOKED').length;
 
@@ -140,11 +146,11 @@ export default function InquiriesPage() {
               <Link href="/pipeline" className="inline-flex items-center justify-center rounded-xl border border-white/20 px-4 py-2 text-sm font-bold text-white transition hover:bg-white/10">
                 Pipeline board
               </Link>
-              {canCreate ? (
+              <ActionGuard permission="crm.inquiries.create" featureFlag="crm">
                 <Link href="/inquiries/new" className="inline-flex items-center justify-center rounded-xl bg-white px-4 py-2 text-sm font-bold text-teal-900 shadow-card transition hover:bg-teal-50">
                   New inquiry
                 </Link>
-              ) : null}
+              </ActionGuard>
             </div>
           </div>
         </div>
@@ -153,9 +159,33 @@ export default function InquiriesPage() {
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <CrmMetric label="Total leads" value={total.toLocaleString('en-IN')} detail="role-scoped pipeline" />
         <CrmMetric label="Hot leads" value={hot.toLocaleString('en-IN')} detail="needs same-day attention" tone="rose" />
-        <CrmMetric label="Qualified" value={qualified.toLocaleString('en-IN')} detail="ready for site visit or negotiation" tone="teal" />
-        <CrmMetric label="Won/booked" value={won.toLocaleString('en-IN')} detail="revenue-positive outcomes" tone="green" />
+        <CrmMetric label="Unassigned" value={unassigned.toLocaleString('en-IN')} detail="no one owns these leads yet" tone={unassigned ? 'rose' : 'green'} />
+        <CrmMetric label="Stale new" value={staleNew.toLocaleString('en-IN')} detail="new for 24h+ without progress" tone={staleNew ? 'rose' : 'green'} />
       </section>
+
+      <LeadOwnershipPanel
+        unassigned={unassigned}
+        staleNew={staleNew}
+        qualified={qualified}
+        won={won}
+        onUnassigned={() => {
+          setAssignedEmployee('unassigned');
+          setStage('');
+          setDateTo('');
+          setSortBy('created_at');
+          setSortDir('asc');
+          setQuickFilterVersion((version) => version + 1);
+        }}
+        onStaleNew={() => {
+          const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
+          setStage('NEW');
+          setDateTo(yesterday.toISOString().slice(0, 10));
+          setAssignedEmployee('');
+          setSortBy('created_at');
+          setSortDir('asc');
+          setQuickFilterVersion((version) => version + 1);
+        }}
+      />
 
       <form onSubmit={onFilter} className="panel p-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -208,6 +238,7 @@ export default function InquiriesPage() {
           <FilterField label="Assignee">
             <select value={assignedEmployee} onChange={(e) => setAssignedEmployee(e.target.value)} className="input">
               <option value="">All assignees</option>
+              <option value="unassigned">Unassigned</option>
               {employees.map((e) => (
                 <option key={e.id} value={e.id}>{employeeLabel(e)}</option>
               ))}
@@ -237,7 +268,7 @@ export default function InquiriesPage() {
         </div>
       ) : null}
 
-      {!loading && !error && rows.length === 0 ? <EmptyInquiries canCreate={canCreate} /> : null}
+      {!loading && !error && rows.length === 0 ? <EmptyInquiries /> : null}
 
       {!loading && !error && rows.length > 0 ? (
         <>
@@ -332,6 +363,10 @@ export default function InquiriesPage() {
   );
 }
 
+function leadAgeHours(createdAt: string): number {
+  return (Date.now() - new Date(createdAt).getTime()) / (60 * 60 * 1000);
+}
+
 function FilterField({ label, children, className = '' }: { label: string; children: ReactNode; className?: string }) {
   return (
     <label className={`block ${className}`}>
@@ -366,6 +401,62 @@ function CrmMetric({
       <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">{label}</p>
       <p className="mt-3 text-3xl font-bold tabular-nums tracking-tight">{value}</p>
       <p className="mt-2 text-xs leading-5 text-slate-500">{detail}</p>
+    </div>
+  );
+}
+
+function LeadOwnershipPanel({
+  unassigned,
+  staleNew,
+  qualified,
+  won,
+  onUnassigned,
+  onStaleNew,
+}: {
+  unassigned: number;
+  staleNew: number;
+  qualified: number;
+  won: number;
+  onUnassigned: () => void;
+  onStaleNew: () => void;
+}) {
+  const atRisk = unassigned + staleNew;
+  return (
+    <section className={`rounded-3xl border p-5 shadow-card ${atRisk ? 'border-rose-200 bg-rose-50' : 'border-teal-100 bg-teal-50'}`}>
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <p className={`text-xs font-bold uppercase tracking-[0.18em] ${atRisk ? 'text-rose-700' : 'text-teal-700'}`}>Lead ownership</p>
+          <h2 className="mt-2 text-xl font-bold tracking-tight text-slate-950">
+            {atRisk ? 'Some leads need manager attention' : 'Every visible lead has a healthy owner path'}
+          </h2>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
+            Launch agencies cannot afford missed website leads. Keep unassigned leads at zero and move new leads to contacted within 24 hours.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button type="button" onClick={onUnassigned} className="btn-secondary">
+            Show unassigned
+          </button>
+          <button type="button" onClick={onStaleNew} className="btn-secondary">
+            Show stale new
+          </button>
+        </div>
+      </div>
+      <div className="mt-5 grid gap-3 sm:grid-cols-4">
+        <OwnershipStat label="Unassigned" value={unassigned} danger={unassigned > 0} />
+        <OwnershipStat label="Stale new" value={staleNew} danger={staleNew > 0} />
+        <OwnershipStat label="Qualified" value={qualified} />
+        <OwnershipStat label="Won/booked" value={won} />
+      </div>
+    </section>
+  );
+}
+
+function OwnershipStat({ label, value, danger = false }: { label: string; value: number; danger?: boolean }) {
+  return (
+    <div className="rounded-2xl border border-white/70 bg-white p-4">
+      <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">{label}</p>
+      <p className={`mt-2 text-2xl font-bold tabular-nums ${danger ? 'text-rose-700' : 'text-slate-950'}`}>{value.toLocaleString('en-IN')}</p>
     </div>
   );
 }
@@ -448,7 +539,7 @@ function CrmLoadingState() {
   );
 }
 
-function EmptyInquiries({ canCreate }: { canCreate: boolean }) {
+function EmptyInquiries() {
   return (
     <section className="rounded-3xl border border-dashed border-teal-200 bg-gradient-to-br from-teal-50 to-white p-10 text-center shadow-card">
       <p className="text-sm font-bold uppercase tracking-[0.18em] text-teal-700">No leads found</p>
@@ -456,11 +547,11 @@ function EmptyInquiries({ canCreate }: { canCreate: boolean }) {
       <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-slate-600">
         Capture website, WhatsApp, referral, and walk-in leads so the dashboard, pipeline, and follow-up engine have real activity.
       </p>
-      {canCreate ? (
+      <ActionGuard permission="crm.inquiries.create" featureFlag="crm">
         <Link href="/inquiries/new" className="btn-primary mt-6">
           Create first inquiry
         </Link>
-      ) : null}
+      </ActionGuard>
     </section>
   );
 }

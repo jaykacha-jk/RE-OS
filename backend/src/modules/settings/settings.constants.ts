@@ -33,6 +33,7 @@ export const DEFAULT_FEATURES: Record<string, boolean> = {
   billing: true,
   crm: true,
   website: true,
+  domains: true,
   analytics: true,
   notifications: true,
 };

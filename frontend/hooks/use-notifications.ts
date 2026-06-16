@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { io, type Socket } from 'socket.io-client';
 
-import { getSession } from '../lib/auth';
+import { getBearerToken, getSession, hasActiveSession, usesCookieAuth } from '../lib/auth';
 import {
   fetchNotifications,
   fetchUnreadCount,
@@ -32,7 +32,7 @@ export function useNotifications(opts?: { enabled?: boolean; listLimit?: number 
 
   const refresh = useCallback(async () => {
     const session = getSession();
-    if (!session?.access_token) {
+    if (!hasActiveSession(session)) {
       setItems([]);
       setUnreadCount(0);
       setLoading(false);
@@ -62,13 +62,16 @@ export function useNotifications(opts?: { enabled?: boolean; listLimit?: number 
   useEffect(() => {
     if (!enabled) return;
     const session = getSession();
-    if (!session?.access_token) return;
+    if (!hasActiveSession(session)) return;
+
+    const token = getBearerToken(session);
 
     const socket = io(`${API_BASE}/notifications`, {
-      auth: { token: session.access_token },
+      auth: token ? { token } : undefined,
       transports: ['websocket', 'polling'],
       reconnection: true,
       reconnectionAttempts: 5,
+      withCredentials: usesCookieAuth(),
     });
     socketRef.current = socket;
 

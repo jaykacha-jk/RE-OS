@@ -6,15 +6,24 @@ import {
   Patch,
   Post,
   Req,
+  Res,
+  UnauthorizedException,
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
-import type { Request } from 'express';
+import type { Request, Response } from 'express';
 import { randomBytes } from 'crypto';
 
+import { AuthOnly } from '../../common/decorators/auth-only.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { PermissionsGuard } from '../../common/guards/permissions.guard';
+import {
+  clearAuthCookies,
+  readRefreshToken,
+  setAuthCookies,
+} from '../../common/utils/auth-cookies.util';
 import type { AuthUser } from '../../common/context/auth-user';
 import { AuthService } from './auth.service';
 import { AcceptInvitationDto } from './dto/accept-invitation.dto';
@@ -50,10 +59,14 @@ export class AuthController {
   @Throttle({ auth: { limit: 10, ttl: 60_000 } })
   @ApiOperation({ summary: 'Login with email/password' })
   @ApiOkResponse({ description: 'Access + refresh tokens' })
-  async login(@Body() dto: LoginDto, @Req() req: Request) {
+  async login(@Body() dto: LoginDto, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
     const result = await this.authService.login(dto, {
       userAgent: req.headers['user-agent'] as string | undefined,
       ipAddress: req.ip,
+    });
+    setAuthCookies(res, {
+      accessToken: result.access_token,
+      refreshToken: result.refresh_token,
     });
 
     return {
@@ -66,10 +79,21 @@ export class AuthController {
   @Throttle({ auth: { limit: 30, ttl: 60_000 } })
   @HttpCode(200)
   @ApiOperation({ summary: 'Refresh access token (rotates refresh token)' })
-  async refresh(@Body() dto: RefreshDto, @Req() req: Request) {
-    const result = await this.authService.refresh(dto, {
+  async refresh(
+    @Body() dto: RefreshDto,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const refreshToken = readRefreshToken(req, dto.refresh_token);
+    if (!refreshToken) throw new UnauthorizedException('Missing refresh token');
+
+    const result = await this.authService.refresh(refreshToken, {
       userAgent: req.headers['user-agent'] as string | undefined,
       ipAddress: req.ip,
+    });
+    setAuthCookies(res, {
+      accessToken: result.access_token,
+      refreshToken: result.refresh_token,
     });
 
     return {
@@ -81,20 +105,34 @@ export class AuthController {
   @Post('logout')
   @HttpCode(204)
   @ApiOperation({ summary: 'Logout (revoke refresh token)' })
-  async logout(@Body() dto: RefreshDto, @Req() req: Request) {
-    await this.authService.logout(dto, {
+  async logout(
+    @Body() dto: RefreshDto,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const refreshToken = readRefreshToken(req, dto.refresh_token);
+    await this.authService.logout(refreshToken, {
       userAgent: req.headers['user-agent'] as string | undefined,
       ipAddress: req.ip,
     });
+    clearAuthCookies(res);
   }
 
   @Post('accept-invitation')
   @Throttle({ auth: { limit: 10, ttl: 60_000 } })
   @ApiOperation({ summary: 'Accept invitation and set password' })
-  async acceptInvitation(@Body() dto: AcceptInvitationDto, @Req() req: Request) {
+  async acceptInvitation(
+    @Body() dto: AcceptInvitationDto,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
     const result = await this.authService.acceptInvitation(dto, {
       userAgent: req.headers['user-agent'] as string | undefined,
       ipAddress: req.ip,
+    });
+    setAuthCookies(res, {
+      accessToken: result.access_token,
+      refreshToken: result.refresh_token,
     });
     return {
       data: result,
@@ -148,7 +186,8 @@ export class AuthController {
   }
 
   @Get('me')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @AuthOnly()
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get current authenticated user + roles/permissions' })
   async me(@CurrentUser() user: AuthUser) {
@@ -157,7 +196,8 @@ export class AuthController {
   }
 
   @Patch('me')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @AuthOnly()
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update current user profile' })
   async updateMe(@CurrentUser() user: AuthUser, @Body() dto: UpdateProfileDto, @Req() req: Request) {

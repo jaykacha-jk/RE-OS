@@ -32,6 +32,10 @@ function makeInquiry(overrides: Partial<Record<string, unknown>> = {}) {
     whatsapp: null,
     budget_min: 5000000,
     budget_max: 8000000,
+    booking_amount: null,
+    expected_commission: null,
+    received_commission: null,
+    commission_status: null,
     requirement_type: 'buy',
     preferred_location: 'SG Highway',
     property_type: 'residential',
@@ -270,6 +274,10 @@ describe('CrmService — field-level PII stripping', () => {
     expect(result.lead_score).toBeNull();
     expect(result.budget_min).toBeNull();
     expect(result.budget_max).toBeNull();
+    expect(result.booking_amount).toBeNull();
+    expect(result.expected_commission).toBeNull();
+    expect(result.received_commission).toBeNull();
+    expect(result.commission_status).toBeNull();
     expect(result.remarks).toBeNull();
     expect(result.lost_reason).toBeNull();
     expect(result.no_property_reason).toBeNull();
@@ -399,6 +407,32 @@ describe('CrmService — stage workflow', () => {
     await service.changeStage(TENANT, makeUser(['org_admin']), 'inq-1', { stage: 'NEGOTIATION' } as never);
     expect(repo.changeStage).toHaveBeenCalledWith(
       expect.objectContaining({ fromStage: 'NEW', toStage: 'NEGOTIATION' }),
+    );
+  });
+
+  it('persists deal economics when moving to BOOKED', async () => {
+    const { service, repo } = buildService();
+    repo.findById!.mockResolvedValue(makeInquiry({ stage: 'NEGOTIATION' }) as never);
+    await service.changeStage(
+      TENANT,
+      makeUser(['org_admin']),
+      'inq-1',
+      {
+        stage: 'BOOKED',
+        booking_amount: 100000,
+        expected_commission: 250000,
+        commission_status: 'pending',
+      } as never,
+    );
+    expect(repo.changeStage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        toStage: 'BOOKED',
+        data: expect.objectContaining({
+          booking_amount: 100000,
+          expected_commission: 250000,
+          commission_status: 'pending',
+        }),
+      }),
     );
   });
 

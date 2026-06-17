@@ -42,8 +42,14 @@ export type LeadKpis = {
 export type RevenueKpis = {
   currency: string;
   won_deals: number;
+  gross_property_value: number;
+  booking_value: number;
+  expected_commission: number;
+  received_commission: number;
+  outstanding_commission: number;
   won_amount: number;
   avg_deal_value: number;
+  avg_received_commission: number;
 };
 
 export type SlaKpis = {

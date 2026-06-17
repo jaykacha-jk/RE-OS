@@ -112,7 +112,7 @@ export default function AnalyticsPage() {
                   <MetricCard label="Published" value={formatNumber(data.properties.published)} />
                   <MetricCard label="Reserved" value={formatNumber(data.properties.reserved)} />
                   <MetricCard label="Sold" value={formatNumber(data.properties.sold)} />
-                  <MetricCard label="Revenue" value={formatInr(data.revenue.won_amount)} sub={`${data.revenue.won_deals} deals`} />
+                  <MetricCard label="Received commission" value={formatInr(data.revenue.received_commission)} sub={`${data.revenue.won_deals} won deals`} />
                 </div>
               </div>
             </ChartCard>

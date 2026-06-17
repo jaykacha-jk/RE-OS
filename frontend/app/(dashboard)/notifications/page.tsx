@@ -1,8 +1,17 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { Suspense, useCallback, useEffect, useState } from 'react';
 
+import {
+  CrudToolbar,
+  EmptyState,
+  FilterDrawer,
+  FilterField,
+  PageHeader,
+  Pagination,
+} from '../../../components/ui';
 import { NotificationItem } from '../../../components/notifications/notification-item';
+import { useTableQuery, type TableQueryValues } from '../../../hooks/use-table-query';
 import { getSession, hasPermission } from '../../../lib/auth';
 import {
   fetchNotifications,
@@ -13,18 +22,37 @@ import {
 import { useNotifications } from '../../../hooks/use-notifications';
 
 export default function NotificationsPage() {
+  return (
+    <Suspense fallback={null}>
+      <NotificationsInner />
+    </Suspense>
+  );
+}
+
+const FILTER_KEYS = ['read', 'type'];
+
+function NotificationsInner() {
+  const query = useTableQuery({ filterKeys: FILTER_KEYS });
   const { markRead, markAllRead, unreadCount } = useNotifications({ listLimit: 50 });
   const [rows, setRows] = useState<Notification[]>([]);
   const [meta, setMeta] = useState<ListMeta | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [filterRead, setFilterRead] = useState<'all' | 'unread' | 'read'>('all');
-  const [filterType, setFilterType] = useState('');
+  const [search, setSearch] = useState('');
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [draft, setDraft] = useState<TableQueryValues>(query.filters);
+  const [canRead, setCanRead] = useState(false);
 
-  const canRead = hasPermission(getSession(), 'notifications.read');
+  useEffect(() => {
+    setCanRead(hasPermission(getSession(), 'notifications.read'));
+  }, []);
+
+  const { filters, page, setPage, perPage, setPerPage } = query;
+  const readFilter = filters.read ?? '';
+  const typeFilter = filters.type ?? '';
 
   const load = useCallback(
-    async (page = 1) => {
+    async () => {
       if (!canRead) {
         setLoading(false);
         return;
@@ -33,10 +61,10 @@ export default function NotificationsPage() {
       try {
         const res = await fetchNotifications({
           page,
-          per_page: 30,
-          type: filterType || undefined,
+          per_page: perPage,
+          type: typeFilter || undefined,
           is_read:
-            filterRead === 'all' ? undefined : filterRead === 'read',
+            readFilter === '' ? undefined : readFilter === 'read',
         });
         setRows(res.data);
         setMeta(res.meta);
@@ -47,11 +75,11 @@ export default function NotificationsPage() {
         setLoading(false);
       }
     },
-    [canRead, filterRead, filterType],
+    [canRead, page, perPage, readFilter, typeFilter],
   );
 
   useEffect(() => {
-    void load(1);
+    void load();
   }, [load]);
 
   if (!canRead) {
@@ -60,112 +88,128 @@ export default function NotificationsPage() {
     );
   }
 
-  const groups = groupNotifications(rows);
+  const visibleRows = rows.filter((row) => {
+    const haystack = [row.title, row.message, row.type, row.priority].join(' ').toLowerCase();
+    return haystack.includes(search.trim().toLowerCase());
+  });
+  const groups = groupNotifications(visibleRows);
   const groupOrder = ['Today', 'Yesterday', 'Older'] as const;
 
   return (
-    <div className="mx-auto max-w-3xl">
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold text-slate-900">Notifications</h1>
-          <p className="text-sm text-slate-500">
-            {unreadCount > 0 ? `${unreadCount} unread` : 'All caught up'}
-          </p>
-        </div>
-        {unreadCount > 0 && (
-          <button
-            type="button"
-            onClick={() => void markAllRead().then(() => load(1))}
-            className="rounded-lg border border-teal-700 px-3 py-1.5 text-sm font-medium text-teal-800 hover:bg-teal-50"
-          >
-            Mark all read
-          </button>
-        )}
-      </div>
-
-      <div className="mb-4 flex flex-wrap gap-3">
-        <select
-          value={filterRead}
-          onChange={(e) => setFilterRead(e.target.value as typeof filterRead)}
-          className="rounded border border-slate-300 px-2 py-1.5 text-sm"
-        >
-          <option value="all">All</option>
-          <option value="unread">Unread only</option>
-          <option value="read">Read only</option>
-        </select>
-        <select
-          value={filterType}
-          onChange={(e) => setFilterType(e.target.value)}
-          className="rounded border border-slate-300 px-2 py-1.5 text-sm"
-        >
-          <option value="">All types</option>
-          <option value="CRM">CRM</option>
-          <option value="PROPERTY">Property</option>
-          <option value="SYSTEM">System</option>
-          <option value="BILLING">Billing</option>
-        </select>
-      </div>
+    <div className="space-y-6">
+      <PageHeader
+        eyebrow="Inbox"
+        title="Notifications"
+        description={unreadCount > 0 ? `${unreadCount} unread` : 'All caught up'}
+      />
 
       {error && (
-        <p className="mb-4 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+        <p className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
           {error}
         </p>
       )}
 
-      {loading && <p className="text-slate-500">Loading…</p>}
+      <section className="overflow-hidden rounded-2xl border border-reos-border bg-white shadow-card">
+        <CrudToolbar
+          searchValue={search}
+          onSearchChange={setSearch}
+          searchPlaceholder="Search notifications"
+          onFilter={() => {
+            setDraft(filters);
+            setFilterOpen(true);
+          }}
+          filterCount={query.activeFilterCount}
+          onRefresh={load}
+          refreshing={loading}
+          addSlot={
+            unreadCount > 0 ? (
+              <button type="button" onClick={() => void markAllRead().then(() => load())} className="btn-secondary">
+                Mark all read
+              </button>
+            ) : null
+          }
+        />
 
-      {!loading && rows.length === 0 && (
-        <div className="rounded-xl border border-dashed border-slate-200 py-16 text-center text-slate-500">
-          No notifications match your filters.
-        </div>
-      )}
+        {loading ? (
+          <div className="space-y-3 px-5 py-5">
+            {Array.from({ length: 6 }).map((_, index) => (
+              <div key={index} className="h-16 animate-pulse rounded-xl bg-slate-100" />
+            ))}
+          </div>
+        ) : null}
 
-      {!loading &&
-        groupOrder.map((label) => {
-          const groupItems = groups[label];
-          if (!groupItems.length) return null;
-          return (
-            <section key={label} className="mb-8">
-              <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
-                {label}
-              </h2>
-              <div className="divide-y divide-slate-100 rounded-xl border border-slate-200 bg-white">
-                {groupItems.map((n) => (
-                  <div key={n.id} className="px-1">
-                    <NotificationItem
-                      notification={n}
-                      onMarkRead={(id) => void markRead(id).then(() => load(meta?.page ?? 1))}
-                    />
+        {!loading && visibleRows.length === 0 ? (
+          <div className="px-5 py-10">
+            <EmptyState title="No notifications match your filters" description="Try clearing filters or searching for a different type or message." />
+          </div>
+        ) : null}
+
+        {!loading && visibleRows.length > 0 ? (
+          <div className="px-5 py-5">
+            {groupOrder.map((label) => {
+              const groupItems = groups[label];
+              if (!groupItems.length) return null;
+              return (
+                <section key={label} className="mb-6 last:mb-0">
+                  <h2 className="mb-2 text-2xs font-bold uppercase tracking-wide text-slate-400">
+                    {label}
+                  </h2>
+                  <div className="divide-y divide-slate-100 rounded-xl border border-slate-200 bg-white">
+                    {groupItems.map((n) => (
+                      <div key={n.id} className="px-1">
+                        <NotificationItem
+                          notification={n}
+                          onMarkRead={(id) => void markRead(id).then(() => load())}
+                        />
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
-            </section>
-          );
-        })}
+                </section>
+              );
+            })}
+          </div>
+        ) : null}
 
-      {meta && meta.total_pages > 1 && (
-        <div className="mt-4 flex justify-center gap-2">
-          <button
-            type="button"
-            disabled={meta.page <= 1}
-            onClick={() => void load(meta.page - 1)}
-            className="rounded border px-3 py-1 text-sm disabled:opacity-40"
-          >
-            Previous
-          </button>
-          <span className="px-2 py-1 text-sm text-slate-600">
-            Page {meta.page} of {meta.total_pages}
-          </span>
-          <button
-            type="button"
-            disabled={meta.page >= meta.total_pages}
-            onClick={() => void load(meta.page + 1)}
-            className="rounded border px-3 py-1 text-sm disabled:opacity-40"
-          >
-            Next
-          </button>
-        </div>
-      )}
+        {meta ? (
+          <Pagination
+            page={meta.page}
+            totalPages={meta.total_pages}
+            total={meta.total}
+            perPage={perPage}
+            onPageChange={setPage}
+            onPerPageChange={setPerPage}
+          />
+        ) : null}
+      </section>
+
+      <FilterDrawer
+        open={filterOpen}
+        onClose={() => setFilterOpen(false)}
+        onApply={() => query.applyFilters(draft)}
+        onClear={() => {
+          query.clearFilters();
+          setDraft(Object.fromEntries(FILTER_KEYS.map((k) => [k, ''])));
+        }}
+      >
+        <FilterField label="Read status">
+          <select value={draft.read ?? ''} onChange={(e) => setDraft((d) => ({ ...d, read: e.target.value }))} className="input">
+            <option value="">All</option>
+            <option value="unread">Unread only</option>
+            <option value="read">Read only</option>
+          </select>
+        </FilterField>
+        <FilterField label="Type">
+          <select value={draft.type ?? ''} onChange={(e) => setDraft((d) => ({ ...d, type: e.target.value }))} className="input">
+            <option value="">All types</option>
+            <option value="CRM">CRM</option>
+            <option value="PROPERTY">Property</option>
+            <option value="SYSTEM">System</option>
+            <option value="BILLING">Billing</option>
+            <option value="CHAT">Chat</option>
+            <option value="AI_AGENT">AI Agent</option>
+          </select>
+        </FilterField>
+      </FilterDrawer>
     </div>
   );
 }

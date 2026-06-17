@@ -168,35 +168,50 @@ export async function fetchPublicListings(input: {
     if (filters.requirementType) params.set('filter[requirement_type]', filters.requirementType);
   }
 
-  const res = await fetch(`${API_BASE}/api/v1/public/properties?${params.toString()}`, {
-    next: { revalidate: 300 },
-  });
-  if (!res.ok) {
+  try {
+    const res = await fetch(`${API_BASE}/api/v1/public/properties?${params.toString()}`, {
+      next: { revalidate: 300 },
+    });
+    if (!res.ok) {
+      return {
+        data: [],
+        error: `Unable to load listings (${res.status})`,
+      };
+    }
+    return (await res.json()) as PublicListingResponse;
+  } catch {
     return {
       data: [],
-      error: `Unable to load listings (${res.status})`,
+      error: 'Unable to reach the listing service. Ensure the API server is running.',
     };
   }
-  return (await res.json()) as PublicListingResponse;
 }
 
 export async function fetchPublicSettings(tenant: string): Promise<PublicSettings | null> {
-  const res = await fetch(`${API_BASE}/api/v1/public/settings?tenant=${encodeURIComponent(tenant)}`, {
-    next: { revalidate: 300 },
-  });
-  if (!res.ok) return null;
-  const body = (await res.json()) as { data: PublicSettings };
-  return body.data;
+  try {
+    const res = await fetch(`${API_BASE}/api/v1/public/settings?tenant=${encodeURIComponent(tenant)}`, {
+      next: { revalidate: 300 },
+    });
+    if (!res.ok) return null;
+    const body = (await res.json()) as { data: PublicSettings };
+    return body.data;
+  } catch {
+    return null;
+  }
 }
 
 export async function fetchPublicProperty(slug: string, tenant: string): Promise<PublicProperty | null> {
-  const res = await fetch(
-    `${API_BASE}/api/v1/public/properties/${encodeURIComponent(slug)}?tenant=${encodeURIComponent(tenant)}`,
-    { next: { revalidate: 300 } },
-  );
-  if (!res.ok) return null;
-  const body = (await res.json()) as { data: PublicProperty };
-  return body.data;
+  try {
+    const res = await fetch(
+      `${API_BASE}/api/v1/public/properties/${encodeURIComponent(slug)}?tenant=${encodeURIComponent(tenant)}`,
+      { next: { revalidate: 300 } },
+    );
+    if (!res.ok) return null;
+    const body = (await res.json()) as { data: PublicProperty };
+    return body.data;
+  } catch {
+    return null;
+  }
 }
 
 export function buildPropertyMetadata(property: PublicProperty, canonicalPath: string): Metadata {

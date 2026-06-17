@@ -14,7 +14,7 @@ import {
 } from '../../../../lib/crm-api';
 import { ModalShell } from './modal-shell';
 
-const inputClass = 'mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm';
+const labelClass = 'mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500';
 
 export function SiteVisitModal({
   inquiry,
@@ -71,12 +71,12 @@ export function SiteVisitModal({
   return (
     <ModalShell title="Schedule site visit" onClose={onClose} onSave={save} saving={saving} error={error} saveLabel="Schedule">
       <div>
-        <label className="block text-sm font-medium text-slate-700">Scheduled at *</label>
-        <input value={scheduledAt} onChange={(e) => setScheduledAt(e.target.value)} type="datetime-local" className={inputClass} />
+        <label className={labelClass}>Scheduled at *</label>
+        <input value={scheduledAt} onChange={(e) => setScheduledAt(e.target.value)} type="datetime-local" className="input" />
       </div>
       <div>
-        <label className="block text-sm font-medium text-slate-700">Property</label>
-        <select value={propertyId} onChange={(e) => setPropertyId(e.target.value)} className={inputClass}>
+        <label className={labelClass}>Property</label>
+        <select value={propertyId} onChange={(e) => setPropertyId(e.target.value)} className="input">
           <option value="">— inquiry property —</option>
           {properties.map((p) => (
             <option key={p.id} value={p.id}>{p.title}</option>
@@ -84,8 +84,8 @@ export function SiteVisitModal({
         </select>
       </div>
       <div>
-        <label className="block text-sm font-medium text-slate-700">Conducted by</label>
-        <select value={employeeId} onChange={(e) => setEmployeeId(e.target.value)} className={inputClass}>
+        <label className={labelClass}>Conducted by</label>
+        <select value={employeeId} onChange={(e) => setEmployeeId(e.target.value)} className="input">
           <option value="">— assignee —</option>
           {employees.map((emp) => (
             <option key={emp.id} value={emp.id}>{employeeLabel(emp)}</option>
@@ -93,8 +93,8 @@ export function SiteVisitModal({
         </select>
       </div>
       <div>
-        <label className="block text-sm font-medium text-slate-700">Notes</label>
-        <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} className={inputClass} />
+        <label className={labelClass}>Notes</label>
+        <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} className="input" placeholder="Meeting point, customer preference, or visit context…" />
       </div>
     </ModalShell>
   );

@@ -95,6 +95,17 @@ export type ListMeta = {
   total_pages: number;
 };
 
+export type PropertySummary = {
+  total: number;
+  published: number;
+  reserved: number;
+  sold: number;
+  draft: number;
+  public_listings: number;
+  total_value: number;
+  by_status: Record<string, number>;
+};
+
 const inr = new Intl.NumberFormat('en-IN', {
   style: 'currency',
   currency: 'INR',

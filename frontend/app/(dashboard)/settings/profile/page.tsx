@@ -2,8 +2,10 @@
 
 import { FormEvent, useEffect, useState } from 'react';
 
+import { PhoneInput } from '../../../../components/ui';
 import { apiFetch } from '../../../../lib/api';
-import { getSession, saveSession, type AuthSession } from '../../../../lib/auth';
+import { getSession, isSuperAdmin, saveSession, type AuthSession } from '../../../../lib/auth';
+import { isValidIndianMobile, parseNationalDigits, toE164 } from '../../../../lib/phone';
 
 type MeResponse = {
   user_id: string;
@@ -16,9 +18,14 @@ type MeResponse = {
   permissions: string[];
 };
 
+function formatRole(role: string): string {
+  return role.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
 export default function ProfileSettingsPage() {
   const [session, setSession] = useState<AuthSession | null>(null);
   const [me, setMe] = useState<MeResponse | null>(null);
+  const [phone, setPhone] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -29,7 +36,10 @@ export default function ProfileSettingsPage() {
     if (!current?.access_token) return;
 
     apiFetch<MeResponse>('/api/v1/auth/me', { token: current.access_token })
-      .then((res) => setMe(res.data))
+      .then((res) => {
+        setMe(res.data);
+        setPhone(res.data.phone ?? '');
+      })
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load profile'));
   }, []);
 
@@ -38,6 +48,12 @@ export default function ProfileSettingsPage() {
     if (!session?.access_token) return;
 
     const form = new FormData(event.currentTarget);
+    const national = parseNationalDigits(phone);
+    if (phone.trim() && !isValidIndianMobile(national)) {
+      setError('Please match the requested format.');
+      return;
+    }
+
     setSaving(true);
     setSaved(false);
     setError(null);
@@ -49,10 +65,11 @@ export default function ProfileSettingsPage() {
         body: JSON.stringify({
           first_name: form.get('first_name') || undefined,
           last_name: form.get('last_name') || null,
-          phone: form.get('phone') || null,
+          phone: phone.trim() ? toE164(national) : null,
         }),
       });
       setMe(data);
+      setPhone(data.phone ?? '');
       const nextSession = {
         ...session,
         user: {
@@ -72,101 +89,66 @@ export default function ProfileSettingsPage() {
 
   if (!session) return null;
 
+  const roles = me?.roles ?? session.user.roles;
+  const primaryRole = isSuperAdmin(session) ? 'Platform administrator' : formatRole(roles[0] ?? 'Workspace user');
+
   return (
     <div>
       <h1 className="text-2xl font-semibold">Profile settings</h1>
-      <p className="mt-1 text-sm text-slate-600">
-        Update your account details and review your current tenant access.
-      </p>
+      <p className="mt-1 text-sm text-slate-600">Update your account details.</p>
 
       {error ? (
         <p className="mt-4 rounded bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
       ) : null}
 
-      <div className="mt-6 grid gap-4 lg:grid-cols-2">
-        <section className="rounded-lg border border-slate-200 p-4">
-          <h2 className="font-medium text-slate-800">Account</h2>
-          <form
-            key={`${me?.user_id ?? session.user.id}-${me?.first_name ?? ''}-${me?.last_name ?? ''}-${me?.phone ?? ''}`}
-            onSubmit={onSubmit}
-            className="mt-4 space-y-4 text-sm"
+      <section className="mt-6 max-w-xl rounded-lg border border-slate-200 p-4">
+        <h2 className="font-medium text-slate-800">Account</h2>
+        <form
+          key={`${me?.user_id ?? session.user.id}-${me?.first_name ?? ''}-${me?.last_name ?? ''}`}
+          onSubmit={onSubmit}
+          className="mt-4 space-y-4 text-sm"
+        >
+          <label className="block">
+            <span className="text-slate-500">First name</span>
+            <input
+              name="first_name"
+              required
+              defaultValue={me?.first_name ?? session.user.first_name ?? ''}
+              className="mt-1 w-full rounded border border-slate-300 px-3 py-2"
+            />
+          </label>
+          <label className="block">
+            <span className="text-slate-500">Last name</span>
+            <input
+              name="last_name"
+              defaultValue={me?.last_name ?? ''}
+              className="mt-1 w-full rounded border border-slate-300 px-3 py-2"
+            />
+          </label>
+          <div>
+            <span className="text-slate-500">Phone</span>
+            <div className="mt-1">
+              <PhoneInput value={phone} onChange={setPhone} />
+            </div>
+          </div>
+          <div>
+            <p className="text-slate-500">Email</p>
+            <p className="font-medium">{me?.email ?? session.user.email}</p>
+          </div>
+          <div>
+            <p className="text-slate-500">Role</p>
+            <p className="font-medium capitalize">{primaryRole}</p>
+          </div>
+          <button
+            type="submit"
+            disabled={saving}
+            className="rounded bg-teal-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
           >
-            <label className="block">
-              <span className="text-slate-500">First name</span>
-              <input
-                name="first_name"
-                required
-                defaultValue={me?.first_name ?? session.user.first_name ?? ''}
-                className="mt-1 w-full rounded border border-slate-300 px-3 py-2"
-              />
-            </label>
-            <label className="block">
-              <span className="text-slate-500">Last name</span>
-              <input
-                name="last_name"
-                defaultValue={me?.last_name ?? ''}
-                className="mt-1 w-full rounded border border-slate-300 px-3 py-2"
-              />
-            </label>
-            <label className="block">
-              <span className="text-slate-500">Phone</span>
-              <input
-                name="phone"
-                placeholder="+919876543210"
-                defaultValue={me?.phone ?? ''}
-                className="mt-1 w-full rounded border border-slate-300 px-3 py-2"
-              />
-            </label>
-            <div>
-              <p className="text-slate-500">Email</p>
-              <p className="font-medium">{me?.email ?? session.user.email}</p>
-            </div>
-            <div>
-              <p className="text-slate-500">User ID</p>
-              <p className="break-all font-mono text-xs">{session.user.id}</p>
-            </div>
-            <div>
-              <p className="text-slate-500">Tenant</p>
-              <p className="break-all font-mono text-xs">
-                {me?.tenant_id ?? session.user.tenant_id ?? 'Platform'}
-              </p>
-            </div>
-            <button
-              type="submit"
-              disabled={saving}
-              className="rounded bg-teal-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
-            >
-              {saving ? 'Saving...' : 'Save profile'}
-            </button>
-            {saved ? <p className="text-sm text-emerald-700">Profile updated.</p> : null}
-          </form>
-        </section>
-
-        <section className="rounded-lg border border-slate-200 p-4">
-          <h2 className="font-medium text-slate-800">Access</h2>
-          <div className="mt-4">
-            <p className="text-sm text-slate-500">Roles</p>
-            <div className="mt-2 flex flex-wrap gap-2">
-              {(me?.roles ?? session.user.roles).map((role) => (
-                <span key={role} className="rounded-full bg-teal-50 px-3 py-1 text-xs text-teal-800">
-                  {role}
-                </span>
-              ))}
-            </div>
-          </div>
-
-          <div className="mt-5">
-            <p className="text-sm text-slate-500">Permissions</p>
-            <div className="mt-2 flex max-h-56 flex-wrap gap-2 overflow-auto">
-              {(me?.permissions ?? session.user.permissions).map((permission) => (
-                <span key={permission} className="rounded bg-slate-100 px-2 py-1 font-mono text-xs">
-                  {permission}
-                </span>
-              ))}
-            </div>
-          </div>
-        </section>
-      </div>
+            {saving ? 'Saving...' : 'Save profile'}
+          </button>
+          {saved ? <p className="text-sm text-emerald-700">Profile updated.</p> : null}
+        </form>
+      </section>
     </div>
   );
 }

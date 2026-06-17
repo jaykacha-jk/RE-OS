@@ -54,9 +54,13 @@ export class ChatRepository {
     });
   }
 
-  async findSubordinateEmployeeIds(managerEmployeeId: string) {
+  async findSubordinateEmployeeIds(tenantId: string, managerEmployeeId: string) {
     const rows = await this.prisma.dbClient.employees.findMany({
-      where: { manager_id: managerEmployeeId, deleted_at: null },
+      where: {
+        manager_id: managerEmployeeId,
+        deleted_at: null,
+        user: { tenant_id: tenantId, deleted_at: null },
+      },
       select: { id: true },
     });
     return rows.map((r) => r.id);

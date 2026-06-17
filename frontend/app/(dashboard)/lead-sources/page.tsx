@@ -1,7 +1,21 @@
 'use client';
 
-import { FormEvent, useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
+import {
+  ActionMenu,
+  CrudToolbar,
+  DataTable,
+  EmptyState,
+  FormDrawer,
+  FormField,
+  FormSection,
+  Icon,
+  PageHeader,
+  Pagination,
+  type DataTableColumn,
+} from '../../../components/ui';
+import { useClientPagination } from '../../../hooks/use-client-pagination';
 import { apiFetch } from '../../../lib/api';
 import { getSession, hasPermission } from '../../../lib/auth';
 import type { LeadSource } from '../../../lib/crm';
@@ -9,9 +23,12 @@ import type { LeadSource } from '../../../lib/crm';
 export default function LeadSourcesPage() {
   const [rows, setRows] = useState<LeadSource[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [canManage, setCanManage] = useState(false);
 
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [search, setSearch] = useState('');
   const [name, setName] = useState('');
   const [code, setCode] = useState('');
   const [saving, setSaving] = useState(false);
@@ -37,12 +54,11 @@ export default function LeadSourcesPage() {
     load();
   }, [load]);
 
-  async function create(e: FormEvent) {
-    e.preventDefault();
+  async function create() {
     const session = getSession();
     if (!session?.access_token || !name.trim()) return;
     setSaving(true);
-    setError(null);
+    setFormError(null);
     try {
       await apiFetch('/api/v1/lead-sources', {
         method: 'POST',
@@ -51,9 +67,10 @@ export default function LeadSourcesPage() {
       });
       setName('');
       setCode('');
+      setDrawerOpen(false);
       load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create lead source');
+      setFormError(err instanceof Error ? err.message : 'Failed to create lead source');
     } finally {
       setSaving(false);
     }
@@ -74,77 +91,125 @@ export default function LeadSourcesPage() {
     }
   }
 
+  const filteredRows = rows.filter((row) => {
+    const haystack = [row.name, row.code, row.is_system ? 'system' : 'custom', row.is_active ? 'active' : 'inactive']
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase();
+    return haystack.includes(search.trim().toLowerCase());
+  });
+
+  const pager = useClientPagination(filteredRows);
+
+  const columns: DataTableColumn<LeadSource>[] = [
+    { key: 'name', header: 'Name', render: (row) => <span className="font-semibold text-slate-900">{row.name}</span> },
+    { key: 'code', header: 'Code', render: (row) => <span className="font-mono text-2xs text-slate-500">{row.code ?? '—'}</span> },
+    { key: 'type', header: 'Type', render: (row) => <span className="text-slate-700">{row.is_system ? 'System' : 'Custom'}</span> },
+    {
+      key: 'status',
+      header: 'Status',
+      render: (row) => (
+        <span className={`badge ${row.is_active ? 'badge-green' : 'badge-slate'}`}>
+          {row.is_active ? 'Active' : 'Inactive'}
+        </span>
+      ),
+    },
+  ];
+
   return (
-    <div className="max-w-3xl">
-      <h1 className="text-2xl font-semibold">Lead sources</h1>
-      <p className="mt-1 text-sm text-slate-600">
-        Manage where your leads come from. Sources power inquiry attribution and reporting.
-      </p>
+    <div className="space-y-6">
+      <PageHeader
+        eyebrow="CRM setup"
+        title="Lead sources"
+        description="Manage where your leads come from. Sources power inquiry attribution and reporting."
+      />
 
-      {error ? <p className="mt-4 rounded bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p> : null}
+      {error ? <p className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</p> : null}
 
-      {canManage ? (
-        <form onSubmit={create} className="mt-4 flex flex-wrap items-end gap-3 rounded-lg border border-slate-200 p-4">
-          <div className="flex-1">
-            <label className="block text-sm font-medium text-slate-700">Name *</label>
-            <input value={name} onChange={(e) => setName(e.target.value)} required className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm" placeholder="e.g. Google Ads" />
-          </div>
-          <div className="w-40">
-            <label className="block text-sm font-medium text-slate-700">Code</label>
-            <input value={code} onChange={(e) => setCode(e.target.value)} className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm" placeholder="optional" />
-          </div>
-          <button type="submit" disabled={saving} className="rounded bg-teal-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">
-            {saving ? 'Saving…' : 'Add source'}
-          </button>
-        </form>
-      ) : null}
+      <section className="overflow-hidden rounded-2xl border border-reos-border bg-white shadow-card">
+        <CrudToolbar
+          searchValue={search}
+          onSearchChange={setSearch}
+          searchPlaceholder="Search lead sources"
+          onRefresh={load}
+          refreshing={loading}
+          addSlot={
+            canManage ? (
+              <button type="button" className="btn-primary" onClick={() => setDrawerOpen(true)}>
+                <Icon name="plus" className="h-4 w-4" /> Add source
+              </button>
+            ) : null
+          }
+        />
 
-      {loading ? <p className="mt-6 text-slate-500">Loading…</p> : null}
+        <DataTable<LeadSource>
+          columns={columns}
+          rows={pager.pageRows}
+          rowKey={(row) => row.id}
+          loading={loading}
+          empty={
+            <EmptyState
+              title="No lead sources found"
+              description="Add channels like Google Ads, WhatsApp, Referral, and Walk-in to make reporting useful."
+              action={
+                canManage ? (
+                  <button type="button" className="btn-primary" onClick={() => setDrawerOpen(true)}>
+                    Add source
+                  </button>
+                ) : null
+              }
+            />
+          }
+          actions={
+            canManage
+              ? (row) => (
+                  <ActionMenu
+                    items={[
+                      {
+                        label: row.is_active ? 'Deactivate' : 'Activate',
+                        onSelect: () => toggleActive(row),
+                      },
+                    ]}
+                  />
+                )
+              : undefined
+          }
+        />
 
-      {!loading ? (
-        <div className="mt-6 overflow-x-auto rounded-lg border border-slate-200">
-          <table className="min-w-full text-left text-sm">
-            <thead className="bg-slate-50 text-slate-600">
-              <tr>
-                <th className="px-4 py-3 font-medium">Name</th>
-                <th className="px-4 py-3 font-medium">Code</th>
-                <th className="px-4 py-3 font-medium">Type</th>
-                <th className="px-4 py-3 font-medium">Status</th>
-                {canManage ? <th className="px-4 py-3 font-medium">Actions</th> : null}
-              </tr>
-            </thead>
-            <tbody>
-              {rows.length === 0 ? (
-                <tr>
-                  <td colSpan={canManage ? 5 : 4} className="px-4 py-10 text-center text-slate-500">
-                    No lead sources yet.
-                  </td>
-                </tr>
-              ) : (
-                rows.map((row) => (
-                  <tr key={row.id} className="border-t border-slate-100">
-                    <td className="px-4 py-3 font-medium text-slate-800">{row.name}</td>
-                    <td className="px-4 py-3 font-mono text-xs text-slate-500">{row.code ?? '—'}</td>
-                    <td className="px-4 py-3 text-slate-500">{row.is_system ? 'System' : 'Custom'}</td>
-                    <td className="px-4 py-3">
-                      <span className={`rounded-full px-2 py-1 text-xs font-medium ${row.is_active ? 'bg-green-100 text-green-800' : 'bg-slate-100 text-slate-500'}`}>
-                        {row.is_active ? 'Active' : 'Inactive'}
-                      </span>
-                    </td>
-                    {canManage ? (
-                      <td className="px-4 py-3">
-                        <button type="button" onClick={() => toggleActive(row)} className="text-sm text-teal-700 hover:underline">
-                          {row.is_active ? 'Deactivate' : 'Activate'}
-                        </button>
-                      </td>
-                    ) : null}
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      ) : null}
+        {!loading && filteredRows.length > 0 ? (
+          <Pagination
+            page={pager.page}
+            totalPages={pager.totalPages}
+            total={pager.total}
+            perPage={pager.perPage}
+            onPageChange={pager.setPage}
+            onPerPageChange={pager.setPerPage}
+          />
+        ) : null}
+      </section>
+
+      <FormDrawer
+        open={drawerOpen}
+        onClose={() => {
+          setDrawerOpen(false);
+          setFormError(null);
+        }}
+        title="Add lead source"
+        description="Small setup forms open in a drawer so users keep their place in the list."
+        onSubmit={create}
+        submitting={saving}
+        error={formError}
+        submitLabel="Add source"
+      >
+        <FormSection title="Source details" description="The code is optional and can map imported or marketing-channel values.">
+          <FormField label="Name" required full>
+            <input value={name} onChange={(e) => setName(e.target.value)} required className="input" placeholder="e.g. Google Ads" />
+          </FormField>
+          <FormField label="Code" full>
+            <input value={code} onChange={(e) => setCode(e.target.value)} className="input" placeholder="optional" />
+          </FormField>
+        </FormSection>
+      </FormDrawer>
     </div>
   );
 }

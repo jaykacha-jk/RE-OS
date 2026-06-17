@@ -84,6 +84,7 @@ function buildService() {
     findById: jest.fn(),
     buildWhere: jest.fn().mockReturnValue({ tenant_id: TENANT }),
     list: jest.fn(),
+    summary: jest.fn(),
     updateProperty: jest.fn(),
     softDelete: jest.fn(),
     replaceAssignments: jest.fn(),
@@ -92,6 +93,7 @@ function buildService() {
   const storage = {
     saveBase64: jest.fn(),
     delete: jest.fn(),
+    resolveUrl: jest.fn((value: string | null | undefined) => value ?? null),
   } as unknown as jest.Mocked<StorageService>;
   const audit = { record: jest.fn().mockResolvedValue(undefined) } as unknown as jest.Mocked<AuditService>;
 
@@ -153,6 +155,63 @@ describe('PropertiesService — RBAC scope', () => {
     const scope = await service.resolveScope(makeUser(['sales_executive']), TENANT);
 
     expect(scope).toEqual({ type: 'employees', employeeIds: [] });
+  });
+});
+
+describe('PropertiesService — summary KPIs', () => {
+  it('aggregates property KPIs from full-scope repository summary using list filters', async () => {
+    const { service, repo } = buildService();
+    repo.buildWhere!.mockReturnValue({
+      tenant_id: TENANT,
+      deleted_at: null,
+      city: { equals: 'Ahmedabad', mode: 'insensitive' },
+    } as never);
+    repo.summary!.mockResolvedValue({
+      statusRows: [
+        { status: 'published', _count: { _all: 12 } },
+        { status: 'reserved', _count: { _all: 3 } },
+        { status: 'sold', _count: { _all: 2 } },
+        { status: 'draft', _count: { _all: 4 } },
+      ],
+      publicCount: 10,
+      totalValue: 125000000,
+    } as never);
+
+    const res = await service.summary(
+      TENANT,
+      makeUser(['org_owner']),
+      {
+        search: 'sg highway',
+        'filter[city]': 'Ahmedabad',
+      } as any,
+    );
+
+    expect(repo.buildWhere).toHaveBeenCalledWith(
+      TENANT,
+      expect.objectContaining({
+        search: 'sg highway',
+        city: 'Ahmedabad',
+      }),
+      { type: 'all' },
+    );
+    expect(res).toEqual({
+      total: 21,
+      published: 12,
+      reserved: 3,
+      sold: 2,
+      draft: 4,
+      public_listings: 10,
+      total_value: 125000000,
+      by_status: {
+        draft: 4,
+        pending_review: 0,
+        published: 12,
+        reserved: 3,
+        sold: 2,
+        archived: 0,
+      },
+    });
+    expect(repo.list).not.toHaveBeenCalled();
   });
 });
 

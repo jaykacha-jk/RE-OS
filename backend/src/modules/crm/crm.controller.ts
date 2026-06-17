@@ -89,6 +89,17 @@ export class CrmController {
     return envelope(await this.crm.getMetrics(tenantId, user, { from: dateFrom, to: dateTo }));
   }
 
+  @Get('summary')
+  @RequirePermissions('crm.inquiries.read')
+  @ApiOperation({ summary: 'Inquiry KPI summary (RBAC-scoped, filtered, non-paginated)' })
+  async summary(
+    @TenantId() tenantId: string,
+    @CurrentUser() user: AuthUser,
+    @Query() query: ListInquiriesQueryDto,
+  ) {
+    return envelope(await this.crm.getSummary(tenantId, user, query));
+  }
+
   @Post()
   @RequirePermissions('crm.inquiries.create')
   @ApiOperation({ summary: 'Create an inquiry (auto inquiry_code, BR-C01 duplicate check)' })

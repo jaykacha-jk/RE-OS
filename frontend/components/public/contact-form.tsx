@@ -1,25 +1,37 @@
 'use client';
 
-import { useState } from 'react';
+import { FormEvent, useState } from 'react';
 
+import { PhoneInput } from '../ui/PhoneInput';
 import { API_BASE } from '../../lib/public-site';
+import { isValidIndianMobile, parseNationalDigits, toE164 } from '../../lib/phone';
 
 type SubmitState = 'idle' | 'submitting' | 'success' | 'error';
 
 export function ContactForm({ tenant }: { tenant: string }) {
   const [state, setState] = useState<SubmitState>('idle');
   const [error, setError] = useState<string | null>(null);
+  const [phone, setPhone] = useState('');
 
-  async function submit(formData: FormData) {
+  async function onSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+
+    if (!isValidIndianMobile(parseNationalDigits(phone))) {
+      setError('Please match the requested format.');
+      setState('error');
+      return;
+    }
+
     setState('submitting');
     setError(null);
 
     const payload = {
-      client_name: String(formData.get('client_name') ?? ''),
-      phone: String(formData.get('phone') ?? ''),
-      email: String(formData.get('email') ?? '') || undefined,
-      preferred_location: String(formData.get('preferred_location') ?? '') || undefined,
-      message: String(formData.get('message') ?? '') || undefined,
+      client_name: String(form.get('client_name') ?? ''),
+      phone: toE164(parseNationalDigits(phone)),
+      email: String(form.get('email') ?? '') || undefined,
+      preferred_location: String(form.get('preferred_location') ?? '') || undefined,
+      message: String(form.get('message') ?? '') || undefined,
     };
 
     try {
@@ -65,7 +77,7 @@ export function ContactForm({ tenant }: { tenant: string }) {
   }
 
   return (
-    <form action={submit} className="card p-6 sm:p-8">
+    <form onSubmit={onSubmit} className="card p-6 sm:p-8">
       <h2 className="text-xl font-bold text-slate-950">Send us a message</h2>
       <p className="mt-1 text-sm text-slate-600">
         Fill in your details and the team will call you back.
@@ -77,10 +89,12 @@ export function ContactForm({ tenant }: { tenant: string }) {
             <span className="text-sm font-semibold text-slate-700">Full name *</span>
             <input name="client_name" required minLength={2} placeholder="Your name" className="input mt-1.5" />
           </label>
-          <label className="block">
+          <div>
             <span className="text-sm font-semibold text-slate-700">Phone *</span>
-            <input name="phone" required minLength={5} placeholder="+91 98765 43210" className="input mt-1.5" />
-          </label>
+            <div className="mt-1.5">
+              <PhoneInput value={phone} onChange={setPhone} required className="input" />
+            </div>
+          </div>
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
           <label className="block">

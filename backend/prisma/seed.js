@@ -307,7 +307,7 @@ const orgAdminPermissions = [
   ...chatAllPermissions,
   'audit.logs.read',
   ...notificationAdminPermissions,
-  ...billingReadPermissions,
+  ...billingAdminPermissions,
   ...settingsAdminPermissions,
   ...aiFullPermissions,
 ];
@@ -1169,6 +1169,14 @@ async function seedDemoInquiries(org, employees, properties, leadSources) {
     const source = leadSources[i % leadSources.length];
     const name = demoNames[i % demoNames.length];
     const stage = stages[i % stages.length];
+    const propertyValue = Number(property.price ?? (16000000 + i * 250000));
+    const hasDealEconomics = stage === 'BOOKED' || stage === 'CLOSED_WON';
+    const expectedCommission = hasDealEconomics
+      ? Math.round(propertyValue * (property.requirement_type === 'rent' ? 0.01 : 0.02))
+      : null;
+    const receivedCommission = stage === 'CLOSED_WON'
+      ? Math.round(expectedCommission * (i % 3 === 0 ? 0.5 : 1))
+      : null;
     const inquiry = await prisma.inquiries.create({
       data: {
         tenant_id: org.id,
@@ -1192,6 +1200,14 @@ async function seedDemoInquiries(org, employees, properties, leadSources) {
         priority: i % 5 === 0 ? 'high' : i % 3 === 0 ? 'low' : 'medium',
         temperature: i % 4 === 0 ? 'hot' : i % 3 === 0 ? 'cold' : 'warm',
         lead_score: 45 + (i % 55),
+        booking_amount: hasDealEconomics ? Math.round(propertyValue * 0.05) : null,
+        expected_commission: expectedCommission,
+        received_commission: receivedCommission,
+        commission_status: stage === 'CLOSED_WON'
+          ? (receivedCommission === expectedCommission ? 'received' : 'partial')
+          : stage === 'BOOKED'
+            ? 'pending'
+            : null,
         closed_at: stage === 'CLOSED_WON' || stage === 'CLOSED_LOST' ? daysAgo(i % 15) : null,
         lost_reason: stage === 'CLOSED_LOST' ? 'Budget mismatch' : null,
         remarks: 'Demo lead generated for investor/customer walkthrough.',

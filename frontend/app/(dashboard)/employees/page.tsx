@@ -3,9 +3,22 @@
 import { useCallback, useEffect, useState } from 'react';
 
 import { ActionGuard } from '../../../components/shared/ActionGuard';
+import {
+  ActionMenu,
+  ConfirmDialog,
+  CrudToolbar,
+  DataTable,
+  EmptyState,
+  Icon,
+  PageHeader,
+  Pagination,
+  type DataTableColumn,
+} from '../../../components/ui';
+import { useClientPagination } from '../../../hooks/use-client-pagination';
 import { apiFetch } from '../../../lib/api';
-import { getSession } from '../../../lib/auth';
+import { getSession, hasPermission } from '../../../lib/auth';
 import { CreateEmployeeForm } from './create-employee-form';
+import { EditEmployeeForm } from './edit-employee-form';
 
 type EmployeeRow = {
   id: string;
@@ -20,21 +33,37 @@ export default function EmployeesPage() {
   const [rows, setRows] = useState<EmployeeRow[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  const [createOpen, setCreateOpen] = useState(false);
+  const [editTarget, setEditTarget] = useState<EmployeeRow | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<EmployeeRow | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [canDelete, setCanDelete] = useState(false);
+  const [canUpdate, setCanUpdate] = useState(false);
 
-  async function removeEmployee(id: string) {
+  useEffect(() => {
     const session = getSession();
-    if (!session?.access_token) return;
-    if (!window.confirm('Remove this employee?')) return;
+    setCanDelete(hasPermission(session, 'employees.delete'));
+    setCanUpdate(hasPermission(session, 'employees.update'));
+  }, []);
 
+  async function removeEmployee() {
+    const session = getSession();
+    if (!session?.access_token || !deleteTarget) return;
+
+    setDeleting(true);
     setError(null);
     try {
-      await apiFetch(`/api/v1/employees/${id}`, {
+      await apiFetch(`/api/v1/employees/${deleteTarget.id}`, {
         method: 'DELETE',
         token: session.access_token,
       });
+      setDeleteTarget(null);
       load();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Delete failed');
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -53,71 +82,132 @@ export default function EmployeesPage() {
     load();
   }, [load]);
 
+  const filteredRows = rows.filter((row) => {
+    const haystack = [row.first_name, row.last_name, row.email, row.role_code, row.status].filter(Boolean).join(' ').toLowerCase();
+    return haystack.includes(search.trim().toLowerCase());
+  });
+
+  const pager = useClientPagination(filteredRows);
+
+  const columns: DataTableColumn<EmployeeRow>[] = [
+    {
+      key: 'name',
+      header: 'Name',
+      render: (row) => <span className="font-semibold text-slate-900">{[row.first_name, row.last_name].filter(Boolean).join(' ') || '—'}</span>,
+    },
+    { key: 'email', header: 'Email', render: (row) => <span className="text-slate-700">{row.email}</span> },
+    {
+      key: 'role',
+      header: 'Role',
+      render: (row) => <span className="text-slate-700">{row.role_code?.replace(/_/g, ' ') ?? '—'}</span>,
+    },
+    {
+      key: 'status',
+      header: 'Status',
+      render: (row) => (
+        <span className={`badge ${row.status === 'active' ? 'badge-green' : 'badge-slate'}`}>
+          {row.status}
+        </span>
+      ),
+    },
+  ];
+
   return (
-    <div>
-      <h1 className="text-2xl font-semibold">Employees</h1>
-      <p className="mt-1 text-sm text-slate-600">Tenant-scoped employee list</p>
+    <div className="space-y-6">
+      <PageHeader
+        eyebrow="Team"
+        title="Employees"
+        description="Manage tenant-scoped team members, roles, invitations, and access."
+      />
 
-      <ActionGuard permission="employees.create">
-        <div className="mt-4">
-          <CreateEmployeeForm onCreated={load} />
-        </div>
-      </ActionGuard>
-
-      {loading ? <p className="mt-6 text-slate-500">Loading…</p> : null}
       {error ? (
-        <p className="mt-6 rounded bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
+        <p className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</p>
       ) : null}
 
-      {!loading && !error ? (
-        <div className="scrollbar-thin mt-6 overflow-x-auto rounded-lg border border-slate-200">
-          <table className="min-w-full text-left text-sm">
-            <thead className="bg-slate-50 text-slate-600">
-              <tr>
-                <th className="px-4 py-3 font-medium">Name</th>
-                <th className="px-4 py-3 font-medium">Email</th>
-                <th className="px-4 py-3 font-medium">Role</th>
-                <th className="px-4 py-3 font-medium">Status</th>
-                <th className="px-4 py-3 font-medium">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.length === 0 ? (
-                <tr>
-                  <td colSpan={5} className="px-4 py-6 text-slate-500">
-                    No employees yet. Use Create employee above.
-                  </td>
-                </tr>
-              ) : (
-                rows.map((row) => (
-                  <tr key={row.id} className="border-t border-slate-100">
-                    <td className="px-4 py-3">
-                      {[row.first_name, row.last_name].filter(Boolean).join(' ') || '—'}
-                    </td>
-                    <td className="px-4 py-3">{row.email}</td>
-                    <td className="px-4 py-3">{row.role_code ?? '—'}</td>
-                    <td className="px-4 py-3">{row.status}</td>
-                    <td className="px-4 py-3">
-                      <ActionGuard
-                        permission="employees.delete"
-                        fallback={<span className="text-sm text-slate-400">—</span>}
-                      >
-                        <button
-                          type="button"
-                          onClick={() => removeEmployee(row.id)}
-                          className="text-sm text-red-700 hover:underline"
-                        >
-                          Remove
-                        </button>
-                      </ActionGuard>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      ) : null}
+      <section className="overflow-hidden rounded-2xl border border-reos-border bg-white shadow-card">
+        <CrudToolbar
+          searchValue={search}
+          onSearchChange={setSearch}
+          searchPlaceholder="Search employees"
+          onRefresh={load}
+          refreshing={loading}
+          addSlot={
+            <ActionGuard permission="employees.create">
+              <button type="button" className="btn-primary" onClick={() => setCreateOpen(true)}>
+                <Icon name="plus" className="h-4 w-4" /> Add employee
+              </button>
+            </ActionGuard>
+          }
+        />
+
+        <DataTable<EmployeeRow>
+          columns={columns}
+          rows={pager.pageRows}
+          rowKey={(row) => row.id}
+          loading={loading}
+          empty={
+            <EmptyState
+              title="No employees found"
+              description="Invite your team so inquiries, properties, and follow-ups have clear ownership."
+              action={
+                <ActionGuard permission="employees.create">
+                  <button type="button" className="btn-primary" onClick={() => setCreateOpen(true)}>
+                    Add employee
+                  </button>
+                </ActionGuard>
+              }
+            />
+          }
+          actions={(row) => (
+            <ActionMenu
+              items={[
+                {
+                  label: 'Edit',
+                  hidden: !canUpdate,
+                  onSelect: () => setEditTarget(row),
+                },
+                {
+                  label: 'Remove',
+                  danger: true,
+                  hidden: !canDelete,
+                  onSelect: () => setDeleteTarget(row),
+                },
+              ]}
+            />
+          )}
+        />
+
+        {!loading && filteredRows.length > 0 ? (
+          <Pagination
+            page={pager.page}
+            totalPages={pager.totalPages}
+            total={pager.total}
+            perPage={pager.perPage}
+            onPageChange={pager.setPage}
+            onPerPageChange={pager.setPerPage}
+          />
+        ) : null}
+      </section>
+
+      <CreateEmployeeForm open={createOpen} onClose={() => setCreateOpen(false)} onCreated={load} />
+
+      <EditEmployeeForm
+        employee={editTarget}
+        open={Boolean(editTarget)}
+        onClose={() => setEditTarget(null)}
+        onSaved={load}
+      />
+
+      <ConfirmDialog
+        open={Boolean(deleteTarget)}
+        title="Remove employee?"
+        description={deleteTarget ? `${deleteTarget.email} will lose access to this tenant workspace.` : undefined}
+        confirmLabel="Remove employee"
+        danger
+        loading={deleting}
+        onConfirm={removeEmployee}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </div>
   );
 }

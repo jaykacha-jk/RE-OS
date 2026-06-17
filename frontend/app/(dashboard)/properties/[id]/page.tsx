@@ -6,6 +6,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
 
 import { ActionGuard } from '../../../../components/shared/ActionGuard';
+import { ConfirmDialog } from '../../../../components/ui';
 import { apiFetch } from '../../../../lib/api';
 import { getSession } from '../../../../lib/auth';
 import {
@@ -28,6 +29,15 @@ function changeLabel(type: string): string {
   return map[type] ?? humanize(type);
 }
 
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(new Error(`Failed to read ${file.name}`));
+    reader.readAsDataURL(file);
+  });
+}
+
 export default function PropertyDetailPage() {
   const params = useParams<{ id: string }>();
   const id = params.id;
@@ -38,7 +48,10 @@ export default function PropertyDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [showAssign, setShowAssign] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [imageUrl, setImageUrl] = useState('');
+  const [uploading, setUploading] = useState(false);
 
   const load = useCallback(() => {
     const session = getSession();
@@ -79,6 +92,35 @@ export default function PropertyDetailPage() {
     }
   }
 
+  async function uploadImageFiles(files: FileList | null) {
+    const session = getSession();
+    if (!session?.access_token || !files || files.length === 0) return;
+    setUploading(true);
+    setError(null);
+    try {
+      for (const file of Array.from(files)) {
+        if (!file.type.startsWith('image/')) {
+          throw new Error(`${file.name} is not an image`);
+        }
+        const contentBase64 = await readFileAsDataUrl(file);
+        await apiFetch(`/api/v1/properties/${id}/images`, {
+          method: 'POST',
+          token: session.access_token,
+          body: JSON.stringify({
+            content_base64: contentBase64,
+            filename: file.name,
+            content_type: file.type,
+          }),
+        });
+      }
+      load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to upload image');
+    } finally {
+      setUploading(false);
+    }
+  }
+
   async function setCover(imageId: string) {
     const session = getSession();
     if (!session?.access_token) return;
@@ -102,7 +144,7 @@ export default function PropertyDetailPage() {
   async function remove() {
     const session = getSession();
     if (!session?.access_token) return;
-    if (!window.confirm('Delete this property? This is a soft delete.')) return;
+    setDeleting(true);
     try {
       await apiFetch(`/api/v1/properties/${id}`, {
         method: 'DELETE',
@@ -111,11 +153,14 @@ export default function PropertyDetailPage() {
       router.push('/properties');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Delete failed');
+      setDeleteOpen(false);
+    } finally {
+      setDeleting(false);
     }
   }
 
   if (loading) return <p className="text-slate-500">Loading…</p>;
-  if (error) return <p className="rounded bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>;
+  if (error && !property) return <p className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</p>;
   if (!property) return null;
 
   const detailRows: [string, string][] = [
@@ -140,54 +185,72 @@ export default function PropertyDetailPage() {
   ];
 
   return (
-    <div>
-      <Link href="/properties" className="text-sm text-teal-700 hover:underline">
-        ← Back to properties
-      </Link>
+    <div className="space-y-6">
+      <nav className="flex items-center gap-1 text-xs font-medium text-slate-500" aria-label="Breadcrumb">
+        <Link href="/properties" className="transition hover:text-teal-700">
+          Properties
+        </Link>
+        <span className="text-slate-300">/</span>
+        <span className="text-slate-700">{property.property_code}</span>
+      </nav>
 
-      <div className="mt-2 flex flex-wrap items-start justify-between gap-4">
+      <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-semibold">{property.title}</h1>
-            <span className={`rounded-full px-2 py-1 text-xs font-medium ${statusBadgeClass(property.status)}`}>
+            <h1 className="text-2xl font-bold tracking-tight text-slate-950">{property.title}</h1>
+            <span className={`rounded-full px-2.5 py-1 text-2xs font-bold ${statusBadgeClass(property.status)}`}>
               {humanize(property.status)}
             </span>
             {property.is_public ? (
-              <span className="rounded-full bg-teal-100 px-2 py-1 text-xs font-medium text-teal-800">Public</span>
+              <span className="badge badge-teal">Public</span>
             ) : null}
           </div>
           <p className="mt-1 font-mono text-xs text-slate-500">{property.property_code}</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <ActionGuard permission="properties.assign">
-            <button onClick={() => setShowAssign(true)} className="rounded border border-slate-300 px-4 py-2 text-sm hover:bg-slate-50">
+            <button type="button" onClick={() => setShowAssign(true)} className="btn-secondary">
               Assign
             </button>
           </ActionGuard>
           <ActionGuard permission="properties.update">
-            <Link href={`/properties/${id}/edit`} className="rounded bg-teal-700 px-4 py-2 text-sm font-medium text-white">
+            <Link href={`/properties/${id}/edit`} className="btn-primary">
               Edit
             </Link>
           </ActionGuard>
           <ActionGuard permission="properties.delete">
-            <button onClick={remove} className="rounded border border-red-300 px-4 py-2 text-sm text-red-700 hover:bg-red-50">
+            <button type="button" onClick={() => setDeleteOpen(true)} className="btn-danger">
               Delete
             </button>
           </ActionGuard>
         </div>
       </div>
 
-      <div className="mt-6 grid gap-6 lg:grid-cols-3">
-        <div className="lg:col-span-2 space-y-6">
+      {error ? (
+        <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700 shadow-sm">
+          {error}
+        </div>
+      ) : null}
+
+      <div className="grid gap-6 lg:grid-cols-3">
+        <div className="space-y-6 lg:col-span-2">
           {/* Images */}
-          <section className="rounded-lg border border-slate-200 p-4">
-            <h2 className="font-medium">Images</h2>
+          <section className="card p-5">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h2 className="text-h3">Images</h2>
+                <p className="mt-1 text-xs text-slate-500">Manage listing media and choose the public cover image.</p>
+              </div>
+              <span className="badge badge-slate">{property.images.length} images</span>
+            </div>
             {property.images.length === 0 ? (
-              <p className="mt-2 text-sm text-slate-500">No images yet.</p>
+              <div className="mt-4 rounded-2xl border border-dashed border-reos-border bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
+                No images yet. Add at least one image before publishing publicly.
+              </div>
             ) : (
               <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
                 {property.images.map((img) => (
-                  <div key={img.id} className="group relative overflow-hidden rounded border border-slate-200">
+                  <div key={img.id} className="group relative overflow-hidden rounded-2xl border border-reos-border bg-slate-100">
                     <Image
                       src={img.url}
                       alt={img.alt_text ?? property.title}
@@ -197,18 +260,18 @@ export default function PropertyDetailPage() {
                       className="h-32 w-full object-cover"
                     />
                     {img.is_cover ? (
-                      <span className="absolute left-1 top-1 rounded bg-teal-700 px-1.5 py-0.5 text-[10px] font-medium text-white">
+                      <span className="absolute left-2 top-2 rounded-full bg-teal-700 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
                         Cover
                       </span>
                     ) : null}
                     <ActionGuard permission="properties.update">
-                      <div className="absolute inset-x-0 bottom-0 flex justify-between gap-1 bg-black/50 p-1 opacity-0 transition group-hover:opacity-100">
+                      <div className="absolute inset-x-0 bottom-0 flex justify-between gap-1 bg-slate-950/70 p-2 opacity-0 transition group-hover:opacity-100">
                         {!img.is_cover ? (
-                          <button onClick={() => setCover(img.id)} className="text-[11px] text-white hover:underline">
+                          <button type="button" onClick={() => setCover(img.id)} className="text-[11px] font-semibold text-white hover:underline">
                             Set cover
                           </button>
                         ) : <span />}
-                        <button onClick={() => deleteImage(img.id)} className="text-[11px] text-red-200 hover:underline">
+                        <button type="button" onClick={() => deleteImage(img.id)} className="text-[11px] font-semibold text-rose-200 hover:underline">
                           Delete
                         </button>
                       </div>
@@ -218,43 +281,73 @@ export default function PropertyDetailPage() {
               </div>
             )}
             <ActionGuard permission="properties.update">
-              <div className="mt-3 flex gap-2">
-                <input
-                  value={imageUrl}
-                  onChange={(e) => setImageUrl(e.target.value)}
-                  placeholder="https://image-url.jpg"
-                  className="flex-1 rounded border border-slate-300 px-3 py-2 text-sm"
-                />
-                <button onClick={addImage} className="rounded bg-teal-700 px-4 py-2 text-sm font-medium text-white">
-                  Add image
-                </button>
+              <div className="mt-4 space-y-3">
+                <label
+                  className={`flex cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed border-reos-border bg-slate-50 px-4 py-6 text-center text-sm transition hover:border-teal-400 hover:bg-teal-50/40 ${
+                    uploading ? 'pointer-events-none opacity-60' : ''
+                  }`}
+                >
+                  <input
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    className="sr-only"
+                    disabled={uploading}
+                    onChange={(e) => {
+                      void uploadImageFiles(e.target.files);
+                      e.target.value = '';
+                    }}
+                  />
+                  <span className="font-semibold text-slate-700">
+                    {uploading ? 'Uploading…' : 'Click to upload images'}
+                  </span>
+                  <span className="mt-1 text-xs text-slate-500">
+                    PNG, JPG, WEBP or GIF. You can select multiple files.
+                  </span>
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    value={imageUrl}
+                    onChange={(e) => setImageUrl(e.target.value)}
+                    placeholder="Or paste an image URL (https://…)"
+                    className="input"
+                  />
+                  <button
+                    type="button"
+                    onClick={addImage}
+                    disabled={!imageUrl.trim() || uploading}
+                    className="btn-secondary whitespace-nowrap disabled:opacity-50"
+                  >
+                    Add by URL
+                  </button>
+                </div>
               </div>
             </ActionGuard>
           </section>
 
           {/* Details */}
-          <section className="rounded-lg border border-slate-200 p-4">
-            <h2 className="font-medium">Details</h2>
-            <dl className="mt-3 grid grid-cols-2 gap-x-6 gap-y-2 text-sm sm:grid-cols-3">
+          <section className="card p-5">
+            <h2 className="text-h3">Details</h2>
+            <dl className="mt-4 grid grid-cols-2 gap-x-6 gap-y-3 text-sm sm:grid-cols-3">
               {detailRows.map(([k, v]) => (
                 <div key={k}>
-                  <dt className="text-slate-500">{k}</dt>
-                  <dd className="font-medium text-slate-800">{v}</dd>
+                  <dt className="text-xs font-bold uppercase tracking-wide text-slate-400">{k}</dt>
+                  <dd className="mt-0.5 font-medium text-slate-800">{v}</dd>
                 </div>
               ))}
             </dl>
             {property.description ? (
               <div className="mt-4">
-                <dt className="text-sm text-slate-500">Description</dt>
-                <p className="mt-1 text-sm text-slate-700">{property.description}</p>
+                <p className="text-xs font-bold uppercase tracking-wide text-slate-400">Description</p>
+                <p className="mt-1 text-sm leading-6 text-slate-700">{property.description}</p>
               </div>
             ) : null}
             {property.amenities.length ? (
               <div className="mt-4">
-                <dt className="text-sm text-slate-500">Amenities</dt>
-                <div className="mt-1 flex flex-wrap gap-1">
+                <p className="text-xs font-bold uppercase tracking-wide text-slate-400">Amenities</p>
+                <div className="mt-2 flex flex-wrap gap-1.5">
                   {property.amenities.map((a) => (
-                    <span key={a} className="rounded bg-slate-100 px-2 py-0.5 text-xs">{a}</span>
+                    <span key={a} className="badge badge-slate">{a}</span>
                   ))}
                 </div>
               </div>
@@ -264,17 +357,17 @@ export default function PropertyDetailPage() {
 
         {/* Sidebar: assignments + history */}
         <div className="space-y-6">
-          <section className="rounded-lg border border-slate-200 p-4">
-            <h2 className="font-medium">Assigned agents</h2>
+          <section className="card p-5">
+            <h2 className="text-h3">Assigned agents</h2>
             {property.assignments.length === 0 ? (
               <p className="mt-2 text-sm text-slate-500">No agents assigned.</p>
             ) : (
               <ul className="mt-2 space-y-2 text-sm">
                 {property.assignments.map((a) => (
-                  <li key={a.employee_id} className="flex items-center justify-between">
-                    <span>{a.employee_name ?? a.employee_id}</span>
+                  <li key={a.employee_id} className="flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2">
+                    <span className="font-medium text-slate-800">{a.employee_name ?? a.employee_id}</span>
                     {a.is_primary ? (
-                      <span className="rounded bg-teal-100 px-2 py-0.5 text-xs text-teal-800">Primary</span>
+                      <span className="badge badge-teal">Primary</span>
                     ) : null}
                   </li>
                 ))}
@@ -282,8 +375,8 @@ export default function PropertyDetailPage() {
             )}
           </section>
 
-          <section className="rounded-lg border border-slate-200 p-4">
-            <h2 className="font-medium">History</h2>
+          <section className="card p-5">
+            <h2 className="text-h3">History</h2>
             <ol className="mt-3 space-y-4">
               {history.length === 0 ? (
                 <li className="text-sm text-slate-500">No history.</li>
@@ -307,6 +400,16 @@ export default function PropertyDetailPage() {
       {showAssign ? (
         <AssignModal property={property} onClose={() => setShowAssign(false)} onAssigned={load} />
       ) : null}
+      <ConfirmDialog
+        open={deleteOpen}
+        title="Delete this property?"
+        description="This is a soft delete. The listing will be removed from active property lists but can still be retained for audit history."
+        confirmLabel="Delete property"
+        danger
+        loading={deleting}
+        onConfirm={remove}
+        onCancel={() => setDeleteOpen(false)}
+      />
     </div>
   );
 }

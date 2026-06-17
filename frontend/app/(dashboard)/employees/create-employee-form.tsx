@@ -1,7 +1,9 @@
 'use client';
 
-import { FormEvent, useState } from 'react';
+import { useState } from 'react';
 
+import { FormDrawer, FormField, FormSection, PhoneInput } from '../../../components/ui';
+import { isValidIndianMobile, parseNationalDigits, toE164 } from '../../../lib/phone';
 import { apiFetch } from '../../../lib/api';
 import { getSession } from '../../../lib/auth';
 
@@ -25,19 +27,34 @@ type CreateEmployeeResponse = {
   expires_at?: string;
 };
 
-export function CreateEmployeeForm({ onCreated }: { onCreated: () => void }) {
-  const [open, setOpen] = useState(false);
+export function CreateEmployeeForm({
+  open,
+  onClose,
+  onCreated,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onCreated: () => void;
+}) {
   const [error, setError] = useState<string | null>(null);
   const [invite, setInvite] = useState<CreateEmployeeResponse | null>(null);
   const [copied, setCopied] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
+  const [roleCode, setRoleCode] = useState<(typeof ROLES)[number]>('sales_executive');
 
-  async function onSubmit(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
+  async function onSubmit() {
     const session = getSession();
     if (!session?.access_token) return;
 
-    const form = new FormData(e.currentTarget);
+    if (phone.trim() && !isValidIndianMobile(parseNationalDigits(phone))) {
+      setError('Please match the requested format.');
+      return;
+    }
+
     setLoading(true);
     setError(null);
     setInvite(null);
@@ -48,14 +65,18 @@ export function CreateEmployeeForm({ onCreated }: { onCreated: () => void }) {
         method: 'POST',
         token: session.access_token,
         body: JSON.stringify({
-          first_name: form.get('first_name'),
-          last_name: form.get('last_name'),
-          email: form.get('email'),
-          phone: form.get('phone') || undefined,
-          role_code: form.get('role_code'),
+          first_name: firstName.trim(),
+          last_name: lastName.trim(),
+          email: email.trim(),
+          phone: phone.trim() ? toE164(parseNationalDigits(phone)) : undefined,
+          role_code: roleCode,
         }),
       });
-      e.currentTarget.reset();
+      setFirstName('');
+      setLastName('');
+      setEmail('');
+      setPhone('');
+      setRoleCode('sales_executive');
       setInvite(data);
       onCreated();
     } catch (err) {
@@ -71,38 +92,47 @@ export function CreateEmployeeForm({ onCreated }: { onCreated: () => void }) {
     setCopied(true);
   }
 
-  if (!open) {
-    return (
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="rounded bg-teal-700 px-4 py-2 text-sm font-medium text-white"
-      >
-        Add employee
-      </button>
-    );
-  }
-
   return (
-    <form onSubmit={onSubmit} className="mb-6 rounded-lg border border-slate-200 p-4">
-      <h2 className="font-medium">New employee</h2>
-      <div className="mt-4 grid gap-3 sm:grid-cols-2">
-        <input name="first_name" required placeholder="First name" className="rounded border px-3 py-2" />
-        <input name="last_name" required placeholder="Last name" className="rounded border px-3 py-2" />
-        <input name="email" type="email" required placeholder="Email" className="rounded border px-3 py-2 sm:col-span-2" />
-        <input name="phone" placeholder="+919876543210" className="rounded border px-3 py-2 sm:col-span-2" />
-        <select name="role_code" required className="rounded border px-3 py-2 sm:col-span-2">
-          {ROLES.map((role) => (
-            <option key={role} value={role}>
-              {role}
-            </option>
-          ))}
-        </select>
-      </div>
-      {error ? <p className="mt-2 text-sm text-red-600">{error}</p> : null}
+    <FormDrawer
+      open={open}
+      onClose={() => {
+        onClose();
+        setInvite(null);
+        setError(null);
+      }}
+      title="Add employee"
+      description="Invite a tenant-scoped team member and assign their operating role."
+      onSubmit={onSubmit}
+      submitting={loading}
+      error={error}
+      submitLabel="Create employee"
+    >
+      <FormSection compact>
+        <FormField label="First name" required>
+          <input value={firstName} onChange={(e) => setFirstName(e.target.value)} required className="input" />
+        </FormField>
+        <FormField label="Last name" required>
+          <input value={lastName} onChange={(e) => setLastName(e.target.value)} required className="input" />
+        </FormField>
+        <FormField label="Email" required full>
+          <input value={email} onChange={(e) => setEmail(e.target.value)} type="email" required className="input" />
+        </FormField>
+        <FormField label="Phone" full>
+          <PhoneInput value={phone} onChange={setPhone} />
+        </FormField>
+        <FormField label="Role" required full>
+          <select value={roleCode} onChange={(e) => setRoleCode(e.target.value as (typeof ROLES)[number])} required className="input">
+            {ROLES.map((role) => (
+              <option key={role} value={role}>
+                {role.replace(/_/g, ' ')}
+              </option>
+            ))}
+          </select>
+        </FormField>
+      </FormSection>
 
       {invite ? (
-        <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
           <p className="font-semibold">
             Invitation {invite.invitation_sent ? 'email queued' : 'created'}
           </p>
@@ -131,23 +161,6 @@ export function CreateEmployeeForm({ onCreated }: { onCreated: () => void }) {
           ) : null}
         </div>
       ) : null}
-
-      <div className="mt-4 flex gap-2">
-        <button type="submit" disabled={loading} className="rounded bg-teal-700 px-4 py-2 text-sm text-white">
-          {loading ? 'Saving…' : 'Create'}
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            setOpen(false);
-            setInvite(null);
-            setError(null);
-          }}
-          className="rounded border px-4 py-2 text-sm"
-        >
-          Cancel
-        </button>
-      </div>
-    </form>
+    </FormDrawer>
   );
 }

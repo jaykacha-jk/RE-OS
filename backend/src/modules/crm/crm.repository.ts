@@ -65,9 +65,13 @@ export class CrmRepository extends TenantScopedRepository {
     });
   }
 
-  async findSubordinateEmployeeIds(managerEmployeeId: string) {
+  async findSubordinateEmployeeIds(tenantId: string, managerEmployeeId: string) {
     const rows = await this.prisma.dbClient.employees.findMany({
-      where: { manager_id: managerEmployeeId, deleted_at: null },
+      where: {
+        manager_id: managerEmployeeId,
+        deleted_at: null,
+        user: { tenant_id: tenantId, deleted_at: null },
+      },
       select: { id: true },
     });
     return rows.map((r) => r.id);
@@ -692,9 +696,13 @@ export class CrmRepository extends TenantScopedRepository {
     return grouped[0] ?? null;
   }
 
-  async employeeName(employeeId: string) {
-    const emp = await this.prisma.dbClient.employees.findUnique({
-      where: { id: employeeId },
+  async employeeName(tenantId: string, employeeId: string) {
+    const emp = await this.prisma.dbClient.employees.findFirst({
+      where: {
+        id: employeeId,
+        deleted_at: null,
+        user: { tenant_id: tenantId, deleted_at: null },
+      },
       include: { user: { select: { first_name: true, last_name: true, email: true } } },
     });
     if (!emp) return null;

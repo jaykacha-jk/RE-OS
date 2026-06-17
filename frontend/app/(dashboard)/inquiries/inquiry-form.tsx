@@ -1,8 +1,10 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { FormEvent, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 
+import { Combobox, FormField, FormPage, FormSection, PhoneInput, type ComboboxOption } from '../../../components/ui';
+import { useUnsavedChangesGuard } from '../../../hooks/use-unsaved-changes-guard';
 import { apiFetch } from '../../../lib/api';
 import { getSession } from '../../../lib/auth';
 import {
@@ -12,6 +14,8 @@ import {
   INQUIRY_PURCHASE_TIMELINES,
   INQUIRY_REQUIREMENT_TYPES,
   INQUIRY_TEMPERATURES,
+  stageBadgeClass,
+  stageLabel,
   type Inquiry,
   type LeadSource,
 } from '../../../lib/crm';
@@ -23,11 +27,9 @@ import {
   type EmployeeOption,
   type PropertyOption,
 } from '../../../lib/crm-api';
+import { isValidIndianMobile, parseNationalDigits, toE164 } from '../../../lib/phone';
 
 type Mode = 'create' | 'edit';
-
-const inputClass = 'mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm';
-const labelClass = 'block text-sm font-medium text-slate-700';
 
 export function InquiryForm({ mode, inquiry }: { mode: Mode; inquiry?: Inquiry }) {
   const router = useRouter();
@@ -59,6 +61,9 @@ export function InquiryForm({ mode, inquiry }: { mode: Mode; inquiry?: Inquiry }
 
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [dirty, setDirty] = useState(false);
+
+  useUnsavedChangesGuard(dirty && !saving);
 
   useEffect(() => {
     fetchEmployees().then(setEmployees).catch(() => undefined);
@@ -66,16 +71,34 @@ export function InquiryForm({ mode, inquiry }: { mode: Mode; inquiry?: Inquiry }
     fetchLeadSources().then(setSources).catch(() => undefined);
   }, []);
 
-  async function submit(e: FormEvent) {
-    e.preventDefault();
+  function mark<T>(setter: (v: T) => void) {
+    return (v: T) => {
+      setter(v);
+      setDirty(true);
+    };
+  }
+
+  const sourceOptions: ComboboxOption[] = sources.map((s) => ({ value: s.id, label: s.name }));
+  const propertyOptions: ComboboxOption[] = properties.map((p) => ({ value: p.id, label: p.title }));
+
+  async function submit() {
     const session = getSession();
     if (!session?.access_token) return;
 
+    if (!isValidIndianMobile(parseNationalDigits(phone))) {
+      setError('Please match the requested format.');
+      return;
+    }
+    if (whatsapp.trim() && !isValidIndianMobile(parseNationalDigits(whatsapp))) {
+      setError('Please match the requested format.');
+      return;
+    }
+
     const body: Record<string, unknown> = {
       client_name: clientName.trim(),
-      phone: phone.trim(),
+      phone: toE164(parseNationalDigits(phone)),
       email: email.trim() || undefined,
-      whatsapp: whatsapp.trim() || undefined,
+      whatsapp: whatsapp.trim() ? toE164(parseNationalDigits(whatsapp)) : undefined,
       property_id: propertyId || undefined,
       source_id: sourceId || undefined,
       source_name: !sourceId && sourceName.trim() ? sourceName.trim() : undefined,
@@ -106,6 +129,7 @@ export function InquiryForm({ mode, inquiry }: { mode: Mode; inquiry?: Inquiry }
           token: session.access_token,
           body: JSON.stringify(body),
         });
+        setDirty(false);
         router.push(`/inquiries/${res.data.id}`);
       } else if (inquiry) {
         await apiFetch<Inquiry>(`/api/v1/inquiries/${inquiry.id}`, {
@@ -113,6 +137,7 @@ export function InquiryForm({ mode, inquiry }: { mode: Mode; inquiry?: Inquiry }
           token: session.access_token,
           body: JSON.stringify(body),
         });
+        setDirty(false);
         router.push(`/inquiries/${inquiry.id}`);
       }
       router.refresh();
@@ -123,171 +148,162 @@ export function InquiryForm({ mode, inquiry }: { mode: Mode; inquiry?: Inquiry }
     }
   }
 
+  const currentStage = inquiry?.stage ?? 'NEW';
+
   return (
-    <form onSubmit={submit} className="mt-6 space-y-8">
-      <section>
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Lead</h2>
-        <div className="mt-3 grid gap-4 md:grid-cols-2">
-          <div>
-            <label className={labelClass}>Client name *</label>
-            <input value={clientName} onChange={(e) => setClientName(e.target.value)} required className={inputClass} />
-          </div>
-          <div>
-            <label className={labelClass}>Phone *</label>
-            <input value={phone} onChange={(e) => setPhone(e.target.value)} required className={inputClass} />
-          </div>
-          <div>
-            <label className={labelClass}>Email</label>
-            <input value={email} onChange={(e) => setEmail(e.target.value)} type="email" className={inputClass} />
-          </div>
-          <div>
-            <label className={labelClass}>WhatsApp</label>
-            <input value={whatsapp} onChange={(e) => setWhatsapp(e.target.value)} className={inputClass} />
-          </div>
-        </div>
-      </section>
+    <FormPage
+      eyebrow={mode === 'create' ? 'New lead' : 'Edit lead'}
+      title={mode === 'create' ? 'New inquiry' : inquiry?.client_name ?? 'Edit inquiry'}
+      description={
+        mode === 'create'
+          ? 'A unique inquiry code is generated automatically. New leads start in the NEW stage.'
+          : 'Update lead details. Use Change stage and Assign from the inquiry page to manage pipeline and ownership.'
+      }
+      breadcrumbs={[
+        { label: 'Inquiries', href: '/inquiries' },
+        { label: mode === 'create' ? 'New inquiry' : 'Edit' },
+      ]}
+      statusBadge={
+        <span className={`rounded-full px-2.5 py-1 text-2xs font-bold ${stageBadgeClass(currentStage)}`}>
+          {stageLabel(currentStage)}
+        </span>
+      }
+      error={error}
+      submitting={saving}
+      submitLabel={mode === 'create' ? 'Create inquiry' : 'Save changes'}
+      onSubmit={submit}
+      onCancel={() => router.back()}
+    >
+      <FormSection title="Lead" description="Who reached out. Name and phone are all you need to capture a lead fast.">
+        <FormField label="Client name" required>
+          <input value={clientName} onChange={(e) => mark(setClientName)(e.target.value)} required className="input" placeholder="Full name" />
+        </FormField>
+        <FormField label="Phone" required>
+          <PhoneInput value={phone} onChange={mark(setPhone)} required />
+        </FormField>
+        <FormField label="Email">
+          <input value={email} onChange={(e) => mark(setEmail)(e.target.value)} type="email" className="input" placeholder="name@example.com" />
+        </FormField>
+        <FormField label="WhatsApp" hint="Leave blank to reuse the phone number.">
+          <PhoneInput value={whatsapp} onChange={mark(setWhatsapp)} />
+        </FormField>
+      </FormSection>
 
-      <section>
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Source &amp; assignment</h2>
-        <div className="mt-3 grid gap-4 md:grid-cols-2">
-          <div>
-            <label className={labelClass}>Lead source</label>
-            <select value={sourceId} onChange={(e) => setSourceId(e.target.value)} className={inputClass}>
-              <option value="">— select —</option>
-              {sources.map((s) => (
-                <option key={s.id} value={s.id}>{s.name}</option>
+      <FormSection title="Source & assignment" description="Where the lead came from and who owns it.">
+        <FormField label="Lead source" hint="Pick an existing source or type a new one.">
+          <Combobox
+            value={sourceId}
+            onChange={mark(setSourceId)}
+            options={sourceOptions}
+            freeText={sourceName}
+            onFreeTextChange={mark(setSourceName)}
+            allowCustom
+            placeholder="Select or add a source"
+          />
+        </FormField>
+        <FormField label="Linked property" hint="Optional — the property this lead is interested in.">
+          <Combobox
+            value={propertyId}
+            onChange={mark(setPropertyId)}
+            options={propertyOptions}
+            placeholder="— none —"
+          />
+        </FormField>
+        {mode === 'create' ? (
+          <FormField label="Assign to" full hint="Leave unassigned to triage from the pipeline later.">
+            <select value={assignedEmployeeId} onChange={(e) => mark(setAssignedEmployeeId)(e.target.value)} className="input">
+              <option value="">— Unassigned —</option>
+              {employees.map((emp) => (
+                <option key={emp.id} value={emp.id}>{employeeLabel(emp)}</option>
               ))}
             </select>
-          </div>
-          <div>
-            <label className={labelClass}>Or free-text source</label>
-            <input
-              value={sourceName}
-              onChange={(e) => setSourceName(e.target.value)}
-              disabled={!!sourceId}
-              placeholder="e.g. Walk-in"
-              className={`${inputClass} disabled:bg-slate-100`}
-            />
-          </div>
-          <div>
-            <label className={labelClass}>Linked property</label>
-            <select value={propertyId} onChange={(e) => setPropertyId(e.target.value)} className={inputClass}>
-              <option value="">— none —</option>
-              {properties.map((p) => (
-                <option key={p.id} value={p.id}>{p.title}</option>
-              ))}
-            </select>
-          </div>
-          {mode === 'create' ? (
-            <div>
-              <label className={labelClass}>Assign to</label>
-              <select value={assignedEmployeeId} onChange={(e) => setAssignedEmployeeId(e.target.value)} className={inputClass}>
-                <option value="">— unassigned —</option>
-                {employees.map((emp) => (
-                  <option key={emp.id} value={emp.id}>{employeeLabel(emp)}</option>
-                ))}
-              </select>
-            </div>
-          ) : null}
-        </div>
-      </section>
+          </FormField>
+        ) : null}
+      </FormSection>
 
-      <section>
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Requirements</h2>
-        <div className="mt-3 grid gap-4 md:grid-cols-3">
-          <div>
-            <label className={labelClass}>Requirement type</label>
-            <select value={requirementType} onChange={(e) => setRequirementType(e.target.value)} className={inputClass}>
-              <option value="">—</option>
-              {INQUIRY_REQUIREMENT_TYPES.map((t) => (
-                <option key={t} value={t}>{humanize(t)}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className={labelClass}>Property type</label>
-            <select value={propertyType} onChange={(e) => setPropertyType(e.target.value)} className={inputClass}>
-              <option value="">—</option>
-              {INQUIRY_PROPERTY_TYPES.map((t) => (
-                <option key={t} value={t}>{humanize(t)}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className={labelClass}>Bedrooms</label>
-            <input value={bedrooms} onChange={(e) => setBedrooms(e.target.value)} type="number" min="0" className={inputClass} />
-          </div>
-          <div className="md:col-span-2">
-            <label className={labelClass}>Preferred location</label>
-            <input value={preferredLocation} onChange={(e) => setPreferredLocation(e.target.value)} className={inputClass} />
-          </div>
-          <div>
-            <label className={labelClass}>Purchase timeline</label>
-            <select value={purchaseTimeline} onChange={(e) => setPurchaseTimeline(e.target.value)} className={inputClass}>
-              <option value="">—</option>
-              {INQUIRY_PURCHASE_TIMELINES.map((t) => (
-                <option key={t} value={t}>{humanize(t)}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className={labelClass}>Budget min (₹)</label>
-            <input value={budgetMin} onChange={(e) => setBudgetMin(e.target.value)} type="number" min="0" className={inputClass} />
-          </div>
-          <div>
-            <label className={labelClass}>Budget max (₹)</label>
-            <input value={budgetMax} onChange={(e) => setBudgetMax(e.target.value)} type="number" min="0" className={inputClass} />
-          </div>
-        </div>
-      </section>
+      <FormSection
+        title="Requirements"
+        description="What the buyer is looking for. Helps matching and prioritisation."
+        collapsible
+        defaultOpen={mode === 'edit'}
+      >
+        <FormField label="Requirement type">
+          <select value={requirementType} onChange={(e) => mark(setRequirementType)(e.target.value)} className="input">
+            <option value="">—</option>
+            {INQUIRY_REQUIREMENT_TYPES.map((t) => (
+              <option key={t} value={t}>{humanize(t)}</option>
+            ))}
+          </select>
+        </FormField>
+        <FormField label="Property type">
+          <select value={propertyType} onChange={(e) => mark(setPropertyType)(e.target.value)} className="input">
+            <option value="">—</option>
+            {INQUIRY_PROPERTY_TYPES.map((t) => (
+              <option key={t} value={t}>{humanize(t)}</option>
+            ))}
+          </select>
+        </FormField>
+        <FormField label="Bedrooms">
+          <input value={bedrooms} onChange={(e) => mark(setBedrooms)(e.target.value)} type="number" min="0" className="input" placeholder="3" />
+        </FormField>
+        <FormField label="Preferred location" full>
+          <input value={preferredLocation} onChange={(e) => mark(setPreferredLocation)(e.target.value)} className="input" placeholder="e.g. Bandra West, Mumbai" />
+        </FormField>
+        <FormField label="Purchase timeline">
+          <select value={purchaseTimeline} onChange={(e) => mark(setPurchaseTimeline)(e.target.value)} className="input">
+            <option value="">—</option>
+            {INQUIRY_PURCHASE_TIMELINES.map((t) => (
+              <option key={t} value={t}>{humanize(t)}</option>
+            ))}
+          </select>
+        </FormField>
+        <FormField label="Budget min (₹)">
+          <input value={budgetMin} onChange={(e) => mark(setBudgetMin)(e.target.value)} type="number" min="0" className="input" placeholder="5000000" />
+        </FormField>
+        <FormField label="Budget max (₹)">
+          <input value={budgetMax} onChange={(e) => mark(setBudgetMax)(e.target.value)} type="number" min="0" className="input" placeholder="9000000" />
+        </FormField>
+      </FormSection>
 
-      <section>
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Scoring</h2>
-        <div className="mt-3 grid gap-4 md:grid-cols-3">
-          <div>
-            <label className={labelClass}>Priority</label>
-            <select value={priority} onChange={(e) => setPriority(e.target.value)} className={inputClass}>
-              {INQUIRY_PRIORITIES.map((p) => (
-                <option key={p} value={p}>{humanize(p)}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className={labelClass}>Temperature</label>
-            <select value={temperature} onChange={(e) => setTemperature(e.target.value)} className={inputClass}>
-              {INQUIRY_TEMPERATURES.map((t) => (
-                <option key={t} value={t}>{humanize(t)}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className={labelClass}>Lead score (0–100)</label>
-            <input value={leadScore} onChange={(e) => setLeadScore(e.target.value)} type="number" min="0" max="100" className={inputClass} />
-          </div>
-          <div className="md:col-span-3">
-            <label className={labelClass}>Remarks</label>
-            <textarea value={remarks} onChange={(e) => setRemarks(e.target.value)} rows={3} className={inputClass} />
-          </div>
-        </div>
-      </section>
-
-      {error ? <p className="rounded bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p> : null}
+      <FormSection
+        title="Scoring & notes"
+        description="Prioritise the lead and capture context for the team."
+        collapsible
+        defaultOpen={mode === 'edit'}
+      >
+        <FormField label="Priority">
+          <select value={priority} onChange={(e) => mark(setPriority)(e.target.value)} className="input">
+            {INQUIRY_PRIORITIES.map((p) => (
+              <option key={p} value={p}>{humanize(p)}</option>
+            ))}
+          </select>
+        </FormField>
+        <FormField label="Temperature">
+          <select value={temperature} onChange={(e) => mark(setTemperature)(e.target.value)} className="input">
+            {INQUIRY_TEMPERATURES.map((t) => (
+              <option key={t} value={t}>{humanize(t)}</option>
+            ))}
+          </select>
+        </FormField>
+        <FormField label="Lead score" hint="0–100. Higher means more sales-ready.">
+          <input value={leadScore} onChange={(e) => mark(setLeadScore)(e.target.value)} type="number" min="0" max="100" className="input" placeholder="60" />
+        </FormField>
+        <FormField label="Remarks" full>
+          <textarea value={remarks} onChange={(e) => mark(setRemarks)(e.target.value)} rows={3} className="input" placeholder="Anything the team should know about this lead…" />
+        </FormField>
+      </FormSection>
 
       {mode === 'create' ? (
         <label className="flex items-center gap-2 text-sm text-slate-600">
-          <input type="checkbox" checked={overrideDuplicate} onChange={(e) => setOverrideDuplicate(e.target.checked)} />
+          <input
+            type="checkbox"
+            checked={overrideDuplicate}
+            onChange={(e) => setOverrideDuplicate(e.target.checked)}
+            className="h-4 w-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500"
+          />
           Override duplicate detection (same phone within 30 days)
         </label>
       ) : null}
-
-      <div className="flex gap-2">
-        <button type="submit" disabled={saving} className="rounded bg-teal-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">
-          {saving ? 'Saving…' : mode === 'create' ? 'Create inquiry' : 'Save changes'}
-        </button>
-        <button type="button" onClick={() => router.back()} className="rounded border border-slate-300 px-4 py-2 text-sm">
-          Cancel
-        </button>
-      </div>
-    </form>
+    </FormPage>
   );
 }

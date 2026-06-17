@@ -19,6 +19,7 @@ import { AddDocumentDto, AddImageDto, AddVideoDto, ReorderImagesDto } from './dt
 import { UpdatePropertyDto } from './dto/update-property.dto';
 import {
   PROPERTY_FULL_ACCESS_ROLES,
+  PROPERTY_STATUSES,
   PROPERTY_STATUS_TRANSITIONS,
   PROPERTY_TEAM_ACCESS_ROLES,
   type PropertyStatus,
@@ -55,7 +56,7 @@ export class PropertiesService {
     if (!employee) return { type: 'employees', employeeIds: [] };
 
     if (user.roles.some((r) => PROPERTY_TEAM_ACCESS_ROLES.includes(r))) {
-      const subordinates = await this.repo.findSubordinateEmployeeIds(employee.id);
+      const subordinates = await this.repo.findSubordinateEmployeeIds(tenantId, employee.id);
       return { type: 'employees', employeeIds: [employee.id, ...subordinates] };
     }
     return { type: 'employees', employeeIds: [employee.id] };
@@ -181,17 +182,22 @@ export class PropertiesService {
       tags: p.tags.map((t) => t.tag),
       images: p.images.map((img) => ({
         id: img.id,
-        url: img.url,
-        thumbnail_url: img.thumbnail_url,
+        url: this.storage.resolveUrl(img.url),
+        thumbnail_url: this.storage.resolveUrl(img.thumbnail_url),
         alt_text: img.alt_text,
         sort_order: img.sort_order,
         is_cover: img.is_cover,
       })),
-      videos: p.videos.map((v) => ({ id: v.id, url: v.url, title: v.title, sort_order: v.sort_order })),
+      videos: p.videos.map((v) => ({
+        id: v.id,
+        url: this.storage.resolveUrl(v.url),
+        title: v.title,
+        sort_order: v.sort_order,
+      })),
       documents: p.documents.map((d) => ({
         id: d.id,
         name: d.name,
-        url: d.url,
+        url: this.storage.resolveUrl(d.url),
         doc_type: d.doc_type,
       })),
       assignments: p.assignments.map((a) => ({
@@ -204,7 +210,9 @@ export class PropertiesService {
           a.employee?.user?.email ||
           null,
       })),
-      cover_image_url: p.images.find((i) => i.is_cover)?.url ?? p.images[0]?.url ?? null,
+      cover_image_url: this.storage.resolveUrl(
+        p.images.find((i) => i.is_cover)?.url ?? p.images[0]?.url ?? null,
+      ),
       assigned_to:
         p.assignments.find((a) => a.is_primary)?.employee_id ??
         p.assignments[0]?.employee_id ??
@@ -333,6 +341,46 @@ export class PropertiesService {
         total,
         total_pages: Math.ceil(total / perPage) || 1,
       },
+    };
+  }
+
+  async summary(tenantId: string, user: AuthUser, query: ListPropertiesQueryDto) {
+    const scope = await this.resolveScope(user, tenantId);
+    const where = this.repo.buildWhere(
+      tenantId,
+      {
+        search: query.search,
+        type: (query['filter[type]'] ?? query.filter?.type) as string | undefined,
+        category: (query['filter[category]'] ?? query.filter?.category) as string | undefined,
+        status: (query['filter[status]'] ?? query.filter?.status) as string | undefined,
+        requirementType: (query['filter[requirement_type]'] ?? query.filter?.requirement_type) as
+          | string
+          | undefined,
+        city: (query['filter[city]'] ?? query.filter?.city) as string | undefined,
+        assignedUser: (query['filter[assigned_user]'] ?? query.filter?.assigned_user) as string | undefined,
+        minPrice: (query['filter[min_price]'] ?? query.filter?.min_price) as number | undefined,
+        maxPrice: (query['filter[max_price]'] ?? query.filter?.max_price) as number | undefined,
+      },
+      scope,
+    );
+    const { statusRows, publicCount, totalValue } = await this.repo.summary(where);
+    const byStatus: Record<string, number> = {};
+    for (const status of PROPERTY_STATUSES) byStatus[status] = 0;
+    let total = 0;
+    for (const row of statusRows) {
+      byStatus[row.status] = row._count._all;
+      total += row._count._all;
+    }
+
+    return {
+      total,
+      published: byStatus.published ?? 0,
+      reserved: byStatus.reserved ?? 0,
+      sold: byStatus.sold ?? 0,
+      draft: byStatus.draft ?? 0,
+      public_listings: publicCount,
+      total_value: totalValue == null ? 0 : Number(totalValue),
+      by_status: byStatus,
     };
   }
 
@@ -641,8 +689,10 @@ export class PropertiesService {
         contentBase64: dto.content_base64,
         contentType: dto.content_type,
       });
-      url = stored.url;
+      // Persist only the storage key (name/path), not the full host URL. The
+      // public URL is resolved at read time from the active storage provider.
       storageKey = stored.storageKey;
+      url = stored.storageKey;
     }
     if (!url) throw new BadRequestException('Provide either url or content_base64');
 
@@ -667,8 +717,8 @@ export class PropertiesService {
 
     return {
       id: image.id,
-      url: image.url,
-      thumbnail_url: image.thumbnail_url,
+      url: this.storage.resolveUrl(image.url),
+      thumbnail_url: this.storage.resolveUrl(image.thumbnail_url),
       alt_text: image.alt_text,
       sort_order: image.sort_order,
       is_cover: image.is_cover,
@@ -733,8 +783,8 @@ export class PropertiesService {
         contentBase64: dto.content_base64,
         contentType: dto.content_type,
       });
-      url = stored.url;
       storageKey = stored.storageKey;
+      url = stored.storageKey;
     }
     if (!url) throw new BadRequestException('Provide either url or content_base64');
     const video = await this.repo.addVideo({
@@ -745,7 +795,12 @@ export class PropertiesService {
       title: dto.title,
       sortOrder: dto.sort_order,
     });
-    return { id: video.id, url: video.url, title: video.title, sort_order: video.sort_order };
+    return {
+      id: video.id,
+      url: this.storage.resolveUrl(video.url),
+      title: video.title,
+      sort_order: video.sort_order,
+    };
   }
 
   async deleteVideo(tenantId: string, user: AuthUser, id: string, videoId: string) {
@@ -769,8 +824,8 @@ export class PropertiesService {
         contentBase64: dto.content_base64,
         contentType: dto.content_type,
       });
-      url = stored.url;
       storageKey = stored.storageKey;
+      url = stored.storageKey;
     }
     if (!url) throw new BadRequestException('Provide either url or content_base64');
     const doc = await this.repo.addDocument({
@@ -781,7 +836,12 @@ export class PropertiesService {
       storageKey,
       docType: dto.doc_type,
     });
-    return { id: doc.id, name: doc.name, url: doc.url, doc_type: doc.doc_type };
+    return {
+      id: doc.id,
+      name: doc.name,
+      url: this.storage.resolveUrl(doc.url),
+      doc_type: doc.doc_type,
+    };
   }
 
   async deleteDocument(tenantId: string, user: AuthUser, id: string, documentId: string) {
@@ -851,9 +911,15 @@ export class PropertiesService {
       meta_description: p.meta_description,
       amenities: p.amenities.map((a) => a.name),
       tags: p.tags.map((t) => t.tag),
-      images: p.images.map((i) => ({ url: i.url, alt_text: i.alt_text, is_cover: i.is_cover })),
-      videos: (p.videos ?? []).map((v) => ({ url: v.url, title: v.title })),
-      cover_image_url: p.images.find((i) => i.is_cover)?.url ?? p.images[0]?.url ?? null,
+      images: p.images.map((i) => ({
+        url: this.storage.resolveUrl(i.url),
+        alt_text: i.alt_text,
+        is_cover: i.is_cover,
+      })),
+      videos: (p.videos ?? []).map((v) => ({ url: this.storage.resolveUrl(v.url), title: v.title })),
+      cover_image_url: this.storage.resolveUrl(
+        p.images.find((i) => i.is_cover)?.url ?? p.images[0]?.url ?? null,
+      ),
       published_at: p.published_at?.toISOString() ?? null,
     };
   }

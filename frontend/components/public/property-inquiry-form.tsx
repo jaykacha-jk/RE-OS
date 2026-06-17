@@ -1,8 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { FormEvent, useState } from 'react';
 
+import { PhoneInput } from '../ui/PhoneInput';
 import { API_BASE } from '../../lib/public-site';
+import { isValidIndianMobile, parseNationalDigits, toE164 } from '../../lib/phone';
 
 type SubmitState = 'idle' | 'submitting' | 'success' | 'error';
 
@@ -19,19 +21,29 @@ export function PropertyInquiryForm({
 }) {
   const [state, setState] = useState<SubmitState>('idle');
   const [error, setError] = useState<string | null>(null);
+  const [phone, setPhone] = useState('');
 
-  async function submit(formData: FormData) {
+  async function onSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!isValidIndianMobile(parseNationalDigits(phone))) {
+      setError('Please match the requested format.');
+      setState('error');
+      return;
+    }
+
     setState('submitting');
     setError(null);
 
+    const form = new FormData(event.currentTarget);
     const payload = {
-      client_name: String(formData.get('client_name') ?? ''),
-      phone: String(formData.get('phone') ?? ''),
-      email: String(formData.get('email') ?? '') || undefined,
+      client_name: String(form.get('client_name') ?? ''),
+      phone: toE164(parseNationalDigits(phone)),
+      email: String(form.get('email') ?? '') || undefined,
       property_slug: propertySlug,
       requirement_type: requirementType,
       preferred_location: preferredLocation,
-      message: String(formData.get('message') ?? '') || undefined,
+      message: String(form.get('message') ?? '') || undefined,
     };
 
     const response = await fetch(`${API_BASE}/api/v1/public/${encodeURIComponent(tenant)}/inquiries`, {
@@ -51,7 +63,7 @@ export function PropertyInquiryForm({
   }
 
   return (
-    <form action={submit} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+    <form onSubmit={onSubmit} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
       <h2 className="text-lg font-semibold text-slate-950">Interested in this property?</h2>
       <p className="mt-1 text-sm text-slate-600">Share your details and the team will call you back.</p>
 
@@ -63,13 +75,7 @@ export function PropertyInquiryForm({
           placeholder="Full name"
           className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
         />
-        <input
-          name="phone"
-          required
-          minLength={5}
-          placeholder="+91 phone number"
-          className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
-        />
+        <PhoneInput value={phone} onChange={setPhone} required className="rounded-lg border border-slate-300 px-3 py-2 text-sm" />
         <input
           name="email"
           type="email"

@@ -68,8 +68,6 @@ function PlatformDashboard({ session }: { session: AuthSession }) {
     ? [
         { label: 'Billing engine', detail: `${formatInr(data.revenue.mrr)} MRR tracked`, status: data.organizations.past_due ? 'warn' : 'ok', icon: 'billing' },
         { label: 'Tenant health', detail: `${formatPercent(data.platform_health.active_ratio)} active`, status: data.platform_health.status === 'at_risk' ? 'warn' : 'ok', icon: 'organizations' },
-        { label: 'Analytics pipeline', detail: 'Cross-tenant rollups synced', status: 'ok', icon: 'analytics' },
-        { label: 'Notifications', detail: 'Realtime stream connected', status: 'ok', icon: 'notifications' },
       ]
     : [];
 
@@ -177,9 +175,6 @@ function OrgDashboard({ session }: { session: AuthSession }) {
         { label: 'CRM pipeline', detail: `${formatNumber(data.leads.qualified)} qualified in motion`, status: data.leads.total ? 'ok' : 'warn', icon: 'inquiries' },
         { label: 'Inventory', detail: `${formatNumber(data.properties.published)} published listings`, status: data.properties.published ? 'ok' : 'warn', icon: 'properties' },
         { label: 'Conversion', detail: `${formatPercent(data.leads.conversion_rate)} lead → won`, status: data.leads.conversion_rate >= 10 ? 'ok' : 'warn', icon: 'performance' },
-        ...(!isLaunchMode()
-          ? [{ label: 'Assistant automation', detail: 'Rule scoring & chat configured', status: 'ok' as const, icon: 'ai' as const }]
-          : []),
       ]
     : [];
 
@@ -204,7 +199,7 @@ function OrgDashboard({ session }: { session: AuthSession }) {
             <KPICard label="Total leads" value={formatNumber(data.leads.total)} tone="teal" icon={<Icon name="inquiries" />} hint={`${formatNumber(data.leads.new)} new`} />
             <KPICard label="Qualified" value={formatNumber(data.leads.qualified)} tone="indigo" icon={<Icon name="check" />} hint={`${formatNumber(data.leads.site_visits)} site visits`} />
             <KPICard label="Won deals" value={formatNumber(data.leads.won)} tone="green" icon={<Icon name="performance" />} hint={`${formatNumber(data.leads.lost)} lost`} />
-            <KPICard label="Conversion" value={formatPercent(data.leads.conversion_rate)} tone="amber" icon={<Icon name="analytics" />} hint={`${formatInr(data.revenue.won_amount)} won`} />
+            <KPICard label="Conversion" value={formatPercent(data.leads.conversion_rate)} tone="amber" icon={<Icon name="analytics" />} hint={`${formatInr(data.revenue.received_commission)} received`} />
           </div>
 
           {data.scope !== 'assigned' ? <LaunchReadiness data={data} session={session} /> : null}

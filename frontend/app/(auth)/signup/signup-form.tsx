@@ -3,7 +3,9 @@
 import Link from 'next/link';
 import { FormEvent, useMemo, useState } from 'react';
 
+import { PhoneInput } from '../../../components/ui';
 import { apiFetch } from '../../../lib/api';
+import { isValidIndianMobile, parseNationalDigits, toE164 } from '../../../lib/phone';
 
 type RegisterResponse = {
   organization: {
@@ -45,7 +47,7 @@ export function SignupForm() {
   const [agencyName, setAgencyName] = useState('');
   const [ownerName, setOwnerName] = useState('');
   const [email, setEmail] = useState('');
-  const [phone, setPhone] = useState('+91');
+  const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -64,6 +66,12 @@ export function SignupForm() {
       return;
     }
 
+    const national = parseNationalDigits(phone);
+    if (!isValidIndianMobile(national)) {
+      setError('Please match the requested format.');
+      return;
+    }
+
     setLoading(true);
     try {
       const { data } = await apiFetch<RegisterResponse>('/api/v1/auth/register', {
@@ -73,7 +81,7 @@ export function SignupForm() {
           owner_name: ownerName,
           email,
           password,
-          phone,
+          phone: toE164(national),
         }),
       });
       setResult(data);
@@ -180,16 +188,9 @@ export function SignupForm() {
           <label htmlFor="phone" className="block text-sm font-medium text-slate-700">
             Phone
           </label>
-          <input
-            id="phone"
-            type="tel"
-            required
-            pattern="^\+91[6-9]\d{9}$"
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-            className="input mt-1"
-            placeholder="+919876543210"
-          />
+          <div className="mt-1">
+            <PhoneInput id="phone" value={phone} onChange={setPhone} required />
+          </div>
         </div>
       </div>
 

@@ -175,7 +175,7 @@ export async function updateAiSettings(patch: Partial<AiSettings>) {
   ).data;
 }
 
-export async function fetchAiCalls(params: { status?: string; direction?: string; search?: string; page?: number } = {}) {
+export async function fetchAiCalls(params: { status?: string; direction?: string; search?: string; page?: number; per_page?: number } = {}) {
   return (await apiFetch<Paginated<AiCallSummary>>(`/api/v1/ai/calls${qs(params)}`, { token: token() })).data;
 }
 
@@ -199,7 +199,7 @@ export async function initiateAiCall(body: {
   ).data;
 }
 
-export async function fetchAiKnowledge(params: { search?: string; type?: string; page?: number } = {}) {
+export async function fetchAiKnowledge(params: { search?: string; type?: string; page?: number; per_page?: number } = {}) {
   return (await apiFetch<Paginated<AiKnowledgeDoc>>(`/api/v1/ai/knowledge${qs(params)}`, { token: token() })).data;
 }
 

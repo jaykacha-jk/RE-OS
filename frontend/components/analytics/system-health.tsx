@@ -23,15 +23,17 @@ const LABEL: Record<Status, string> = {
 
 /** Compact service / data-health panel for the dashboard right rail. */
 export function SystemHealth({ rows, updatedAt }: { rows: HealthRow[]; updatedAt?: string }) {
+  const hasIssue = rows.some((row) => row.status !== 'ok');
   return (
     <section className="card p-5">
       <header className="mb-4 flex items-center justify-between">
         <div>
-          <h3 className="text-h3">System health</h3>
-          <p className="text-caption mt-1">Live platform status</p>
+          <h3 className="text-h3">Data health</h3>
+          <p className="text-caption mt-1">Verified dashboard signals</p>
         </div>
-        <span className="badge badge-green">
-          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> All systems go
+        <span className={hasIssue ? 'badge badge-amber' : 'badge badge-green'}>
+          <span className={`h-1.5 w-1.5 rounded-full ${hasIssue ? 'bg-amber-500' : 'bg-emerald-500'}`} />
+          {hasIssue ? 'Needs attention' : 'Verified'}
         </span>
       </header>
 

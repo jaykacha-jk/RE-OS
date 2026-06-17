@@ -88,9 +88,13 @@ export class PropertiesRepository extends TenantScopedRepository {
     });
   }
 
-  async findSubordinateEmployeeIds(managerEmployeeId: string) {
+  async findSubordinateEmployeeIds(tenantId: string, managerEmployeeId: string) {
     const rows = await this.prisma.dbClient.employees.findMany({
-      where: { manager_id: managerEmployeeId, deleted_at: null },
+      where: {
+        manager_id: managerEmployeeId,
+        deleted_at: null,
+        user: { tenant_id: tenantId, deleted_at: null },
+      },
       select: { id: true },
     });
     return rows.map((r) => r.id);
@@ -251,6 +255,27 @@ export class PropertiesRepository extends TenantScopedRepository {
     ]);
 
     return { rows, total };
+  }
+
+  async summary(where: Prisma.propertiesWhereInput) {
+    this.assertTenantWhere('PropertiesRepository.summary', where as Record<string, unknown>);
+    const [statusRows, publicCount, value] = await Promise.all([
+      this.prisma.dbClient.properties.groupBy({
+        by: ['status'],
+        where,
+        _count: { _all: true },
+      }),
+      this.prisma.dbClient.properties.count({ where: { ...where, is_public: true } }),
+      this.prisma.dbClient.properties.aggregate({
+        where,
+        _sum: { price: true },
+      }),
+    ]);
+    return {
+      statusRows,
+      publicCount,
+      totalValue: value._sum.price,
+    };
   }
 
   async updateProperty(input: {

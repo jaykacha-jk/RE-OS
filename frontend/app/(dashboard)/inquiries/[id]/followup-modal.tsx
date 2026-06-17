@@ -8,7 +8,7 @@ import { FOLLOWUP_TYPES, humanize, type Inquiry } from '../../../../lib/crm';
 import { employeeLabel, fetchEmployees, type EmployeeOption } from '../../../../lib/crm-api';
 import { ModalShell } from './modal-shell';
 
-const inputClass = 'mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm';
+const labelClass = 'mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500';
 
 export function FollowupModal({
   inquiry,
@@ -66,25 +66,25 @@ export function FollowupModal({
     <ModalShell title="Schedule follow-up" onClose={onClose} onSave={save} saving={saving} error={error} saveLabel="Create">
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className="block text-sm font-medium text-slate-700">Date *</label>
-          <input value={date} onChange={(e) => setDate(e.target.value)} type="date" className={inputClass} />
+          <label className={labelClass}>Date *</label>
+          <input value={date} onChange={(e) => setDate(e.target.value)} type="date" className="input" />
         </div>
         <div>
-          <label className="block text-sm font-medium text-slate-700">Time</label>
-          <input value={time} onChange={(e) => setTime(e.target.value)} type="time" className={inputClass} />
+          <label className={labelClass}>Time</label>
+          <input value={time} onChange={(e) => setTime(e.target.value)} type="time" className="input" />
         </div>
       </div>
       <div>
-        <label className="block text-sm font-medium text-slate-700">Type</label>
-        <select value={type} onChange={(e) => setType(e.target.value)} className={inputClass}>
+        <label className={labelClass}>Type</label>
+        <select value={type} onChange={(e) => setType(e.target.value)} className="input">
           {FOLLOWUP_TYPES.map((t) => (
             <option key={t} value={t}>{humanize(t)}</option>
           ))}
         </select>
       </div>
       <div>
-        <label className="block text-sm font-medium text-slate-700">Owner</label>
-        <select value={employeeId} onChange={(e) => setEmployeeId(e.target.value)} className={inputClass}>
+        <label className={labelClass}>Owner</label>
+        <select value={employeeId} onChange={(e) => setEmployeeId(e.target.value)} className="input">
           <option value="">— assignee —</option>
           {employees.map((emp) => (
             <option key={emp.id} value={emp.id}>{employeeLabel(emp)}</option>
@@ -92,8 +92,8 @@ export function FollowupModal({
         </select>
       </div>
       <div>
-        <label className="block text-sm font-medium text-slate-700">Notes</label>
-        <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} className={inputClass} />
+        <label className={labelClass}>Notes</label>
+        <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} className="input" placeholder="Context for the next conversation…" />
       </div>
     </ModalShell>
   );

@@ -25,15 +25,6 @@ import {
 } from './analytics.repository';
 import { AnalyticsQueryDto } from './dto/analytics-query.dto';
 
-/** Map a tenant tier to its subscription plan code (mirrors employees module). */
-const TIER_TO_PLAN: Record<string, string> = {
-  basic: 'starter',
-  starter: 'starter',
-  pro: 'pro',
-  growth: 'pro',
-  enterprise: 'enterprise',
-};
-
 type ResolvedRange = DateRange & { range: AnalyticsTimeRange };
 
 @Injectable()
@@ -65,7 +56,7 @@ export class AnalyticsService {
     if (!employee) return { type: 'employees', employeeIds: [] };
 
     if (type === 'team') {
-      const subordinates = await this.repo.findSubordinateEmployeeIds(employee.id);
+      const subordinates = await this.repo.findSubordinateEmployeeIds(tenantId, employee.id);
       return { type: 'employees', employeeIds: [employee.id, ...subordinates] };
     }
     return { type: 'employees', employeeIds: [employee.id] };
@@ -198,22 +189,28 @@ export class AnalyticsService {
     // Revenue is recognised on the close date (BR-aligned with KPI_FRAMEWORK).
     const where = this.repo.buildInquiryWhere(tenantId, scope, range, { dateField: 'closed_at' });
     const deals = await this.repo.wonDeals(where);
-    let won_amount = 0;
+    let gross_property_value = 0;
+    let booking_value = 0;
+    let expected_commission = 0;
+    let received_commission = 0;
     for (const deal of deals) {
-      const value =
-        this.toNum(deal.received_commission) ||
-        this.toNum(deal.expected_commission) ||
-        this.toNum(deal.booking_amount) ||
-        this.toNum(deal.property?.price) ||
-        this.toNum(deal.budget_max) ||
-        this.toNum(deal.budget_min);
-      won_amount += value;
+      gross_property_value += this.toNum(deal.property?.price);
+      booking_value += this.toNum(deal.booking_amount);
+      expected_commission += this.toNum(deal.expected_commission);
+      received_commission += this.toNum(deal.received_commission);
     }
+    const outstanding_commission = Math.max(expected_commission - received_commission, 0);
     return {
       currency: CURRENCY,
       won_deals: deals.length,
-      won_amount,
-      avg_deal_value: deals.length ? this.round(won_amount / deals.length) : 0,
+      gross_property_value,
+      booking_value,
+      expected_commission,
+      received_commission,
+      outstanding_commission,
+      won_amount: received_commission,
+      avg_deal_value: deals.length ? this.round(received_commission / deals.length) : 0,
+      avg_received_commission: deals.length ? this.round(received_commission / deals.length) : 0,
     };
   }
 
@@ -224,7 +221,7 @@ export class AnalyticsService {
   ) {
     const rows = await this.repo.employeePerformance(tenantId, scope, range);
     if (!rows.length) return [];
-    const names = await this.repo.employeeNames(rows.map((r) => r.employee_id));
+    const names = await this.repo.employeeNames(tenantId, rows.map((r) => r.employee_id));
     return rows
       .map((r: EmployeePerfRow) => ({
         employee_id: r.employee_id,
@@ -462,13 +459,13 @@ export class AnalyticsService {
     const range = this.resolveRange(dto);
     return this.cache.wrap(`platform:dashboard|${range.range}`, async () => {
       const since = this.trendSince(6);
-      const [statusRows, tierRows, users, properties, inquiries, plans, growth] = await Promise.all([
+      const [statusRows, tierRows, users, properties, inquiries, mrr, growth] = await Promise.all([
         this.repo.organizationStatusCounts(),
         this.repo.organizationTierCounts(),
         this.repo.countAllUsers(),
         this.repo.countAllProperties(),
         this.repo.countAllInquiries(),
-        this.repo.activePlans(),
+        this.repo.activeSubscriptionMrr(),
         this.repo.monthlyOrgGrowth(since),
       ]);
 
@@ -477,14 +474,6 @@ export class AnalyticsService {
       for (const row of statusRows) {
         byStatus[row.status] = row._count._all;
         totalOrgs += row._count._all;
-      }
-
-      // MRR estimate: paying orgs (active) mapped tier → plan monthly price.
-      const planPrice = new Map(plans.map((p) => [p.code, p.price_inr_monthly]));
-      let mrr = 0;
-      for (const row of tierRows) {
-        const planCode = TIER_TO_PLAN[row.tier] ?? 'starter';
-        mrr += (planPrice.get(planCode) ?? 0) * row._count._all;
       }
 
       const tierBreakdown = tierRows

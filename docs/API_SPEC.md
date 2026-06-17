@@ -329,6 +329,40 @@
 
 ---
 
+### GET `/properties/summary`
+
+**Authorization:** `properties.read`  
+**Scope:** Same RBAC/data scope and filters as `GET /properties`, but never paginated.  
+**Purpose:** Full-scope KPI source for inventory cards; clients must not derive property KPIs from paginated rows.
+
+**Query:** Supports the same `search` and `filter[...]` params as `GET /properties`. Ignores pagination/sort for aggregation.
+
+**Response 200:**
+```json
+{
+  "data": {
+    "total": 150,
+    "published": 84,
+    "reserved": 12,
+    "sold": 18,
+    "draft": 20,
+    "public_listings": 76,
+    "total_value": 1250000000,
+    "by_status": {
+      "draft": 20,
+      "pending_review": 16,
+      "published": 84,
+      "reserved": 12,
+      "sold": 18,
+      "archived": 0
+    }
+  },
+  "meta": { "request_id": "uuid" }
+}
+```
+
+---
+
 ### POST `/properties`
 
 **Authorization:** `properties.create`  
@@ -504,6 +538,44 @@ Non-privileged roles follow the forward transition map; privileged roles
 `filter[property]`, `filter[date_from]`, `filter[date_to]`, `sort_by`
 (`created_at|updated_at|stage|priority|lead_score|client_name`), `sort_dir`, `page`, `per_page`  
 **Response 200:** `{ data: Inquiry[], meta: { page, per_page, total, total_pages } }`
+
+---
+
+### GET `/inquiries/summary`
+
+**Authorization:** `crm.inquiries.read`  
+**Scope:** Same RBAC/data scope and filters as `GET /inquiries`, but never paginated.  
+**Purpose:** Full-scope KPI source for CRM list cards; clients must not derive lead KPIs from paginated rows.
+
+**Query:** Supports the same `search` and `filter[...]` params as `GET /inquiries`. Ignores pagination/sort for aggregation.
+
+**Response 200:**
+```json
+{
+  "data": {
+    "total": 120,
+    "hot": 18,
+    "unassigned": 6,
+    "stale_new": 4,
+    "qualified": 45,
+    "booked": 7,
+    "won": 12,
+    "lost": 8,
+    "by_stage": {
+      "NEW": 30,
+      "CONTACTED": 18,
+      "QUALIFIED": 20,
+      "SITE_VISIT_SCHEDULED": 10,
+      "SITE_VISIT_COMPLETED": 8,
+      "NEGOTIATION": 7,
+      "BOOKED": 7,
+      "CLOSED_WON": 12,
+      "CLOSED_LOST": 8
+    }
+  },
+  "meta": { "request_id": "uuid" }
+}
+```
 
 ---
 
@@ -752,7 +824,18 @@ Single aggregation endpoint that powers the dashboard home in one round trip.
     "range": { "range": "30d", "from": "2026-05-10T...", "to": "2026-06-09T..." },
     "properties": { "total": 50, "active": 32, "published": 28, "reserved": 4, "sold": 10, "draft": 6, "by_status": { } },
     "leads": { "total": 120, "new": 30, "contacted": 20, "qualified": 45, "site_visits": 18, "won": 12, "lost": 8, "conversion_rate": 10.0, "by_stage": { } },
-    "revenue": { "currency": "INR", "won_deals": 12, "won_amount": 45000000, "avg_deal_value": 3750000 },
+    "revenue": {
+      "currency": "INR",
+      "won_deals": 12,
+      "gross_property_value": 45000000,
+      "booking_value": 5000000,
+      "expected_commission": 1350000,
+      "received_commission": 900000,
+      "outstanding_commission": 450000,
+      "won_amount": 900000,
+      "avg_deal_value": 75000,
+      "avg_received_commission": 75000
+    },
     "funnel": [ { "key": "new", "label": "New", "count": 120 } ],
     "sources": [ { "source": "Website", "count": 40 } ],
     "monthly_leads": [ { "month": "2026-06", "leads": 30 } ],
@@ -799,7 +882,7 @@ Property inventory snapshot (total, active, published, reserved, sold, draft, by
 ### GET `/analytics/revenue`
 
 **Authorization:** `analytics.read`  
-`{ range, currency, won_deals, won_amount, avg_deal_value }` — revenue recognised on close date (`closed_at`); deal value = property price → budget_max → budget_min.
+`{ range, currency, won_deals, gross_property_value, booking_value, expected_commission, received_commission, outstanding_commission, won_amount, avg_deal_value, avg_received_commission }` — revenue is recognised on close date (`closed_at`) and `won_amount` is actual received commission. Property price and budget are never used as revenue fallbacks.
 
 ---
 

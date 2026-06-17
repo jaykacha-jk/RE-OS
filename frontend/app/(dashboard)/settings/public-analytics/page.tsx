@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 
 import { fetchPublicAnalytics, type PublicAnalytics } from '../../../../lib/settings';
+import { isUuid } from '../../../../lib/phone';
 
 const RANGES = [
   { value: 'today', label: 'Today' },
@@ -87,7 +88,10 @@ export default function PublicAnalyticsPage() {
             />
             <ListCard
               title="Top properties"
-              rows={data.top_properties.map((p) => ({ label: p.entity_id ?? '—', value: p.views }))}
+              rows={data.top_properties.map((p, index) => ({
+                label: p.entity_id && !isUuid(p.entity_id) ? p.entity_id : `Property ${index + 1}`,
+                value: p.views,
+              }))}
             />
             <ListCard
               title="Referrers"

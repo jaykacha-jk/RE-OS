@@ -78,7 +78,7 @@ export class CrmService {
     if (!employee) return { type: 'employees', employeeIds: [] };
 
     if (user.roles.some((r) => CRM_TEAM_ACCESS_ROLES.includes(r))) {
-      const subordinates = await this.repo.findSubordinateEmployeeIds(employee.id);
+      const subordinates = await this.repo.findSubordinateEmployeeIds(tenantId, employee.id);
       return { type: 'employees', employeeIds: [employee.id, ...subordinates] };
     }
     return { type: 'employees', employeeIds: [employee.id] };
@@ -537,6 +537,59 @@ export class CrmService {
     return {
       data: rows.map((row) => this.mapListItem(row as InquiryBasic, user)),
       meta: { page, per_page: perPage, total, total_pages: Math.ceil(total / perPage) || 1 },
+    };
+  }
+
+  async getSummary(tenantId: string, user: AuthUser, query: ListInquiriesQueryDto) {
+    const scope = await this.resolveScope(user, tenantId);
+    const where = this.repo.buildWhere(
+      tenantId,
+      {
+        search: query.search,
+        stage: query['filter[stage]'],
+        priority: query['filter[priority]'],
+        temperature: query['filter[temperature]'],
+        sourceId: query['filter[source]'],
+        assignedEmployee: query['filter[assigned_employee]'],
+        propertyId: query['filter[property]'],
+        dateFrom: query['filter[date_from]'],
+        dateTo: query['filter[date_to]'],
+      },
+      scope,
+    );
+    const staleCutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const createdAt = typeof where.created_at === 'object' && where.created_at !== null ? where.created_at : {};
+
+    const [stageCounts, total, hot, unassigned, staleNew] = await Promise.all([
+      this.repo.stageCounts(where),
+      this.repo.countInquiries(where),
+      this.repo.countInquiries({ ...where, temperature: 'hot' }),
+      this.repo.countInquiries({ ...where, assigned_employee_id: null }),
+      this.repo.countInquiries({
+        ...where,
+        stage: 'NEW',
+        created_at: { ...createdAt, lte: staleCutoff },
+      }),
+    ]);
+
+    const byStage: Record<string, number> = {};
+    for (const row of stageCounts) byStage[row.stage] = row._count._all;
+    const qualified =
+      (byStage.QUALIFIED ?? 0) +
+      (byStage.SITE_VISIT_SCHEDULED ?? 0) +
+      (byStage.SITE_VISIT_COMPLETED ?? 0) +
+      (byStage.NEGOTIATION ?? 0);
+
+    return {
+      total,
+      hot,
+      unassigned,
+      stale_new: staleNew,
+      qualified,
+      booked: byStage.BOOKED ?? 0,
+      won: byStage.CLOSED_WON ?? 0,
+      lost: byStage.CLOSED_LOST ?? 0,
+      by_stage: byStage,
     };
   }
 
@@ -1422,7 +1475,7 @@ export class CrmService {
     if (performer?.assigned_employee_id) {
       topPerformer = {
         employee_id: performer.assigned_employee_id,
-        name: await this.repo.employeeName(performer.assigned_employee_id),
+        name: await this.repo.employeeName(tenantId, performer.assigned_employee_id),
         won: performer._count._all,
       };
     }

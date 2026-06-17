@@ -1,7 +1,18 @@
 'use client';
 
-import { FormEvent, useCallback, useEffect, useState } from 'react';
+import { Suspense, useCallback, useEffect, useState } from 'react';
 
+import {
+  CrudToolbar,
+  DataTable,
+  EmptyState,
+  FilterDrawer,
+  FilterField,
+  PageHeader,
+  Pagination,
+  type DataTableColumn,
+} from '../../../components/ui';
+import { useTableQuery, type TableQueryValues } from '../../../hooks/use-table-query';
 import { apiFetch } from '../../../lib/api';
 import { getSession, hasPermission } from '../../../lib/auth';
 import { downloadAuditCsv } from '../../../lib/settings';
@@ -24,63 +35,67 @@ type AuditMeta = {
 };
 
 export default function AuditLogsPage() {
+  return (
+    <Suspense fallback={null}>
+      <AuditLogsInner />
+    </Suspense>
+  );
+}
+
+const FILTER_KEYS = ['entity_type', 'actor_email', 'date_from', 'date_to'];
+
+function AuditLogsInner() {
+  const query = useTableQuery({ filterKeys: FILTER_KEYS, searchKey: 'action' });
   const [rows, setRows] = useState<AuditLogRow[]>([]);
   const [meta, setMeta] = useState<AuditMeta | null>(null);
-  const [action, setAction] = useState('');
-  const [entityType, setEntityType] = useState('');
-  const [actorEmail, setActorEmail] = useState('');
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
+  const [draft, setDraft] = useState<TableQueryValues>(query.filters);
+  const [filterOpen, setFilterOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [canExport, setCanExport] = useState(false);
 
-  const canExport = hasPermission(getSession(), 'audit.logs.export');
+  useEffect(() => {
+    setCanExport(hasPermission(getSession(), 'audit.logs.export'));
+  }, []);
 
-  const buildParams = useCallback(
-    (page = 1) => {
-      const params = new URLSearchParams({ page: String(page), per_page: '20' });
-      if (action.trim()) params.set('action', action.trim());
-      if (entityType.trim()) params.set('entity_type', entityType.trim());
-      if (actorEmail.trim()) params.set('actor_email', actorEmail.trim());
-      if (dateFrom) params.set('date_from', new Date(dateFrom).toISOString());
-      if (dateTo) params.set('date_to', new Date(dateTo).toISOString());
-      return params;
-    },
-    [action, entityType, actorEmail, dateFrom, dateTo],
-  );
+  const { search, filters, page, setPage, perPage, setPerPage } = query;
+  const filtersKey = JSON.stringify(filters);
 
-  const load = useCallback(
-    (page = 1) => {
-      const session = getSession();
-      if (!session?.access_token) return;
+  const buildParams = useCallback(() => {
+    const params = new URLSearchParams({ page: String(page), per_page: String(perPage) });
+    const f = JSON.parse(filtersKey) as TableQueryValues;
+    if (search.trim()) params.set('action', search.trim());
+    if (f.entity_type?.trim()) params.set('entity_type', f.entity_type.trim());
+    if (f.actor_email?.trim()) params.set('actor_email', f.actor_email.trim());
+    if (f.date_from) params.set('date_from', new Date(f.date_from).toISOString());
+    if (f.date_to) params.set('date_to', new Date(f.date_to).toISOString());
+    return params;
+  }, [page, perPage, search, filtersKey]);
 
-      setLoading(true);
-      setError(null);
-      apiFetch<AuditLogRow[]>(`/api/v1/audit-logs?${buildParams(page).toString()}`, {
-        token: session.access_token,
+  const load = useCallback(() => {
+    const session = getSession();
+    if (!session?.access_token) return;
+
+    setLoading(true);
+    setError(null);
+    apiFetch<AuditLogRow[]>(`/api/v1/audit-logs?${buildParams().toString()}`, {
+      token: session.access_token,
+    })
+      .then((res) => {
+        setRows(res.data);
+        setMeta(res.meta as AuditMeta);
       })
-        .then((res) => {
-          setRows(res.data);
-          setMeta(res.meta as AuditMeta);
-        })
-        .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load audit logs'))
-        .finally(() => setLoading(false));
-    },
-    [buildParams],
-  );
+      .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load audit logs'))
+      .finally(() => setLoading(false));
+  }, [buildParams]);
 
   useEffect(() => {
     load();
   }, [load]);
 
-  function onFilter(e: FormEvent) {
-    e.preventDefault();
-    load(1);
-  }
-
   async function onExport() {
     try {
-      const params = buildParams(1);
+      const params = buildParams();
       params.delete('page');
       params.delete('per_page');
       await downloadAuditCsv(params);
@@ -89,139 +104,107 @@ export default function AuditLogsPage() {
     }
   }
 
+  function openFilter() {
+    setDraft(filters);
+    setFilterOpen(true);
+  }
+
+  const columns: DataTableColumn<AuditLogRow>[] = [
+    {
+      key: 'time',
+      header: 'Time',
+      cellClassName: 'text-slate-600',
+      render: (row) => new Date(row.created_at).toLocaleString(),
+    },
+    { key: 'actor', header: 'Actor', render: (row) => <span className="text-slate-700">{row.actor_email ?? 'System'}</span> },
+    { key: 'action', header: 'Action', render: (row) => <span className="font-mono text-xs text-slate-800">{row.action}</span> },
+    {
+      key: 'entity',
+      header: 'Entity',
+      render: (row) => (
+        <span className="text-slate-700">{row.entity_type ?? '—'}</span>
+      ),
+    },
+  ];
+
   return (
-    <div>
-      <h1 className="text-2xl font-semibold">Audit logs</h1>
-      <p className="mt-1 text-sm text-slate-600">
-        Tenant-scoped activity trail for auth, organization, and employee changes.
-      </p>
+    <div className="space-y-6">
+      <PageHeader
+        eyebrow="Security"
+        title="Audit logs"
+        description="Tenant-scoped activity trail for auth, organization, employee, billing, and data changes."
+      />
 
-      <form onSubmit={onFilter} className="mt-4 flex flex-wrap items-end gap-3 rounded-lg border border-slate-200 p-4">
-        <input
-          type="text"
-          value={action}
-          onChange={(e) => setAction(e.target.value)}
-          className="rounded border border-slate-300 px-3 py-2 text-sm"
-          placeholder="action, e.g. employees.created"
-        />
-        <input
-          type="text"
-          value={entityType}
-          onChange={(e) => setEntityType(e.target.value)}
-          className="rounded border border-slate-300 px-3 py-2 text-sm"
-          placeholder="entity type, e.g. employee"
-        />
-        <input
-          type="text"
-          value={actorEmail}
-          onChange={(e) => setActorEmail(e.target.value)}
-          className="rounded border border-slate-300 px-3 py-2 text-sm"
-          placeholder="actor email"
-        />
-        <label className="flex flex-col text-xs text-slate-500">
-          From
-          <input
-            type="date"
-            value={dateFrom}
-            onChange={(e) => setDateFrom(e.target.value)}
-            className="rounded border border-slate-300 px-2 py-1.5 text-sm"
-          />
-        </label>
-        <label className="flex flex-col text-xs text-slate-500">
-          To
-          <input
-            type="date"
-            value={dateTo}
-            onChange={(e) => setDateTo(e.target.value)}
-            className="rounded border border-slate-300 px-2 py-1.5 text-sm"
-          />
-        </label>
-        <button type="submit" className="rounded bg-teal-700 px-4 py-2 text-sm font-medium text-white">
-          Filter
-        </button>
-        {canExport ? (
-          <button
-            type="button"
-            onClick={onExport}
-            className="rounded border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-          >
-            Export CSV
-          </button>
-        ) : null}
-      </form>
-
-      {loading ? <p className="mt-6 text-slate-500">Loading…</p> : null}
       {error ? (
-        <p className="mt-6 rounded bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
+        <p className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</p>
       ) : null}
 
-      {!loading && !error ? (
-        <div className="scrollbar-thin mt-6 overflow-x-auto rounded-lg border border-slate-200">
-          <table className="min-w-full text-left text-sm">
-            <thead className="bg-slate-50 text-slate-600">
-              <tr>
-                <th className="px-4 py-3 font-medium">Time</th>
-                <th className="px-4 py-3 font-medium">Actor</th>
-                <th className="px-4 py-3 font-medium">Action</th>
-                <th className="px-4 py-3 font-medium">Entity</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.length === 0 ? (
-                <tr>
-                  <td colSpan={4} className="px-4 py-6 text-slate-500">
-                    No audit logs yet.
-                  </td>
-                </tr>
-              ) : (
-                rows.map((row) => (
-                  <tr key={row.id} className="border-t border-slate-100">
-                    <td className="px-4 py-3 text-slate-600">
-                      {new Date(row.created_at).toLocaleString()}
-                    </td>
-                    <td className="px-4 py-3">{row.actor_email ?? 'System'}</td>
-                    <td className="px-4 py-3 font-mono text-xs">{row.action}</td>
-                    <td className="px-4 py-3">
-                      {row.entity_type ?? '—'}
-                      {row.entity_id ? (
-                        <span className="block truncate font-mono text-xs text-slate-500">
-                          {row.entity_id}
-                        </span>
-                      ) : null}
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      ) : null}
+      <section className="overflow-hidden rounded-2xl border border-reos-border bg-white shadow-card">
+        <CrudToolbar
+          searchValue={query.searchInput}
+          onSearchChange={query.setSearchInput}
+          searchPlaceholder="Search action"
+          onFilter={openFilter}
+          filterCount={query.activeFilterCount}
+          onExport={canExport ? onExport : undefined}
+          onRefresh={load}
+          refreshing={loading}
+        />
 
-      {meta ? (
-        <div className="mt-4 flex items-center justify-between text-sm text-slate-600">
-          <span>
-            Page {meta.page} of {meta.total_pages} · {meta.total} total
-          </span>
-          <div className="flex gap-2">
-            <button
-              type="button"
-              disabled={meta.page <= 1}
-              onClick={() => load(meta.page - 1)}
-              className="rounded border border-slate-300 px-3 py-1 disabled:opacity-50"
-            >
-              Previous
-            </button>
-            <button
-              type="button"
-              disabled={meta.page >= meta.total_pages}
-              onClick={() => load(meta.page + 1)}
-              className="rounded border border-slate-300 px-3 py-1 disabled:opacity-50"
-            >
-              Next
-            </button>
-          </div>
+        <DataTable<AuditLogRow>
+          columns={columns}
+          rows={rows}
+          rowKey={(row) => row.id}
+          loading={loading}
+          empty={<EmptyState title="No audit logs found" description="Try clearing filters or widening the date range." />}
+        />
+
+        {meta ? (
+          <Pagination
+            page={meta.page}
+            totalPages={meta.total_pages}
+            total={meta.total}
+            perPage={perPage}
+            onPageChange={setPage}
+            onPerPageChange={setPerPage}
+          />
+        ) : null}
+      </section>
+
+      <FilterDrawer
+        open={filterOpen}
+        onClose={() => setFilterOpen(false)}
+        onApply={() => query.applyFilters(draft)}
+        onClear={() => {
+          query.clearFilters();
+          setDraft(Object.fromEntries(FILTER_KEYS.map((k) => [k, ''])));
+        }}
+      >
+        <FilterField label="Entity type">
+          <input
+            value={draft.entity_type ?? ''}
+            onChange={(e) => setDraft((d) => ({ ...d, entity_type: e.target.value }))}
+            className="input"
+            placeholder="employee, organization"
+          />
+        </FilterField>
+        <FilterField label="Actor email">
+          <input
+            value={draft.actor_email ?? ''}
+            onChange={(e) => setDraft((d) => ({ ...d, actor_email: e.target.value }))}
+            className="input"
+            placeholder="owner@example.com"
+          />
+        </FilterField>
+        <div className="grid grid-cols-2 gap-3">
+          <FilterField label="From">
+            <input value={draft.date_from ?? ''} onChange={(e) => setDraft((d) => ({ ...d, date_from: e.target.value }))} type="date" className="input" />
+          </FilterField>
+          <FilterField label="To">
+            <input value={draft.date_to ?? ''} onChange={(e) => setDraft((d) => ({ ...d, date_to: e.target.value }))} type="date" className="input" />
+          </FilterField>
         </div>
-      ) : null}
+      </FilterDrawer>
     </div>
   );
 }

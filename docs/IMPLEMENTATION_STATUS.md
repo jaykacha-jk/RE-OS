@@ -1,7 +1,7 @@
 # RE-OS Implementation Status
 
-**Last updated:** 2026-06-13 (Phase 0 RBAC/navigation/auth production hardening)  
-**Current phase:** Phase 0 go-to-market hardening after Phase 10 assistant automation  
+**Last updated:** 2026-06-16 (Phase 8 business data truth hardening)  
+**Current phase:** Phase 8 business data truth + Phase 0 go-to-market hardening  
 **Legend:** ✅ Done · 🟡 Partial / scaffold only · ❌ Not started
 
 > **Phase 10 assistant automation — 🟡 implemented with mixed runtime modes.**
@@ -493,8 +493,9 @@ Chat, AI Agent, Billing, Analytics dashboard, Notifications — intentionally no
 | Platform (Super Admin) endpoint `GET /api/v1/platform/analytics/dashboard` | Cross-tenant — orgs, users, MRR/ARR, monthly growth, plan tiers, platform health. No `TenantGuard` |
 | RBAC scope resolution in service | full-access (`all`) → org-wide; `sales_manager` → team (self + reports); executive/telecaller → assigned-only; Client → no access |
 | Time filters | `today`, `7d`, `30d`, `90d`, `custom` (date_from/date_to) via `AnalyticsQueryDto` |
-| Optimized aggregate queries (no N+1) | Prisma `groupBy` / `count`; employee table = batched group-bys + single name lookup; monthly trends = parameterized raw SQL (`date_trunc`, `Prisma.sql`) |
-| Revenue recognition on close date (`closed_at`) | Won-deal value = property price → budget_max → budget_min |
+| Optimized aggregate queries (no N+1) | Prisma `groupBy` / `count`; employee table = batched group-bys + tenant-scoped name lookup; monthly trends = parameterized raw SQL (`date_trunc`, `Prisma.sql`) |
+| Business data truth KPIs | Inquiry/property command-center cards use tenant/role/filter-scoped summary APIs, never paginated rows |
+| Revenue recognition on close date (`closed_at`) | Revenue = received commission only; GPV, booking value, expected commission, and outstanding commission are exposed as separate fields |
 | In-memory TTL cache (`AnalyticsCacheService`) | 60s wrap; key by tenant + scope + range; Redis-ready interface |
 | Permission seeds + role mappings | `analytics.read` (org/team/assigned roles) + `platform.analytics.read` (super_admin) |
 

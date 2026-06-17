@@ -153,6 +153,72 @@ describe('CrmService — RBAC scope', () => {
   });
 });
 
+describe('CrmService — summary KPIs', () => {
+  it('aggregates inquiry KPIs from repository counts using the same list scope and filters', async () => {
+    const { service, repo } = buildService();
+    repo.buildWhere!.mockReturnValue({
+      tenant_id: TENANT,
+      deleted_at: null,
+      stage: 'NEW',
+      created_at: { gte: new Date('2026-06-01T00:00:00.000Z') },
+    } as never);
+    repo.stageCounts!.mockResolvedValue([
+      { stage: 'NEW', _count: { _all: 12 } },
+      { stage: 'QUALIFIED', _count: { _all: 7 } },
+      { stage: 'SITE_VISIT_SCHEDULED', _count: { _all: 3 } },
+      { stage: 'NEGOTIATION', _count: { _all: 2 } },
+      { stage: 'BOOKED', _count: { _all: 1 } },
+      { stage: 'CLOSED_WON', _count: { _all: 4 } },
+      { stage: 'CLOSED_LOST', _count: { _all: 2 } },
+    ] as never);
+    repo.countInquiries!
+      .mockResolvedValueOnce(31 as never)
+      .mockResolvedValueOnce(5 as never)
+      .mockResolvedValueOnce(3 as never)
+      .mockResolvedValueOnce(2 as never);
+
+    const res = await service.getSummary(
+      TENANT,
+      makeUser(['org_owner']),
+      {
+        search: 'rahul',
+        'filter[stage]': 'NEW',
+        'filter[date_from]': '2026-06-01',
+      } as any,
+    );
+
+    expect(repo.buildWhere).toHaveBeenCalledWith(
+      TENANT,
+      expect.objectContaining({
+        search: 'rahul',
+        stage: 'NEW',
+        dateFrom: '2026-06-01',
+      }),
+      { type: 'all' },
+    );
+    expect(res).toEqual({
+      total: 31,
+      hot: 5,
+      unassigned: 3,
+      stale_new: 2,
+      qualified: 12,
+      booked: 1,
+      won: 4,
+      lost: 2,
+      by_stage: {
+        NEW: 12,
+        QUALIFIED: 7,
+        SITE_VISIT_SCHEDULED: 3,
+        NEGOTIATION: 2,
+        BOOKED: 1,
+        CLOSED_WON: 4,
+        CLOSED_LOST: 2,
+      },
+    });
+    expect(repo.list).not.toHaveBeenCalled();
+  });
+});
+
 describe('CrmService — access enforcement', () => {
   it('hides out-of-scope inquiries as 404', async () => {
     const { service, repo } = buildService();

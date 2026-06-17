@@ -82,6 +82,17 @@ export class PropertiesController {
     return envelope(await this.properties.create(tenantId, dto, user, requestMeta(req)));
   }
 
+  @Get('summary')
+  @RequirePermissions('properties.read')
+  @ApiOperation({ summary: 'Property KPI summary (RBAC-scoped, filtered, non-paginated)' })
+  async summary(
+    @TenantId() tenantId: string,
+    @CurrentUser() user: AuthUser,
+    @Query() query: ListPropertiesQueryDto,
+  ) {
+    return envelope(await this.properties.summary(tenantId, user, query));
+  }
+
   @Get(':id')
   @RequirePermissions('properties.read')
   @ApiOperation({ summary: 'Get property by id' })

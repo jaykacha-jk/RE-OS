@@ -1,8 +1,24 @@
 'use client';
 
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, Suspense, useCallback, useEffect, useState } from 'react';
 
-import { PageHeader } from '../../../../components/shared/PageHeader';
+import {
+  ActionMenu,
+  ConfirmDialog,
+  CrudToolbar,
+  DataTable,
+  EmptyState,
+  FilterDrawer,
+  FilterField,
+  FormDrawer,
+  FormField,
+  FormSection,
+  Icon,
+  PageHeader,
+  Pagination,
+  type DataTableColumn,
+} from '../../../../components/ui';
+import { useTableQuery, type TableQueryValues } from '../../../../hooks/use-table-query';
 import {
   createAiKnowledge,
   deleteAiKnowledge,
@@ -15,9 +31,27 @@ import { getSession, hasPermission } from '../../../../lib/auth';
 const TYPES = ['faq', 'policy', 'property', 'document'];
 
 export default function AiKnowledgePage() {
+  return (
+    <Suspense fallback={null}>
+      <AiKnowledgeInner />
+    </Suspense>
+  );
+}
+
+const FILTER_KEYS = ['type'];
+
+function AiKnowledgeInner() {
+  const tableQuery = useTableQuery({ filterKeys: FILTER_KEYS });
   const [docs, setDocs] = useState<AiKnowledgeDoc[]>([]);
+  const [meta, setMeta] = useState<{ page: number; total_pages: number; total: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [draft, setDraft] = useState<TableQueryValues>(tableQuery.filters);
+  const [deleteTarget, setDeleteTarget] = useState<AiKnowledgeDoc | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
@@ -27,46 +61,56 @@ export default function AiKnowledgePage() {
 
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<{ id: string; title: string; content: string; score: number }[] | null>(null);
+  const { filters, search, page, setPage, perPage, setPerPage } = tableQuery;
 
-  async function load() {
+  const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetchAiKnowledge({ page: 1 });
+      const res = await fetchAiKnowledge({ page, per_page: perPage, search: search || undefined, type: filters.type || undefined });
       setDocs(res.data);
+      setMeta(res.meta);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load knowledge');
     } finally {
       setLoading(false);
     }
-  }
+  }, [page, perPage, search, filters.type]);
 
   useEffect(() => {
     setCanManage(hasPermission(getSession(), 'ai.knowledge.manage'));
-    load();
   }, []);
 
-  async function create(e: FormEvent) {
-    e.preventDefault();
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  async function create() {
     setSaving(true);
-    setError(null);
+    setFormError(null);
     try {
       await createAiKnowledge({ title, content, type });
       setTitle('');
       setContent('');
+      setDrawerOpen(false);
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create document');
+      setFormError(err instanceof Error ? err.message : 'Failed to create document');
     } finally {
       setSaving(false);
     }
   }
 
-  async function remove(id: string) {
+  async function remove() {
+    if (!deleteTarget) return;
+    setDeleting(true);
     try {
-      await deleteAiKnowledge(id);
+      await deleteAiKnowledge(deleteTarget.id);
+      setDeleteTarget(null);
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete');
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -81,6 +125,13 @@ export default function AiKnowledgePage() {
     }
   }
 
+  const columns: DataTableColumn<AiKnowledgeDoc>[] = [
+    { key: 'title', header: 'Title', render: (doc) => <span className="font-semibold text-slate-900">{doc.title}</span> },
+    { key: 'type', header: 'Type', render: (doc) => <span className="capitalize text-slate-700">{doc.type}</span> },
+    { key: 'model', header: 'Model', render: (doc) => <span className="font-mono text-2xs text-slate-500">{doc.embedding_model ?? '—'}</span> },
+    { key: 'updated', header: 'Updated', cellClassName: 'text-slate-500', render: (doc) => new Date(doc.updated_at).toLocaleDateString('en-IN') },
+  ];
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -90,42 +141,7 @@ export default function AiKnowledgePage() {
 
       {error && <div className="rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
 
-      <section className="grid gap-6 lg:grid-cols-2">
-        {canManage ? (
-          <form onSubmit={create} className="space-y-3 rounded-lg border bg-white p-5">
-            <h2 className="font-semibold text-slate-900">Add document</h2>
-            <input
-              className="w-full rounded border px-3 py-2 text-sm"
-              placeholder="Title"
-              value={title}
-              required
-              onChange={(e) => setTitle(e.target.value)}
-            />
-            <select className="w-full rounded border px-3 py-2 text-sm" value={type} onChange={(e) => setType(e.target.value)}>
-              {TYPES.map((t) => (
-                <option key={t} value={t}>
-                  {t}
-                </option>
-              ))}
-            </select>
-            <textarea
-              className="w-full rounded border px-3 py-2 text-sm"
-              rows={5}
-              placeholder="Content"
-              value={content}
-              required
-              onChange={(e) => setContent(e.target.value)}
-            />
-            <button
-              type="submit"
-              disabled={saving}
-              className="rounded bg-teal-700 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-800 disabled:opacity-50"
-            >
-              {saving ? 'Saving…' : 'Add & embed'}
-            </button>
-          </form>
-        ) : null}
-
+      <section>
         <form onSubmit={runSearch} className="space-y-3 rounded-lg border bg-white p-5">
           <h2 className="font-semibold text-slate-900">Semantic search</h2>
           <div className="flex gap-2">
@@ -156,52 +172,125 @@ export default function AiKnowledgePage() {
         </form>
       </section>
 
-      <section className="overflow-hidden rounded-lg border bg-white">
-        <table className="w-full text-sm">
-          <thead className="bg-slate-50 text-left text-xs uppercase text-slate-500">
-            <tr>
-              <th className="px-4 py-3">Title</th>
-              <th className="px-4 py-3">Type</th>
-              <th className="px-4 py-3">Model</th>
-              <th className="px-4 py-3">Updated</th>
-              <th className="px-4 py-3" />
-            </tr>
-          </thead>
-          <tbody>
-            {loading ? (
-              <tr>
-                <td className="px-4 py-6 text-slate-500" colSpan={5}>
-                  Loading…
-                </td>
-              </tr>
-            ) : docs.length === 0 ? (
-              <tr>
-                <td className="px-4 py-6 text-slate-500" colSpan={5}>
-                  No documents yet.
-                </td>
-              </tr>
-            ) : (
-              docs.map((d) => (
-                <tr key={d.id} className="border-t">
-                  <td className="px-4 py-3 font-medium text-slate-800">{d.title}</td>
-                  <td className="px-4 py-3 capitalize">{d.type}</td>
-                  <td className="px-4 py-3 text-xs text-slate-500">{d.embedding_model ?? '—'}</td>
-                  <td className="px-4 py-3 text-xs text-slate-500">
-                    {new Date(d.updated_at).toLocaleDateString('en-IN')}
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    {canManage ? (
-                      <button type="button" onClick={() => remove(d.id)} className="text-red-600 hover:underline">
-                        Delete
-                      </button>
-                    ) : null}
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+      <section className="overflow-hidden rounded-2xl border border-reos-border bg-white shadow-card">
+        <CrudToolbar
+          searchValue={tableQuery.searchInput}
+          onSearchChange={tableQuery.setSearchInput}
+          searchPlaceholder="Search documents"
+          onFilter={() => {
+            setDraft(filters);
+            setFilterOpen(true);
+          }}
+          filterCount={tableQuery.activeFilterCount}
+          onRefresh={load}
+          refreshing={loading}
+          addSlot={
+            canManage ? (
+              <button type="button" className="btn-primary" onClick={() => setDrawerOpen(true)}>
+                <Icon name="plus" className="h-4 w-4" /> Add document
+              </button>
+            ) : null
+          }
+        />
+
+        <DataTable<AiKnowledgeDoc>
+          columns={columns}
+          rows={docs}
+          rowKey={(doc) => doc.id}
+          loading={loading}
+          empty={<EmptyState title="No documents found" description="Add FAQs, policies, and docs to power assistant retrieval." />}
+          actions={
+            canManage
+              ? (doc) => (
+                  <ActionMenu
+                    items={[
+                      {
+                        label: 'Delete',
+                        danger: true,
+                        onSelect: () => setDeleteTarget(doc),
+                      },
+                    ]}
+                  />
+                )
+              : undefined
+          }
+        />
+
+        {meta ? (
+          <Pagination
+            page={meta.page}
+            totalPages={meta.total_pages}
+            total={meta.total}
+            perPage={perPage}
+            onPageChange={setPage}
+            onPerPageChange={setPerPage}
+          />
+        ) : null}
       </section>
+
+      <FilterDrawer
+        open={filterOpen}
+        onClose={() => setFilterOpen(false)}
+        onApply={() => tableQuery.applyFilters(draft)}
+        onClear={() => {
+          tableQuery.clearFilters();
+          setDraft(Object.fromEntries(FILTER_KEYS.map((k) => [k, ''])));
+        }}
+      >
+        <FilterField label="Type">
+          <select value={draft.type ?? ''} onChange={(e) => setDraft((d) => ({ ...d, type: e.target.value }))} className="input">
+            <option value="">All types</option>
+            {TYPES.map((item) => (
+              <option key={item} value={item}>
+                {item}
+              </option>
+            ))}
+          </select>
+        </FilterField>
+      </FilterDrawer>
+
+      <FormDrawer
+        open={drawerOpen}
+        onClose={() => {
+          setDrawerOpen(false);
+          setFormError(null);
+        }}
+        title="Add knowledge document"
+        description="Create and embed content for AI retrieval."
+        onSubmit={create}
+        submitting={saving}
+        error={formError}
+        submitLabel="Add and embed"
+      >
+        <FormSection title="Document" description="Keep content focused so retrieval can return useful context.">
+          <FormField label="Title" required full>
+            <input className="input" value={title} required onChange={(e) => setTitle(e.target.value)} />
+          </FormField>
+          <FormField label="Type" required full>
+            <select className="input" value={type} onChange={(e) => setType(e.target.value)}>
+              {TYPES.map((item) => (
+                <option key={item} value={item}>
+                  {item}
+                </option>
+              ))}
+            </select>
+          </FormField>
+          <FormField label="Content" required full>
+            <textarea className="input min-h-40" value={content} required onChange={(e) => setContent(e.target.value)} />
+          </FormField>
+        </FormSection>
+      </FormDrawer>
+
+      <ConfirmDialog
+        open={Boolean(deleteTarget)}
+        title="Delete knowledge document?"
+        description={deleteTarget ? `${deleteTarget.title} will be removed from assistant retrieval.` : undefined}
+        confirmLabel="Delete document"
+        danger
+        loading={deleting}
+        onConfirm={remove}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </div>
   );
 }

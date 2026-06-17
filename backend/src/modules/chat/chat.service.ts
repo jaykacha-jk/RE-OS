@@ -66,7 +66,7 @@ export class ChatService {
     if (!employee) return { type: 'employees', employeeIds: [] };
 
     if (user.roles.some((r) => CHAT_TEAM_ACCESS_ROLES.includes(r))) {
-      const subordinates = await this.repo.findSubordinateEmployeeIds(employee.id);
+      const subordinates = await this.repo.findSubordinateEmployeeIds(tenantId, employee.id);
       return { type: 'employees', employeeIds: [employee.id, ...subordinates] };
     }
     return { type: 'employees', employeeIds: [employee.id] };

@@ -3,6 +3,15 @@
 import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
 
+import {
+  CrudToolbar,
+  DataTable,
+  EmptyState,
+  PageHeader,
+  Pagination,
+  type DataTableColumn,
+} from '../../../../components/ui';
+import { useClientPagination } from '../../../../hooks/use-client-pagination';
 import { getSession, hasPermission } from '../../../../lib/auth';
 import {
   fetchNotificationPreferences,
@@ -16,6 +25,7 @@ export default function NotificationSettingsPage() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [search, setSearch] = useState('');
 
   const session = getSession();
   const canRead = hasPermission(session, 'notifications.read');
@@ -76,80 +86,106 @@ export default function NotificationSettingsPage() {
     return <p className="text-slate-600">You do not have permission to manage notification settings.</p>;
   }
 
+  const filteredPrefs = prefs.filter((pref) => [pref.label, pref.type, pref.event_key].join(' ').toLowerCase().includes(search.trim().toLowerCase()));
+
+  const pager = useClientPagination(filteredPrefs, 50);
+
+  const columns: DataTableColumn<NotificationPreference>[] = [
+    {
+      key: 'event',
+      header: 'Event',
+      render: (pref) => (
+        <div>
+          <p className="font-semibold text-slate-900">{pref.label}</p>
+          <p className="text-2xs text-slate-400">{pref.type}</p>
+        </div>
+      ),
+    },
+    {
+      key: 'in_app',
+      header: 'In-app',
+      align: 'center',
+      render: (pref) => (
+        <input
+          type="checkbox"
+          checked={pref.in_app}
+          disabled={!canUpdate}
+          onChange={() => toggle(pref.event_key, 'in_app')}
+          className="h-4 w-4 rounded border-slate-300 text-teal-700"
+          aria-label={`${pref.label} in-app notifications`}
+        />
+      ),
+    },
+    {
+      key: 'email',
+      header: 'Email',
+      align: 'center',
+      render: (pref) => (
+        <input
+          type="checkbox"
+          checked={pref.email}
+          disabled={!canUpdate}
+          onChange={() => toggle(pref.event_key, 'email')}
+          className="h-4 w-4 rounded border-slate-300 text-teal-700"
+          aria-label={`${pref.label} email notifications`}
+        />
+      ),
+    },
+  ];
+
   return (
-    <div className="mx-auto max-w-2xl">
+    <div className="space-y-6">
       <Link href="/notifications" className="text-sm text-teal-700 hover:underline">
         ← Notifications
       </Link>
-      <h1 className="mt-2 text-2xl font-semibold text-slate-900">Notification settings</h1>
-      <p className="mt-1 text-sm text-slate-500">
-        Choose how you want to be notified for each event. In-app notifications appear in the bell
-        menu; email uses your account email address.
-      </p>
-
-      {loading && <p className="mt-6 text-slate-500">Loading…</p>}
+      <PageHeader
+        title="Notification settings"
+        description="Choose how you want to be notified for each event. In-app notifications appear in the bell menu; email uses your account email address."
+      />
 
       {error && (
-        <p className="mt-4 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+        <p className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
           {error}
         </p>
       )}
       {message && (
-        <p className="mt-4 rounded border border-teal-200 bg-teal-50 px-3 py-2 text-sm text-teal-800">
+        <p className="rounded-xl border border-teal-200 bg-teal-50 px-4 py-3 text-sm text-teal-800">
           {message}
         </p>
       )}
 
-      {!loading && (
-        <div className="mt-6 overflow-hidden rounded-xl border border-slate-200">
-          <table className="w-full text-sm">
-            <thead className="bg-slate-50 text-left text-xs uppercase text-slate-500">
-              <tr>
-                <th className="px-4 py-3">Event</th>
-                <th className="px-4 py-3 text-center">In-app</th>
-                <th className="px-4 py-3 text-center">Email</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {prefs.map((p) => (
-                <tr key={p.event_key} className="bg-white">
-                  <td className="px-4 py-3">
-                    <p className="font-medium text-slate-900">{p.label}</p>
-                    <p className="text-xs text-slate-400">{p.type}</p>
-                  </td>
-                  <td className="px-4 py-3 text-center">
-                    <input
-                      type="checkbox"
-                      checked={p.in_app}
-                      disabled={!canUpdate}
-                      onChange={() => toggle(p.event_key, 'in_app')}
-                      className="h-4 w-4 rounded border-slate-300 text-teal-700"
-                    />
-                  </td>
-                  <td className="px-4 py-3 text-center">
-                    <input
-                      type="checkbox"
-                      checked={p.email}
-                      disabled={!canUpdate}
-                      onChange={() => toggle(p.event_key, 'email')}
-                      className="h-4 w-4 rounded border-slate-300 text-teal-700"
-                    />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      <section className="overflow-hidden rounded-2xl border border-reos-border bg-white shadow-card">
+        <CrudToolbar
+          searchValue={search}
+          onSearchChange={setSearch}
+          searchPlaceholder="Search notification events"
+          onRefresh={load}
+          refreshing={loading}
+          addSlot={
+            <button type="button" disabled={saving || loading || !canUpdate} onClick={() => void save()} className="btn-primary">
+              {saving ? 'Saving…' : canUpdate ? 'Save preferences' : 'Preference changes require permission'}
+            </button>
+          }
+        />
+        <DataTable<NotificationPreference>
+          columns={columns}
+          rows={pager.pageRows}
+          rowKey={(pref) => pref.event_key}
+          loading={loading}
+          empty={<EmptyState title="No notification preferences found" description="Try a different search term." />}
+        />
 
-      <button
-        type="button"
-        disabled={saving || loading || !canUpdate}
-        onClick={() => void save()}
-        className="mt-6 rounded-lg bg-teal-700 px-4 py-2 text-sm font-medium text-white hover:bg-teal-800 disabled:opacity-50"
-      >
-        {saving ? 'Saving…' : canUpdate ? 'Save preferences' : 'Preference changes require permission'}
-      </button>
+        {!loading && filteredPrefs.length > 0 ? (
+          <Pagination
+            page={pager.page}
+            totalPages={pager.totalPages}
+            total={pager.total}
+            perPage={pager.perPage}
+            onPageChange={pager.setPage}
+            onPerPageChange={pager.setPerPage}
+          />
+        ) : null}
+      </section>
     </div>
   );
 }

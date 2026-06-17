@@ -1,6 +1,5 @@
 'use client';
 
-import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 
@@ -23,18 +22,8 @@ export default function EditInquiryPage() {
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load inquiry'));
   }, [id]);
 
-  return (
-    <div className="max-w-4xl">
-      <Link href={`/inquiries/${id}`} className="text-sm text-teal-700 hover:underline">
-        ← Back to inquiry
-      </Link>
-      <h1 className="mt-2 text-2xl font-semibold">Edit inquiry</h1>
-      {error ? <p className="mt-4 rounded bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p> : null}
-      {inquiry ? (
-        <InquiryForm mode="edit" inquiry={inquiry} />
-      ) : !error ? (
-        <p className="mt-6 text-slate-500">Loading…</p>
-      ) : null}
-    </div>
-  );
+  if (error) return <p className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</p>;
+  if (!inquiry) return <p className="text-slate-500">Loading…</p>;
+
+  return <InquiryForm mode="edit" inquiry={inquiry} />;
 }

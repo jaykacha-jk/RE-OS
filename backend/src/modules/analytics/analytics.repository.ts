@@ -37,19 +37,27 @@ export class AnalyticsRepository extends TenantScopedRepository {
     });
   }
 
-  async findSubordinateEmployeeIds(managerEmployeeId: string) {
+  async findSubordinateEmployeeIds(tenantId: string, managerEmployeeId: string) {
     const rows = await this.prisma.dbClient.employees.findMany({
-      where: { manager_id: managerEmployeeId, deleted_at: null },
+      where: {
+        manager_id: managerEmployeeId,
+        deleted_at: null,
+        user: { tenant_id: tenantId, deleted_at: null },
+      },
       select: { id: true },
     });
     return rows.map((r) => r.id);
   }
 
-  async employeeNames(ids: string[]): Promise<Map<string, string>> {
+  async employeeNames(tenantId: string, ids: string[]): Promise<Map<string, string>> {
     const map = new Map<string, string>();
     if (!ids.length) return map;
     const rows = await this.prisma.dbClient.employees.findMany({
-      where: { id: { in: ids } },
+      where: {
+        id: { in: ids },
+        deleted_at: null,
+        user: { tenant_id: tenantId, deleted_at: null },
+      },
       select: {
         id: true,
         user: { select: { first_name: true, last_name: true, email: true } },
@@ -175,7 +183,7 @@ export class AnalyticsRepository extends TenantScopedRepository {
     });
   }
 
-  /** Won deals (by closed_at) with the data needed to estimate revenue. */
+  /** Won deals (by closed_at) with auditable revenue and deal-volume fields. */
   async wonDeals(where: Prisma.inquiriesWhereInput) {
     this.assertTenantWhere('AnalyticsRepository.wonDeals', where as Record<string, unknown>);
     return this.prisma.dbClient.inquiries.findMany({
@@ -185,8 +193,6 @@ export class AnalyticsRepository extends TenantScopedRepository {
         booking_amount: true,
         expected_commission: true,
         received_commission: true,
-        budget_max: true,
-        budget_min: true,
         property: { select: { price: true } },
       },
     });
@@ -379,6 +385,18 @@ export class AnalyticsRepository extends TenantScopedRepository {
       where: { is_active: true },
       select: { code: true, price_inr_monthly: true },
     });
+  }
+
+  async activeSubscriptionMrr() {
+    const rows = await this.prisma.dbClient.subscriptions.findMany({
+      where: {
+        deleted_at: null,
+        status: { in: ['active', 'trial'] },
+        tenant: { deleted_at: null },
+      },
+      include: { plan: true },
+    });
+    return rows.reduce((sum, row) => sum + row.plan.price_inr_monthly, 0);
   }
 
   async monthlyOrgGrowth(since: Date): Promise<MonthlyLeadRow[]> {

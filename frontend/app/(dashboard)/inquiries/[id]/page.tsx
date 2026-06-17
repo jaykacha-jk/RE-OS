@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
 
 import { ActionGuard } from '../../../../components/shared/ActionGuard';
+import { ConfirmDialog } from '../../../../components/ui';
 import { apiFetch } from '../../../../lib/api';
 import { getSession } from '../../../../lib/auth';
 import {
@@ -38,6 +39,8 @@ export default function InquiryDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState<ModalKind>(null);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const [newNote, setNewNote] = useState('');
   const [noteSaving, setNoteSaving] = useState(false);
@@ -119,77 +122,88 @@ export default function InquiryDetailPage() {
   async function remove() {
     const session = getSession();
     if (!session?.access_token) return;
-    if (!confirm('Soft delete this inquiry? It will be removed from active lists.')) return;
+    setDeleting(true);
     try {
       await apiFetch(`/api/v1/inquiries/${id}`, { method: 'DELETE', token: session.access_token });
       router.push('/inquiries');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete inquiry');
+      setDeleteOpen(false);
+    } finally {
+      setDeleting(false);
     }
   }
 
   if (loading && !inquiry) return <p className="text-slate-500">Loading…</p>;
-  if (error && !inquiry) return <p className="rounded bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>;
+  if (error && !inquiry) return <p className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</p>;
   if (!inquiry) return null;
 
   return (
-    <div>
-      <Link href="/inquiries" className="text-sm text-teal-700 hover:underline">
-        ← Back to inquiries
-      </Link>
+    <div className="space-y-6">
+      <nav className="flex items-center gap-1 text-xs font-medium text-slate-500" aria-label="Breadcrumb">
+        <Link href="/inquiries" className="transition hover:text-teal-700">
+          Inquiries
+        </Link>
+        <span className="text-slate-300">/</span>
+        <span className="text-slate-700">{inquiry.inquiry_code}</span>
+      </nav>
 
-      <div className="mt-2 flex flex-wrap items-start justify-between gap-3">
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-semibold">{inquiry.client_name}</h1>
-            <span className={`rounded-full px-2 py-1 text-xs font-medium ${stageBadgeClass(inquiry.stage)}`}>
+            <h1 className="text-2xl font-bold tracking-tight text-slate-950">{inquiry.client_name}</h1>
+            <span className={`rounded-full px-2.5 py-1 text-2xs font-bold ${stageBadgeClass(inquiry.stage)}`}>
               {stageLabel(inquiry.stage)}
             </span>
           </div>
-          <p className="mt-1 font-mono text-xs text-slate-500">{inquiry.inquiry_code}</p>
+          <p className="mt-1 font-mono text-xs text-slate-500">{inquiry.inquiry_code} · {inquiry.phone}</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <ActionGuard permission="crm.inquiries.update" featureFlag="crm">
-            <button type="button" onClick={() => setModal('stage')} className="rounded border border-slate-300 px-3 py-2 text-sm">
+            <button type="button" onClick={() => setModal('stage')} className="btn-secondary">
               Change stage
             </button>
           </ActionGuard>
           <ActionGuard permission="crm.inquiries.assign" featureFlag="crm">
-            <button type="button" onClick={() => setModal('assign')} className="rounded border border-slate-300 px-3 py-2 text-sm">
+            <button type="button" onClick={() => setModal('assign')} className="btn-secondary">
               Assign
             </button>
           </ActionGuard>
           <ActionGuard permission="crm.inquiries.update" featureFlag="crm">
-            <Link href={`/inquiries/${id}/edit`} className="rounded border border-slate-300 px-3 py-2 text-sm">
+            <Link href={`/inquiries/${id}/edit`} className="btn-primary">
               Edit
             </Link>
           </ActionGuard>
           <ActionGuard permission="crm.inquiries.delete" featureFlag="crm">
-            <button type="button" onClick={remove} className="rounded border border-red-300 px-3 py-2 text-sm text-red-700 hover:bg-red-50">
+            <button type="button" onClick={() => setDeleteOpen(true)} className="btn-danger">
               Delete
             </button>
           </ActionGuard>
         </div>
       </div>
 
-      {error ? <p className="mt-4 rounded bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p> : null}
+      {error ? (
+        <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700 shadow-sm">
+          {error}
+        </div>
+      ) : null}
 
-      <div className="mt-6 grid gap-6 lg:grid-cols-3">
+      <div className="grid gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
           {/* Overview */}
-          <section className="rounded-lg border border-slate-200 p-4">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Overview</h2>
-            <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-3 text-sm md:grid-cols-3">
+          <section className="card p-5">
+            <h2 className="text-h3">Overview</h2>
+            <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 text-sm md:grid-cols-3">
               <Field label="Phone" value={inquiry.phone} />
               <Field label="Email" value={inquiry.email} />
               <Field label="WhatsApp" value={inquiry.whatsapp} />
               <Field label="Priority">
-                <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${priorityBadgeClass(inquiry.priority)}`}>
+                <span className={`rounded-full px-2.5 py-1 text-2xs font-bold ${priorityBadgeClass(inquiry.priority)}`}>
                   {humanize(inquiry.priority)}
                 </span>
               </Field>
               <Field label="Temperature">
-                <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${temperatureBadgeClass(inquiry.temperature)}`}>
+                <span className={`rounded-full px-2.5 py-1 text-2xs font-bold ${temperatureBadgeClass(inquiry.temperature)}`}>
                   {humanize(inquiry.temperature)}
                 </span>
               </Field>
@@ -217,30 +231,30 @@ export default function InquiryDetailPage() {
               </Field>
             </dl>
             {inquiry.remarks ? (
-              <div className="mt-4 rounded bg-slate-50 p-3 text-sm text-slate-700">
-                <p className="text-xs font-medium uppercase text-slate-400">Remarks</p>
-                {inquiry.remarks}
+              <div className="mt-4 rounded-2xl border border-reos-border bg-slate-50 p-4 text-sm text-slate-700">
+                <p className="text-xs font-bold uppercase tracking-wide text-slate-400">Remarks</p>
+                <p className="mt-1 leading-6">{inquiry.remarks}</p>
               </div>
             ) : null}
             {inquiry.lost_reason ? (
-              <p className="mt-3 rounded bg-red-50 px-3 py-2 text-sm text-red-700">Lost reason: {inquiry.lost_reason}</p>
+              <p className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">Lost reason: {inquiry.lost_reason}</p>
             ) : null}
           </section>
 
           {/* Follow-ups */}
-          <section className="rounded-lg border border-slate-200 p-4">
+          <section className="card p-5">
             <div className="flex items-center justify-between">
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Follow-ups</h2>
+              <h2 className="text-h3">Follow-ups</h2>
               <ActionGuard permission="crm.followups.create" featureFlag="crm">
-                <button type="button" onClick={() => setModal('followup')} className="text-sm text-teal-700 hover:underline">
-                  + Add
+                <button type="button" onClick={() => setModal('followup')} className="btn-secondary py-1.5">
+                  Add
                 </button>
               </ActionGuard>
             </div>
             <div className="mt-3 space-y-2">
               {inquiry.followups && inquiry.followups.length > 0 ? (
                 inquiry.followups.map((f) => (
-                  <div key={f.id} className="flex flex-wrap items-center justify-between gap-2 rounded border border-slate-100 px-3 py-2 text-sm">
+                  <div key={f.id} className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-reos-border bg-white px-3 py-2 text-sm">
                     <div>
                       <span className="font-medium">{humanize(f.followup_type)}</span>
                       <span className="ml-2 text-slate-500">
@@ -250,14 +264,14 @@ export default function InquiryDetailPage() {
                       {f.notes ? <p className="text-xs text-slate-400">{f.notes}</p> : null}
                     </div>
                     <div className="flex items-center gap-2">
-                      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs">{humanize(f.status)}</span>
+                      <span className="badge badge-slate">{humanize(f.status)}</span>
                       {f.status === 'pending' ? (
                         <ActionGuard permission="crm.followups.update" featureFlag="crm">
                         <>
-                          <button type="button" onClick={() => updateFollowupStatus(f.id, 'completed')} className="text-xs text-teal-700 hover:underline">
+                          <button type="button" onClick={() => updateFollowupStatus(f.id, 'completed')} className="text-xs font-semibold text-teal-700 hover:underline">
                             Complete
                           </button>
-                          <button type="button" onClick={() => updateFollowupStatus(f.id, 'missed')} className="text-xs text-slate-500 hover:underline">
+                          <button type="button" onClick={() => updateFollowupStatus(f.id, 'missed')} className="text-xs font-semibold text-slate-500 hover:underline">
                             Miss
                           </button>
                         </>
@@ -267,25 +281,25 @@ export default function InquiryDetailPage() {
                   </div>
                 ))
               ) : (
-                <p className="text-sm text-slate-500">No follow-ups scheduled.</p>
+                <EmptyCopy>No follow-ups scheduled.</EmptyCopy>
               )}
             </div>
           </section>
 
           {/* Site visits */}
-          <section className="rounded-lg border border-slate-200 p-4">
+          <section className="card p-5">
             <div className="flex items-center justify-between">
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Site visits</h2>
+              <h2 className="text-h3">Site visits</h2>
               <ActionGuard permission="crm.sitevisits.create" featureFlag="crm">
-                <button type="button" onClick={() => setModal('site-visit')} className="text-sm text-teal-700 hover:underline">
-                  + Schedule
+                <button type="button" onClick={() => setModal('site-visit')} className="btn-secondary py-1.5">
+                  Schedule
                 </button>
               </ActionGuard>
             </div>
             <div className="mt-3 space-y-2">
               {inquiry.site_visits && inquiry.site_visits.length > 0 ? (
                 inquiry.site_visits.map((s) => (
-                  <div key={s.id} className="flex flex-wrap items-center justify-between gap-2 rounded border border-slate-100 px-3 py-2 text-sm">
+                  <div key={s.id} className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-reos-border bg-white px-3 py-2 text-sm">
                     <div>
                       <span className="font-medium">{new Date(s.scheduled_at).toLocaleString()}</span>
                       {s.property ? <span className="ml-2 text-slate-500">{s.property.title}</span> : null}
@@ -293,17 +307,17 @@ export default function InquiryDetailPage() {
                       {s.notes ? <p className="text-xs text-slate-400">{s.notes}</p> : null}
                     </div>
                     <div className="flex items-center gap-2">
-                      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs">{humanize(s.status)}</span>
+                      <span className="badge badge-slate">{humanize(s.status)}</span>
                       {s.status === 'scheduled' ? (
                         <ActionGuard permission="crm.sitevisits.update" featureFlag="crm">
                         <>
-                          <button type="button" onClick={() => updateSiteVisitStatus(s.id, 'completed')} className="text-xs text-teal-700 hover:underline">
+                          <button type="button" onClick={() => updateSiteVisitStatus(s.id, 'completed')} className="text-xs font-semibold text-teal-700 hover:underline">
                             Complete
                           </button>
-                          <button type="button" onClick={() => updateSiteVisitStatus(s.id, 'no_show')} className="text-xs text-slate-500 hover:underline">
+                          <button type="button" onClick={() => updateSiteVisitStatus(s.id, 'no_show')} className="text-xs font-semibold text-slate-500 hover:underline">
                             No show
                           </button>
-                          <button type="button" onClick={() => updateSiteVisitStatus(s.id, 'cancelled')} className="text-xs text-slate-500 hover:underline">
+                          <button type="button" onClick={() => updateSiteVisitStatus(s.id, 'cancelled')} className="text-xs font-semibold text-slate-500 hover:underline">
                             Cancel
                           </button>
                         </>
@@ -313,23 +327,23 @@ export default function InquiryDetailPage() {
                   </div>
                 ))
               ) : (
-                <p className="text-sm text-slate-500">No site visits scheduled.</p>
+                <EmptyCopy>No site visits scheduled.</EmptyCopy>
               )}
             </div>
           </section>
 
           {/* Notes */}
-          <section className="rounded-lg border border-slate-200 p-4">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Notes</h2>
+          <section className="card p-5">
+            <h2 className="text-h3">Notes</h2>
             <ActionGuard permission="crm.notes.create" featureFlag="crm">
               <div className="mt-3 flex gap-2">
                 <input
                   value={newNote}
                   onChange={(e) => setNewNote(e.target.value)}
                   placeholder="Add a note…"
-                  className="flex-1 rounded border border-slate-300 px-3 py-2 text-sm"
+                  className="input"
                 />
-                <button type="button" onClick={addNote} disabled={noteSaving || !newNote.trim()} className="rounded bg-teal-700 px-3 py-2 text-sm text-white disabled:opacity-50">
+                <button type="button" onClick={addNote} disabled={noteSaving || !newNote.trim()} className="btn-primary">
                   Add
                 </button>
               </div>
@@ -337,7 +351,7 @@ export default function InquiryDetailPage() {
             <div className="mt-3 space-y-2">
               {inquiry.notes && inquiry.notes.length > 0 ? (
                 inquiry.notes.map((n) => (
-                  <div key={n.id} className="rounded border border-slate-100 px-3 py-2 text-sm">
+                  <div key={n.id} className="rounded-2xl border border-reos-border bg-white px-3 py-2 text-sm">
                     <p className="text-slate-700">{n.note}</p>
                     <p className="mt-1 text-xs text-slate-400">
                       {n.created_by_email ?? 'system'} · {new Date(n.created_at).toLocaleString()}
@@ -345,15 +359,15 @@ export default function InquiryDetailPage() {
                   </div>
                 ))
               ) : (
-                <p className="text-sm text-slate-500">No notes yet.</p>
+                <EmptyCopy>No notes yet.</EmptyCopy>
               )}
             </div>
           </section>
         </div>
 
         {/* Timeline */}
-        <aside className="rounded-lg border border-slate-200 p-4">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Timeline</h2>
+        <aside className="card p-5">
+          <h2 className="text-h3">Timeline</h2>
           <div className="mt-4">
             <Timeline activities={activities} history={history} />
           </div>
@@ -364,6 +378,16 @@ export default function InquiryDetailPage() {
       {modal === 'assign' ? <AssignModal inquiry={inquiry} onClose={() => setModal(null)} onDone={load} /> : null}
       {modal === 'followup' ? <FollowupModal inquiry={inquiry} onClose={() => setModal(null)} onDone={load} /> : null}
       {modal === 'site-visit' ? <SiteVisitModal inquiry={inquiry} onClose={() => setModal(null)} onDone={load} /> : null}
+      <ConfirmDialog
+        open={deleteOpen}
+        title="Delete this inquiry?"
+        description="This is a soft delete. The inquiry will be removed from active CRM lists but retained for audit history."
+        confirmLabel="Delete inquiry"
+        danger
+        loading={deleting}
+        onConfirm={remove}
+        onCancel={() => setDeleteOpen(false)}
+      />
     </div>
   );
 }
@@ -379,8 +403,16 @@ function Field({
 }) {
   return (
     <div>
-      <dt className="text-xs font-medium uppercase text-slate-400">{label}</dt>
+      <dt className="text-xs font-bold uppercase tracking-wide text-slate-400">{label}</dt>
       <dd className="mt-0.5 text-slate-700">{children ?? value ?? <span className="text-slate-400">—</span>}</dd>
+    </div>
+  );
+}
+
+function EmptyCopy({ children }: { children: string }) {
+  return (
+    <div className="rounded-2xl border border-dashed border-reos-border bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
+      {children}
     </div>
   );
 }

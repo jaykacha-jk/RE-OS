@@ -158,6 +158,18 @@ export type CrmMetrics = {
   top_performer: { employee_id: string; name: string | null; won: number } | null;
 };
 
+export type InquirySummary = {
+  total: number;
+  hot: number;
+  unassigned: number;
+  stale_new: number;
+  qualified: number;
+  booked: number;
+  won: number;
+  lost: number;
+  by_stage: Record<string, number>;
+};
+
 const inr = new Intl.NumberFormat('en-IN', {
   style: 'currency',
   currency: 'INR',

@@ -1,11 +1,23 @@
 'use client';
 
 import Link from 'next/link';
-import { FormEvent, type ReactNode, useCallback, useEffect, useState } from 'react';
+import { Suspense, useCallback, useEffect, useState } from 'react';
 
 import { ActionGuard } from '../../../components/shared/ActionGuard';
+import {
+  ActionMenu,
+  CrudToolbar,
+  DataTable,
+  EmptyState,
+  FilterDrawer,
+  FilterField,
+  Icon,
+  Pagination,
+  type DataTableColumn,
+} from '../../../components/ui';
+import { useTableQuery, type TableQueryValues } from '../../../hooks/use-table-query';
 import { apiFetch } from '../../../lib/api';
-import { getSession } from '../../../lib/auth';
+import { getSession, hasPermission, type AuthSession } from '../../../lib/auth';
 import {
   budgetLabel,
   humanize,
@@ -17,6 +29,7 @@ import {
   stageLabel,
   temperatureBadgeClass,
   type Inquiry,
+  type InquirySummary,
   type LeadSource,
   type ListMeta,
 } from '../../../lib/crm';
@@ -28,104 +41,160 @@ import {
   type EmployeeOption,
   type PropertyOption,
 } from '../../../lib/crm-api';
+import { InquiryDetailDrawer } from './inquiry-detail-drawer';
+import { QuickCreateInquiryDrawer } from './quick-create-inquiry-drawer';
+
+const FILTER_KEYS = ['stage', 'priority', 'temperature', 'source', 'assigned_employee', 'property', 'date_from', 'date_to'];
 
 export default function InquiriesPage() {
+  return (
+    <Suspense fallback={null}>
+      <InquiriesInner />
+    </Suspense>
+  );
+}
+
+function InquiriesInner() {
+  const query = useTableQuery({
+    filterKeys: FILTER_KEYS,
+    defaults: { sort_by: 'created_at', sort_dir: 'desc' },
+  });
+
   const [rows, setRows] = useState<Inquiry[]>([]);
   const [meta, setMeta] = useState<ListMeta | null>(null);
+  const [summary, setSummary] = useState<InquirySummary | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [quickCreateOpen, setQuickCreateOpen] = useState(false);
+  const [selectedInquiryId, setSelectedInquiryId] = useState<string | null>(null);
+  const [draft, setDraft] = useState<TableQueryValues>(query.filters);
+  const [session, setSession] = useState<AuthSession | null>(null);
 
   const [sources, setSources] = useState<LeadSource[]>([]);
   const [employees, setEmployees] = useState<EmployeeOption[]>([]);
   const [properties, setProperties] = useState<PropertyOption[]>([]);
 
-  const [search, setSearch] = useState('');
-  const [stage, setStage] = useState('');
-  const [priority, setPriority] = useState('');
-  const [temperature, setTemperature] = useState('');
-  const [source, setSource] = useState('');
-  const [assignedEmployee, setAssignedEmployee] = useState('');
-  const [property, setProperty] = useState('');
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
-  const [sortBy, setSortBy] = useState('created_at');
-  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
-  const [quickFilterVersion, setQuickFilterVersion] = useState(0);
-
   useEffect(() => {
+    setSession(getSession());
     fetchLeadSources().then(setSources).catch(() => undefined);
     fetchEmployees().then(setEmployees).catch(() => undefined);
     fetchProperties().then(setProperties).catch(() => undefined);
   }, []);
 
-  const load = useCallback(
-    (page = 1) => {
-      const session = getSession();
-      if (!session?.access_token) return;
+  const canUpdate = hasPermission(session, 'crm.inquiries.update');
 
-      const params = new URLSearchParams({
-        page: String(page),
-        per_page: '20',
-        sort_by: sortBy,
-        sort_dir: sortDir,
-      });
-      if (search.trim()) params.set('search', search.trim());
-      if (stage) params.set('filter[stage]', stage);
-      if (priority) params.set('filter[priority]', priority);
-      if (temperature) params.set('filter[temperature]', temperature);
-      if (source) params.set('filter[source]', source);
-      if (assignedEmployee) params.set('filter[assigned_employee]', assignedEmployee);
-      if (property) params.set('filter[property]', property);
-      if (dateFrom) params.set('filter[date_from]', dateFrom);
-      if (dateTo) params.set('filter[date_to]', dateTo);
+  const { search, filters, sortBy, sortDir, page, setPage, perPage, setPerPage, commit } = query;
+  const filtersKey = JSON.stringify(filters);
 
-      setLoading(true);
-      setError(null);
-      apiFetch<Inquiry[]>(`/api/v1/inquiries?${params.toString()}`, {
-        token: session.access_token,
+  const load = useCallback(() => {
+    const active = getSession();
+    if (!active?.access_token) return;
+
+    const params = new URLSearchParams({
+      page: String(page),
+      per_page: String(perPage),
+      sort_by: sortBy || 'created_at',
+      sort_dir: sortDir || 'desc',
+    });
+    if (search.trim()) params.set('search', search.trim());
+    const f = JSON.parse(filtersKey) as TableQueryValues;
+    if (f.stage) params.set('filter[stage]', f.stage);
+    if (f.priority) params.set('filter[priority]', f.priority);
+    if (f.temperature) params.set('filter[temperature]', f.temperature);
+    if (f.source) params.set('filter[source]', f.source);
+    if (f.assigned_employee) params.set('filter[assigned_employee]', f.assigned_employee);
+    if (f.property) params.set('filter[property]', f.property);
+    if (f.date_from) params.set('filter[date_from]', f.date_from);
+    if (f.date_to) params.set('filter[date_to]', f.date_to);
+
+    setLoading(true);
+    setError(null);
+    Promise.all([
+      apiFetch<Inquiry[]>(`/api/v1/inquiries?${params.toString()}`, { token: active.access_token }),
+      apiFetch<InquirySummary>(`/api/v1/inquiries/summary?${params.toString()}`, { token: active.access_token }),
+    ])
+      .then(([listRes, summaryRes]) => {
+        setRows(listRes.data);
+        setMeta(listRes.meta as unknown as ListMeta);
+        setSummary(summaryRes.data);
       })
-        .then((res) => {
-          setRows(res.data);
-          setMeta(res.meta as unknown as ListMeta);
-        })
-        .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load inquiries'))
-        .finally(() => setLoading(false));
+      .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load inquiries'))
+      .finally(() => setLoading(false));
+  }, [page, perPage, sortBy, sortDir, search, filtersKey]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  function openFilter() {
+    setDraft(filters);
+    setFilterOpen(true);
+  }
+
+  const total = summary?.total ?? meta?.total ?? rows.length;
+  const hot = summary?.hot ?? 0;
+  const unassigned = summary?.unassigned ?? 0;
+  const staleNew = summary?.stale_new ?? 0;
+  const qualified = summary?.qualified ?? 0;
+  const won = (summary?.won ?? 0) + (summary?.booked ?? 0);
+
+  const columns: DataTableColumn<Inquiry>[] = [
+    {
+      key: 'lead',
+      header: 'Lead',
+      render: (row) => (
+        <div>
+          <button
+            type="button"
+            onClick={() => setSelectedInquiryId(row.id)}
+            className="font-semibold text-slate-900 hover:text-teal-800"
+          >
+            {row.client_name}
+          </button>
+          <p className="mt-0.5 font-mono text-2xs text-slate-500">
+            {row.inquiry_code} · {row.phone}
+          </p>
+        </div>
+      ),
     },
-    [search, stage, priority, temperature, source, assignedEmployee, property, dateFrom, dateTo, sortBy, sortDir],
-  );
-
-  useEffect(() => {
-    load(1);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sortBy, sortDir]);
-
-  useEffect(() => {
-    if (quickFilterVersion > 0) load(1);
-  }, [load, quickFilterVersion]);
-
-  function onFilter(e: FormEvent) {
-    e.preventDefault();
-    load(1);
-  }
-
-  function resetFilters() {
-    setSearch('');
-    setStage('');
-    setPriority('');
-    setTemperature('');
-    setSource('');
-    setAssignedEmployee('');
-    setProperty('');
-    setDateFrom('');
-    setDateTo('');
-  }
-
-  const total = meta?.total ?? rows.length;
-  const hot = rows.filter((row) => row.temperature === 'hot').length;
-  const unassigned = rows.filter((row) => !row.assigned_employee_id).length;
-  const staleNew = rows.filter((row) => row.stage === 'NEW' && leadAgeHours(row.created_at) >= 24).length;
-  const qualified = rows.filter((row) => ['QUALIFIED', 'SITE_VISIT_SCHEDULED', 'SITE_VISIT_COMPLETED', 'NEGOTIATION'].includes(row.stage)).length;
-  const won = rows.filter((row) => row.stage === 'CLOSED_WON' || row.stage === 'BOOKED').length;
+    {
+      key: 'stage',
+      header: 'Stage',
+      render: (row) => (
+        <span className={`rounded-full px-2.5 py-1 text-2xs font-bold ${stageBadgeClass(row.stage)}`}>{stageLabel(row.stage)}</span>
+      ),
+    },
+    {
+      key: 'priority',
+      header: 'Priority',
+      render: (row) => (
+        <span className={`rounded-full px-2.5 py-1 text-2xs font-bold ${priorityBadgeClass(row.priority)}`}>{humanize(row.priority)}</span>
+      ),
+    },
+    {
+      key: 'temperature',
+      header: 'Temperature',
+      render: (row) => (
+        <span className={`rounded-full px-2.5 py-1 text-2xs font-bold ${temperatureBadgeClass(row.temperature)}`}>{humanize(row.temperature)}</span>
+      ),
+    },
+    {
+      key: 'budget',
+      header: 'Budget',
+      align: 'right',
+      cellClassName: 'font-semibold tabular-nums text-slate-900',
+      render: (row) => budgetLabel(row.budget_min, row.budget_max),
+    },
+    { key: 'source', header: 'Source', render: (row) => <span className="text-slate-700">{row.source_name ?? 'Unknown'}</span> },
+    { key: 'assignee', header: 'Assignee', render: (row) => <span className="text-slate-700">{row.assigned_employee_name ?? 'Unassigned'}</span> },
+    {
+      key: 'created',
+      header: 'Created',
+      cellClassName: 'text-slate-500',
+      render: (row) => new Date(row.created_at).toLocaleDateString('en-IN'),
+    },
+  ];
 
   return (
     <div className="space-y-6">
@@ -147,9 +216,13 @@ export default function InquiriesPage() {
                 Pipeline board
               </Link>
               <ActionGuard permission="crm.inquiries.create" featureFlag="crm">
-                <Link href="/inquiries/new" className="inline-flex items-center justify-center rounded-xl bg-white px-4 py-2 text-sm font-bold text-teal-900 shadow-card transition hover:bg-teal-50">
-                  New inquiry
-                </Link>
+                <button
+                  type="button"
+                  onClick={() => setQuickCreateOpen(true)}
+                  className="inline-flex items-center justify-center rounded-xl bg-white px-4 py-2 text-sm font-bold text-teal-900 shadow-card transition hover:bg-teal-50"
+                >
+                  Quick add lead
+                </button>
               </ActionGuard>
             </div>
           </div>
@@ -168,177 +241,34 @@ export default function InquiriesPage() {
         staleNew={staleNew}
         qualified={qualified}
         won={won}
-        onUnassigned={() => {
-          setAssignedEmployee('unassigned');
-          setStage('');
-          setDateTo('');
-          setSortBy('created_at');
-          setSortDir('asc');
-          setQuickFilterVersion((version) => version + 1);
-        }}
+        onUnassigned={() =>
+          commit({ assigned_employee: 'unassigned', stage: '', date_to: '', sort_by: 'created_at', sort_dir: 'asc' })
+        }
         onStaleNew={() => {
           const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
-          setStage('NEW');
-          setDateTo(yesterday.toISOString().slice(0, 10));
-          setAssignedEmployee('');
-          setSortBy('created_at');
-          setSortDir('asc');
-          setQuickFilterVersion((version) => version + 1);
+          commit({ stage: 'NEW', date_to: yesterday.toISOString().slice(0, 10), assigned_employee: '', sort_by: 'created_at', sort_dir: 'asc' });
         }}
       />
 
-      <form onSubmit={onFilter} className="panel p-5">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h2 className="text-base font-bold text-slate-900">Find the right lead</h2>
-            <p className="mt-1 text-xs text-slate-500">Filter by urgency, pipeline stage, source, assignee, property, and date range.</p>
-          </div>
-          <div className="flex gap-2">
-            <button type="submit" className="btn-primary">Apply filters</button>
-            <button type="button" onClick={resetFilters} className="btn-secondary">Reset</button>
-          </div>
-        </div>
-
-        <div className="mt-5 grid gap-3 md:grid-cols-3 lg:grid-cols-4">
-          <FilterField label="Search" className="md:col-span-2">
-            <input value={search} onChange={(e) => setSearch(e.target.value)} className="input" placeholder="Search name, phone, email, code" />
-          </FilterField>
-          <FilterField label="Stage">
-            <select value={stage} onChange={(e) => setStage(e.target.value)} className="input">
-              <option value="">All stages</option>
-              {INQUIRY_STAGES.map((s) => (
-                <option key={s} value={s}>{stageLabel(s)}</option>
-              ))}
-            </select>
-          </FilterField>
-          <FilterField label="Priority">
-            <select value={priority} onChange={(e) => setPriority(e.target.value)} className="input">
-              <option value="">All priorities</option>
-              {INQUIRY_PRIORITIES.map((p) => (
-                <option key={p} value={p}>{humanize(p)}</option>
-              ))}
-            </select>
-          </FilterField>
-          <FilterField label="Temperature">
-            <select value={temperature} onChange={(e) => setTemperature(e.target.value)} className="input">
-              <option value="">All temperatures</option>
-              {INQUIRY_TEMPERATURES.map((t) => (
-                <option key={t} value={t}>{humanize(t)}</option>
-              ))}
-            </select>
-          </FilterField>
-          <FilterField label="Source">
-            <select value={source} onChange={(e) => setSource(e.target.value)} className="input">
-              <option value="">All sources</option>
-              {sources.map((s) => (
-                <option key={s.id} value={s.id}>{s.name}</option>
-              ))}
-            </select>
-          </FilterField>
-          <FilterField label="Assignee">
-            <select value={assignedEmployee} onChange={(e) => setAssignedEmployee(e.target.value)} className="input">
-              <option value="">All assignees</option>
-              <option value="unassigned">Unassigned</option>
-              {employees.map((e) => (
-                <option key={e.id} value={e.id}>{employeeLabel(e)}</option>
-              ))}
-            </select>
-          </FilterField>
-          <FilterField label="Property">
-            <select value={property} onChange={(e) => setProperty(e.target.value)} className="input">
-              <option value="">All properties</option>
-              {properties.map((p) => (
-                <option key={p.id} value={p.id}>{p.title}</option>
-              ))}
-            </select>
-          </FilterField>
-          <FilterField label="From">
-            <input value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} type="date" className="input" />
-          </FilterField>
-          <FilterField label="To">
-            <input value={dateTo} onChange={(e) => setDateTo(e.target.value)} type="date" className="input" />
-          </FilterField>
-        </div>
-      </form>
-
-      {loading ? <CrmLoadingState /> : null}
       {error ? (
         <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700 shadow-sm">
           <span className="font-semibold">Could not load inquiries.</span> {error}
         </div>
       ) : null}
 
-      {!loading && !error && rows.length === 0 ? <EmptyInquiries /> : null}
-
-      {!loading && !error && rows.length > 0 ? (
-        <>
-          {/* Cards: all rows on mobile/tablet (table is hidden there); featured 6 on desktop. */}
-          <section className="grid gap-5 lg:grid-cols-2 xl:grid-cols-3">
-            {rows.map((row, index) => (
-              <div key={row.id} className={index >= 6 ? 'lg:hidden' : ''}>
-                <InquiryCard inquiry={row} />
-              </div>
-            ))}
-          </section>
-
-          <section className="hidden overflow-hidden rounded-2xl border border-reos-border bg-white shadow-card lg:block">
-            <div className="flex items-center justify-between border-b border-reos-border px-5 py-4">
-              <div>
-                <h2 className="text-base font-bold text-slate-900">Pipeline table</h2>
-                <p className="mt-1 text-xs text-slate-500">Dense CRM view for qualification, assignment, and stage review.</p>
-              </div>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="min-w-full text-left text-sm">
-                <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
-                  <tr>
-                    <th className="px-5 py-3 font-bold">Lead</th>
-                    <th className="px-5 py-3 font-bold">Stage</th>
-                    <th className="px-5 py-3 font-bold">Priority</th>
-                    <th className="px-5 py-3 font-bold">Temperature</th>
-                    <th className="px-5 py-3 font-bold">Budget</th>
-                    <th className="px-5 py-3 font-bold">Source</th>
-                    <th className="px-5 py-3 font-bold">Assignee</th>
-                    <th className="px-5 py-3 font-bold">Created</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map((row) => (
-                    <tr key={row.id} className="border-t border-slate-100 hover:bg-teal-50/40">
-                      <td className="px-5 py-4">
-                        <Link href={`/inquiries/${row.id}`} className="font-bold text-slate-900 hover:text-teal-800">
-                          {row.client_name}
-                        </Link>
-                        <p className="mt-1 font-mono text-xs text-slate-500">{row.inquiry_code} · {row.phone}</p>
-                      </td>
-                      <td className="px-5 py-4"><StageBadge stage={row.stage} /></td>
-                      <td className="px-5 py-4"><PriorityBadge priority={row.priority} /></td>
-                      <td className="px-5 py-4"><TemperatureBadge temperature={row.temperature} /></td>
-                      <td className="px-5 py-4 font-semibold tabular-nums text-slate-900">{budgetLabel(row.budget_min, row.budget_max)}</td>
-                      <td className="px-5 py-4 text-slate-700">{row.source_name ?? 'Unknown'}</td>
-                      <td className="px-5 py-4 text-slate-700">{row.assigned_employee_name ?? 'Unassigned'}</td>
-                      <td className="px-5 py-4 text-slate-500">{new Date(row.created_at).toLocaleDateString('en-IN')}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </section>
-        </>
-      ) : null}
-
-      {meta ? (
-        <div className="panel flex flex-wrap items-center justify-between gap-3 px-4 py-3 text-sm text-slate-600">
-          <span>Page {meta.page} of {meta.total_pages} · {meta.total} total</span>
-          <div className="flex flex-wrap items-center gap-3">
-            <label className="flex items-center gap-2">
-              <span className="text-xs font-bold uppercase tracking-wide text-slate-500">Sort</span>
+      <section className="overflow-hidden rounded-2xl border border-reos-border bg-white shadow-card">
+        <CrudToolbar
+          searchValue={query.searchInput}
+          onSearchChange={query.setSearchInput}
+          searchPlaceholder="Search name, phone, email, code"
+          controlSlot={
+            <label className="flex items-center gap-2 text-sm text-slate-600">
+              <span className="text-2xs font-bold uppercase tracking-wide text-slate-500">Sort</span>
               <select
-                value={`${sortBy}:${sortDir}`}
+                value={`${sortBy || 'created_at'}:${sortDir || 'desc'}`}
                 onChange={(e) => {
                   const [b, d] = e.target.value.split(':');
-                  setSortBy(b);
-                  setSortDir(d as 'asc' | 'desc');
+                  query.setSort(b, d);
                 }}
                 className="input w-auto min-w-44 py-1.5"
               >
@@ -348,31 +278,141 @@ export default function InquiriesPage() {
                 <option value="updated_at:desc">Recently updated</option>
               </select>
             </label>
-            <div className="flex gap-2">
-              <button type="button" disabled={meta.page <= 1} onClick={() => load(meta.page - 1)} className="btn-secondary px-3 py-1.5">
-                Previous
+          }
+          onFilter={openFilter}
+          filterCount={query.activeFilterCount}
+          onRefresh={load}
+          refreshing={loading}
+          addSlot={
+            <ActionGuard permission="crm.inquiries.create" featureFlag="crm">
+              <button type="button" className="btn-primary" onClick={() => setQuickCreateOpen(true)}>
+                <Icon name="plus" className="h-4 w-4" /> Quick add lead
               </button>
-              <button type="button" disabled={meta.page >= meta.total_pages} onClick={() => load(meta.page + 1)} className="btn-secondary px-3 py-1.5">
-                Next
-              </button>
-            </div>
-          </div>
+            </ActionGuard>
+          }
+        />
+
+        <DataTable<Inquiry>
+          columns={columns}
+          rows={rows}
+          rowKey={(row) => row.id}
+          onRowClick={(row) => setSelectedInquiryId(row.id)}
+          loading={loading}
+          loadingRows={Math.min(perPage, 12)}
+          empty={
+            <EmptyState
+              title="No leads match your filters"
+              description="Adjust filters or capture website, WhatsApp, referral, and walk-in leads to fill the pipeline."
+              action={
+                <ActionGuard permission="crm.inquiries.create" featureFlag="crm">
+                  <button type="button" className="btn-primary" onClick={() => setQuickCreateOpen(true)}>
+                    Create first inquiry
+                  </button>
+                </ActionGuard>
+              }
+            />
+          }
+          actions={(row) => (
+            <ActionMenu
+              items={[
+                { label: 'Quick view', onSelect: () => setSelectedInquiryId(row.id) },
+                { label: 'Open full page', href: `/inquiries/${row.id}` },
+                { label: 'Edit', href: `/inquiries/${row.id}/edit`, hidden: !canUpdate },
+              ]}
+            />
+          )}
+        />
+
+        {meta ? (
+          <Pagination
+            page={meta.page}
+            totalPages={meta.total_pages}
+            total={meta.total}
+            perPage={perPage}
+            onPageChange={setPage}
+            onPerPageChange={setPerPage}
+          />
+        ) : null}
+      </section>
+
+      <FilterDrawer
+        open={filterOpen}
+        onClose={() => setFilterOpen(false)}
+        onApply={() => query.applyFilters(draft)}
+        onClear={() => {
+          query.clearFilters();
+          setDraft(Object.fromEntries(FILTER_KEYS.map((k) => [k, ''])));
+        }}
+      >
+        <FilterField label="Stage">
+          <select value={draft.stage ?? ''} onChange={(e) => setDraft((d) => ({ ...d, stage: e.target.value }))} className="input">
+            <option value="">All stages</option>
+            {INQUIRY_STAGES.map((s) => (
+              <option key={s} value={s}>{stageLabel(s)}</option>
+            ))}
+          </select>
+        </FilterField>
+        <FilterField label="Priority">
+          <select value={draft.priority ?? ''} onChange={(e) => setDraft((d) => ({ ...d, priority: e.target.value }))} className="input">
+            <option value="">All priorities</option>
+            {INQUIRY_PRIORITIES.map((p) => (
+              <option key={p} value={p}>{humanize(p)}</option>
+            ))}
+          </select>
+        </FilterField>
+        <FilterField label="Temperature">
+          <select value={draft.temperature ?? ''} onChange={(e) => setDraft((d) => ({ ...d, temperature: e.target.value }))} className="input">
+            <option value="">All temperatures</option>
+            {INQUIRY_TEMPERATURES.map((t) => (
+              <option key={t} value={t}>{humanize(t)}</option>
+            ))}
+          </select>
+        </FilterField>
+        <FilterField label="Source">
+          <select value={draft.source ?? ''} onChange={(e) => setDraft((d) => ({ ...d, source: e.target.value }))} className="input">
+            <option value="">All sources</option>
+            {sources.map((s) => (
+              <option key={s.id} value={s.id}>{s.name}</option>
+            ))}
+          </select>
+        </FilterField>
+        <FilterField label="Assignee">
+          <select value={draft.assigned_employee ?? ''} onChange={(e) => setDraft((d) => ({ ...d, assigned_employee: e.target.value }))} className="input">
+            <option value="">All assignees</option>
+            <option value="unassigned">Unassigned</option>
+            {employees.map((e) => (
+              <option key={e.id} value={e.id}>{employeeLabel(e)}</option>
+            ))}
+          </select>
+        </FilterField>
+        <FilterField label="Property">
+          <select value={draft.property ?? ''} onChange={(e) => setDraft((d) => ({ ...d, property: e.target.value }))} className="input">
+            <option value="">All properties</option>
+            {properties.map((p) => (
+              <option key={p.id} value={p.id}>{p.title}</option>
+            ))}
+          </select>
+        </FilterField>
+        <div className="grid grid-cols-2 gap-3">
+          <FilterField label="From">
+            <input value={draft.date_from ?? ''} onChange={(e) => setDraft((d) => ({ ...d, date_from: e.target.value }))} type="date" className="input" />
+          </FilterField>
+          <FilterField label="To">
+            <input value={draft.date_to ?? ''} onChange={(e) => setDraft((d) => ({ ...d, date_to: e.target.value }))} type="date" className="input" />
+          </FilterField>
         </div>
-      ) : null}
+      </FilterDrawer>
+
+      <QuickCreateInquiryDrawer
+        open={quickCreateOpen}
+        onClose={() => setQuickCreateOpen(false)}
+        onCreated={(inquiry, options) => {
+          if (options.openDetail) setSelectedInquiryId(inquiry.id);
+          load();
+        }}
+      />
+      <InquiryDetailDrawer inquiryId={selectedInquiryId} onClose={() => setSelectedInquiryId(null)} />
     </div>
-  );
-}
-
-function leadAgeHours(createdAt: string): number {
-  return (Date.now() - new Date(createdAt).getTime()) / (60 * 60 * 1000);
-}
-
-function FilterField({ label, children, className = '' }: { label: string; children: ReactNode; className?: string }) {
-  return (
-    <label className={`block ${className}`}>
-      <span className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500">{label}</span>
-      {children}
-    </label>
   );
 }
 
@@ -458,100 +498,5 @@ function OwnershipStat({ label, value, danger = false }: { label: string; value:
       <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">{label}</p>
       <p className={`mt-2 text-2xl font-bold tabular-nums ${danger ? 'text-rose-700' : 'text-slate-950'}`}>{value.toLocaleString('en-IN')}</p>
     </div>
-  );
-}
-
-function InquiryCard({ inquiry }: { inquiry: Inquiry }) {
-  return (
-    <Link href={`/inquiries/${inquiry.id}`} className="group rounded-3xl border border-reos-border bg-white p-5 shadow-card transition hover:-translate-y-1 hover:shadow-raised">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="font-mono text-xs text-slate-400">{inquiry.inquiry_code}</p>
-          <h3 className="mt-2 text-lg font-bold text-slate-950 group-hover:text-teal-800">{inquiry.client_name}</h3>
-          <p className="mt-1 text-sm text-slate-500">{inquiry.phone}</p>
-        </div>
-        <LeadScore score={inquiry.lead_score} />
-      </div>
-
-      <div className="mt-4 flex flex-wrap gap-2">
-        <StageBadge stage={inquiry.stage} />
-        <TemperatureBadge temperature={inquiry.temperature} />
-        <PriorityBadge priority={inquiry.priority} />
-      </div>
-
-      <div className="mt-5 grid gap-3 rounded-2xl bg-slate-50 p-4 text-sm">
-        <InfoRow label="Budget" value={budgetLabel(inquiry.budget_min, inquiry.budget_max)} />
-        <InfoRow label="Need" value={[inquiry.requirement_type, inquiry.property_type, inquiry.preferred_location].filter(Boolean).map((v) => humanize(String(v))).join(' · ') || 'Not captured'} />
-        <InfoRow label="Owner" value={inquiry.assigned_employee_name ?? 'Unassigned'} />
-      </div>
-
-      <div className="mt-4 flex items-center justify-between text-xs text-slate-500">
-        <span>{inquiry.source_name ?? 'Unknown source'}</span>
-        <span>{new Date(inquiry.created_at).toLocaleDateString('en-IN')}</span>
-      </div>
-    </Link>
-  );
-}
-
-function InfoRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex items-start justify-between gap-3">
-      <span className="text-slate-500">{label}</span>
-      <span className="text-right font-semibold text-slate-800">{value}</span>
-    </div>
-  );
-}
-
-function LeadScore({ score }: { score: number | null }) {
-  const display = score ?? 0;
-  return (
-    <div className="flex h-14 w-14 flex-col items-center justify-center rounded-2xl bg-teal-50 text-teal-800 shadow-sm">
-      <span className="text-lg font-bold tabular-nums">{display}</span>
-      <span className="text-[10px] font-bold uppercase tracking-wide">score</span>
-    </div>
-  );
-}
-
-function StageBadge({ stage }: { stage: string }) {
-  return <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${stageBadgeClass(stage)}`}>{stageLabel(stage)}</span>;
-}
-
-function PriorityBadge({ priority }: { priority: string }) {
-  return <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${priorityBadgeClass(priority)}`}>{humanize(priority)}</span>;
-}
-
-function TemperatureBadge({ temperature }: { temperature: string }) {
-  return <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${temperatureBadgeClass(temperature)}`}>{humanize(temperature)}</span>;
-}
-
-function CrmLoadingState() {
-  return (
-    <section className="grid gap-5 lg:grid-cols-2 xl:grid-cols-3">
-      {Array.from({ length: 6 }).map((_, index) => (
-        <div key={index} className="rounded-3xl border border-reos-border bg-white p-5 shadow-card">
-          <div className="h-4 w-24 animate-pulse rounded-xl bg-slate-200" />
-          <div className="mt-4 h-6 w-40 animate-pulse rounded-xl bg-slate-200" />
-          <div className="mt-3 h-4 w-32 animate-pulse rounded-xl bg-slate-200" />
-          <div className="mt-5 h-28 animate-pulse rounded-2xl bg-slate-100" />
-        </div>
-      ))}
-    </section>
-  );
-}
-
-function EmptyInquiries() {
-  return (
-    <section className="rounded-3xl border border-dashed border-teal-200 bg-gradient-to-br from-teal-50 to-white p-10 text-center shadow-card">
-      <p className="text-sm font-bold uppercase tracking-[0.18em] text-teal-700">No leads found</p>
-      <h2 className="mt-3 text-2xl font-bold tracking-tight text-slate-950">Your pipeline is ready for demand.</h2>
-      <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-slate-600">
-        Capture website, WhatsApp, referral, and walk-in leads so the dashboard, pipeline, and follow-up engine have real activity.
-      </p>
-      <ActionGuard permission="crm.inquiries.create" featureFlag="crm">
-        <Link href="/inquiries/new" className="btn-primary mt-6">
-          Create first inquiry
-        </Link>
-      </ActionGuard>
-    </section>
   );
 }

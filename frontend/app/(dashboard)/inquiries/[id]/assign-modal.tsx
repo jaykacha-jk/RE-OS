@@ -8,6 +8,8 @@ import type { Inquiry } from '../../../../lib/crm';
 import { employeeLabel, fetchEmployees, type EmployeeOption } from '../../../../lib/crm-api';
 import { ModalShell } from './modal-shell';
 
+const labelClass = 'mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500';
+
 export function AssignModal({
   inquiry,
   onClose,
@@ -52,11 +54,11 @@ export function AssignModal({
 
   return (
     <ModalShell title="Assign inquiry" onClose={onClose} onSave={save} saving={saving} error={error}>
-      <label className="block text-sm font-medium text-slate-700">Owner</label>
+      <label className={labelClass}>Owner</label>
       <select
         value={selected}
         onChange={(e) => setSelected(e.target.value)}
-        className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
+        className="input"
       >
         <option value="">— select employee —</option>
         {employees.map((emp) => (

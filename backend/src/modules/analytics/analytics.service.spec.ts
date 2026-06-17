@@ -39,6 +39,7 @@ function buildService() {
     countAllProperties: jest.fn().mockResolvedValue(0),
     countAllInquiries: jest.fn().mockResolvedValue(0),
     activePlans: jest.fn().mockResolvedValue([]),
+    activeSubscriptionMrr: jest.fn().mockResolvedValue(0),
     monthlyOrgGrowth: jest.fn().mockResolvedValue([]),
   };
 
@@ -235,7 +236,7 @@ describe('AnalyticsService', () => {
   // Revenue
   // ===========================================================================
   describe('getRevenue', () => {
-    it('sums explicit commission first, falling back to booking, property price, then budget', async () => {
+    it('reports received commission as revenue without falling back to booking, property price, or budget', async () => {
       const { service, repo } = buildService();
       repo.wonDeals!.mockResolvedValue([
         {
@@ -273,8 +274,14 @@ describe('AnalyticsService', () => {
       ] as any);
       const res = (await service.getRevenue(TENANT, makeUser(['org_owner']), {} as any)) as any;
       expect(res.won_deals).toBe(4);
-      expect(res.won_amount).toBe(4_345_000);
-      expect(res.avg_deal_value).toBeCloseTo(1_086_250, 1);
+      expect(res.gross_property_value).toBe(9_000_000);
+      expect(res.booking_value).toBe(875_000);
+      expect(res.expected_commission).toBe(370_000);
+      expect(res.received_commission).toBe(150_000);
+      expect(res.outstanding_commission).toBe(220_000);
+      expect(res.won_amount).toBe(150_000);
+      expect(res.avg_deal_value).toBeCloseTo(37_500, 1);
+      expect(res.avg_received_commission).toBeCloseTo(37_500, 1);
       expect(res.currency).toBe('INR');
     });
 
@@ -379,7 +386,7 @@ describe('AnalyticsService', () => {
   // Platform analytics
   // ===========================================================================
   describe('getPlatformDashboard', () => {
-    it('computes org status split, totals and MRR/ARR from tiers', async () => {
+    it('computes org status split, totals and MRR/ARR from subscriptions', async () => {
       const { service, repo } = buildService();
       repo.organizationStatusCounts!.mockResolvedValue([
         { status: 'active', _count: { _all: 6 } },
@@ -390,11 +397,7 @@ describe('AnalyticsService', () => {
         { tier: 'pro', _count: { _all: 4 } },
         { tier: 'basic', _count: { _all: 2 } },
       ] as any);
-      repo.activePlans!.mockResolvedValue([
-        { code: 'starter', price_inr_monthly: 2999 },
-        { code: 'pro', price_inr_monthly: 14999 },
-        { code: 'enterprise', price_inr_monthly: 14999 },
-      ]);
+      repo.activeSubscriptionMrr!.mockResolvedValue(62994);
       repo.countAllUsers!.mockResolvedValue(42);
       repo.countAllProperties!.mockResolvedValue(120);
       repo.countAllInquiries!.mockResolvedValue(310);
@@ -403,9 +406,8 @@ describe('AnalyticsService', () => {
       expect(res.organizations.total).toBe(10);
       expect(res.organizations.active).toBe(6);
       expect(res.organizations.trial).toBe(3);
-      // MRR = pro(4 → pro 14999) + basic(2 → starter 2999) = 59996 + 5998 = 65994
-      expect(res.revenue.mrr).toBe(65994);
-      expect(res.revenue.arr).toBe(65994 * 12);
+      expect(res.revenue.mrr).toBe(62994);
+      expect(res.revenue.arr).toBe(62994 * 12);
       expect(res.totals).toEqual({ users: 42, properties: 120, leads: 310 });
       expect(res.platform_health.status).toBe('healthy');
     });

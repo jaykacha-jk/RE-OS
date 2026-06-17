@@ -14,6 +14,8 @@ export type StoredObject = {
 export interface StorageProvider {
   save(input: { key: string; buffer: Buffer; contentType?: string }): Promise<StoredObject>;
   delete(storageKey: string): Promise<void>;
+  /** Builds the publicly reachable URL for a previously stored key. */
+  publicUrl(key: string): string;
 }
 
 /**
@@ -37,8 +39,12 @@ class LocalStorageProvider implements StorageProvider {
     await writeFile(target, input.buffer);
     return {
       storageKey: input.key,
-      url: `${this.publicBase}/${input.key}`,
+      url: this.publicUrl(input.key),
     };
+  }
+
+  publicUrl(key: string): string {
+    return `${this.publicBase}/${key}`;
   }
 
   async delete(storageKey: string): Promise<void> {
@@ -87,10 +93,13 @@ class S3StorageProvider implements StorageProvider {
         ContentType: input.contentType,
       }),
     );
-    const url = this.cdnBase
-      ? `${this.cdnBase}/${input.key}`
-      : `https://${this.bucket}.s3.${this.region}.amazonaws.com/${input.key}`;
-    return { storageKey: input.key, url };
+    return { storageKey: input.key, url: this.publicUrl(input.key) };
+  }
+
+  publicUrl(key: string): string {
+    return this.cdnBase
+      ? `${this.cdnBase}/${key}`
+      : `https://${this.bucket}.s3.${this.region}.amazonaws.com/${key}`;
   }
 
   async delete(storageKey: string): Promise<void> {
@@ -107,17 +116,36 @@ export class StorageService {
   private readonly provider: StorageProvider;
 
   constructor() {
-    const driver = (process.env.STORAGE_DRIVER ?? 'local').toLowerCase();
-    if (driver === 's3') {
-      if (!process.env.AWS_S3_BUCKET) {
-        this.logger.warn('STORAGE_DRIVER=s3 but AWS_S3_BUCKET is missing; falling back to local.');
-        this.provider = new LocalStorageProvider();
-      } else {
-        this.provider = new S3StorageProvider();
-      }
+    // S3_ENABLED=true selects S3; anything else (or unset) uses local disk.
+    // STORAGE_DRIVER=s3 is still honoured as a legacy alias.
+    const s3Requested =
+      process.env.S3_ENABLED?.toLowerCase() === 'true' ||
+      (process.env.STORAGE_DRIVER ?? 'local').toLowerCase() === 's3';
+
+    if (s3Requested && !process.env.AWS_S3_BUCKET) {
+      this.logger.warn(
+        'S3 storage requested but AWS_S3_BUCKET is missing; falling back to local disk storage.',
+      );
+      this.provider = new LocalStorageProvider();
+    } else if (s3Requested) {
+      this.provider = new S3StorageProvider();
     } else {
       this.provider = new LocalStorageProvider();
     }
+  }
+
+  /**
+   * Resolves a stored value to a publicly reachable URL.
+   * - Absolute URLs (http/https) are pre-hosted externally and returned as-is.
+   * - Anything else is treated as a storage key and prefixed with the active
+   *   provider's public base, so the DB only needs to persist the key/name.
+   */
+  resolveUrl(value: string | null | undefined): string | null {
+    if (!value) return null;
+    if (/^https?:\/\//i.test(value) || value.startsWith('//') || value.startsWith('data:')) {
+      return value;
+    }
+    return this.provider.publicUrl(value);
   }
 
   /** Decodes a base64 (optionally data-URI) payload and stores it under a tenant path. */

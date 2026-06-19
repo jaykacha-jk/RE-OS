@@ -1,10 +1,11 @@
-import { IsIn, IsOptional, IsString } from 'class-validator';
+import { IsIn, IsOptional, IsString, Matches } from 'class-validator';
 
-import { BILLING_CYCLES, BILLING_PLAN_CODES, type BillingCycle, type BillingPlanCode } from '../billing.constants';
+import { BILLING_CYCLES, type BillingCycle } from '../billing.constants';
 
 export class SubscribeDto {
-  @IsIn(BILLING_PLAN_CODES)
-  plan_code!: BillingPlanCode;
+  @IsString()
+  @Matches(/^[a-z][a-z0-9_]{1,48}$/)
+  plan_code!: string;
 
   @IsIn(BILLING_CYCLES)
   billing_cycle!: BillingCycle;

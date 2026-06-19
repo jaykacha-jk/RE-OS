@@ -7,10 +7,11 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { NotificationBell } from '../notifications/notification-bell';
 import { ActionGuard } from '../shared/ActionGuard';
 import { Icon } from '../ui/icons';
-import { getSession, hasActiveSession, isSuperAdmin, type AuthSession } from '../../lib/auth';
+import { getSession, hasActiveSession, isImpersonating, isSuperAdmin, type AuthSession } from '../../lib/auth';
 import { hydrateSession, logout as revokeAndClearSession } from '../../lib/api';
 import { NAV_GROUPS, getDashboardRouteAccess, isTenantOnlyPath, visibleNavFor, type NavGroup } from './nav-config';
 import { CommandPalette } from './command-palette';
+import { ImpersonationBanner } from './impersonation-banner';
 import { UserMenu } from './user-menu';
 
 const COLLAPSE_KEY = 'reos_nav_collapsed';
@@ -48,7 +49,12 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   }, [router]);
 
   useEffect(() => {
-    if (!session || !isSuperAdmin(session) || !isTenantOnlyPath(pathname)) return;
+    const current = getSession();
+    if (current && hasActiveSession(current)) setSession(current);
+  }, [pathname]);
+
+  useEffect(() => {
+    if (!session || !isSuperAdmin(session) || isImpersonating(session) || !isTenantOnlyPath(pathname)) return;
     router.replace('/platform/organizations');
   }, [pathname, router, session]);
 
@@ -113,9 +119,10 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   }
 
   const superAdmin = isSuperAdmin(session);
+  const impersonating = isImpersonating(session);
   const routeAccess = getDashboardRouteAccess(session, pathname);
 
-  if (superAdmin && isTenantOnlyPath(pathname)) {
+  if (superAdmin && !impersonating && isTenantOnlyPath(pathname)) {
     return (
       <div className="premium-gradient flex min-h-screen items-center justify-center px-4 text-slate-600">
         <div className="panel w-full max-w-sm p-6 text-center">
@@ -155,6 +162,12 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
       ) : null}
 
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+        {session.impersonation ? (
+          <ImpersonationBanner
+            impersonation={session.impersonation}
+            onEnded={() => setSession(getSession())}
+          />
+        ) : null}
         <header className="z-30 flex shrink-0 items-center gap-3 border-b border-reos-border bg-white/85 px-4 py-3 backdrop-blur lg:px-8">
           <button
             type="button"
@@ -242,8 +255,17 @@ function Sidebar({
   onToggleGroup: (group: string) => void;
   onLogout: () => void;
 }) {
-  const workspaceLabel = superAdmin ? 'Platform' : 'Workspace';
-  const workspaceSub = superAdmin ? 'Cross-tenant control' : 'Tenant operations';
+  const impersonating = isImpersonating(session);
+  const workspaceLabel = impersonating
+    ? session.impersonation!.org_name
+    : superAdmin
+      ? 'Platform'
+      : 'Workspace';
+  const workspaceSub = impersonating
+    ? 'Support impersonation'
+    : superAdmin
+      ? 'Cross-tenant control'
+      : 'Tenant operations';
 
   return (
     <div className="flex h-full flex-col bg-reos-sidebar text-white">
@@ -261,7 +283,7 @@ function Sidebar({
       {/* Workspace switcher */}
       <div className="px-3">
         <Link
-          href={superAdmin ? '/platform/organizations' : '/settings'}
+          href={impersonating ? '/dashboard' : superAdmin ? '/platform/organizations' : '/settings'}
           className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 transition hover:border-teal-400/40 hover:bg-white/10"
         >
           <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-teal-500/20 text-teal-300">

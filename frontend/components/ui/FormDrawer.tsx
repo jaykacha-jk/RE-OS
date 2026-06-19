@@ -68,7 +68,7 @@ export function FormDrawer({
         </>
       }
     >
-      <form id="form-drawer" onSubmit={handleSubmit} className="space-y-4">
+      <form id="form-drawer" onSubmit={handleSubmit} className="m-0 space-y-4">
         {error ? (
           <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
             {error}

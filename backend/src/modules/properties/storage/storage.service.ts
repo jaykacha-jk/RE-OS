@@ -191,6 +191,35 @@ export class StorageService {
     return this.provider.save({ key, buffer, contentType: input.contentType });
   }
 
+  /** Platform org logo — stored under a tenant-scoped branding path. */
+  async saveOrgLogo(input: {
+    organizationId: string;
+    filename?: string;
+    contentBase64: string;
+    contentType?: string;
+  }): Promise<StoredObject> {
+    const cleaned = input.contentBase64.includes(',')
+      ? input.contentBase64.slice(input.contentBase64.indexOf(',') + 1)
+      : input.contentBase64;
+    const buffer = Buffer.from(cleaned, 'base64');
+    const ext = input.filename
+      ? extname(input.filename)
+      : this.extFromContentType(input.contentType);
+    const hash = randomBytes(8).toString('hex');
+    const key = `platform/organizations/${input.organizationId}/logo/${hash}${ext}`;
+    return this.provider.save({ key, buffer, contentType: input.contentType });
+  }
+
+  /** GST invoice PDF stored per tenant. */
+  async saveInvoicePdf(input: {
+    tenantId: string;
+    invoiceId: string;
+    buffer: Buffer;
+  }): Promise<StoredObject> {
+    const key = `tenants/${input.tenantId}/invoices/${input.invoiceId}.pdf`;
+    return this.provider.save({ key, buffer: input.buffer, contentType: 'application/pdf' });
+  }
+
   /** Size of a base64 (optionally data-URI) payload once decoded, in bytes. */
   decodedByteLength(contentBase64: string): number {
     const cleaned = contentBase64.includes(',')

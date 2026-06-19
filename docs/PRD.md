@@ -43,8 +43,8 @@ Indian real estate agencies operate on WhatsApp, Excel, and fragmented CRMs. Lea
 | Sales Manager | Tenant | Team pipeline, assignments |
 | Sales Executive | Tenant | Close assigned leads |
 | Telecaller | Tenant | Outbound qualification, AI call triggers |
-| Marketing User | Tenant | Listings, SEO content, campaigns |
-| Client | Public + portal | Browse, inquire, chat |
+| Marketing User | Tenant (post-MVP) | Listings, SEO content, campaigns — **not seeded in Phase 1–4** |
+| Client | Public visitor (post-MVP portal) | Browse public listings, submit inquiries, token-based chat — **no authenticated client dashboard in MVP** |
 
 ---
 
@@ -157,9 +157,13 @@ Indian real estate agencies operate on WhatsApp, Excel, and fragmented CRMs. Lea
 
 ### 4.3 Property Module
 
-**Types:** Residential, Commercial  
-**Categories:** Flat, Villa, Plot, Office, Shop, Warehouse  
-**Status:** Draft, Available, Reserved, Sold, Rented, Archived
+**Types:** `residential`, `commercial`  
+**Categories:** `flat`, `villa`, `plot`, `office`, `shop`, `warehouse`  
+**Requirement type:** `buy`, `sell`, `rent` (listing intent — replaces legacy “Buy Residential” shorthand)  
+**Status:** `draft`, `pending_review`, `published`, `reserved`, `sold`, `archived`  
+**Public visibility:** `is_public` — only meaningful when status is `published` (see BR-P07).
+
+> **Spec note:** Legacy docs referenced “Available”, “Rented”, and a separate “Req Complete” field. Shipped enums use the workflow above; requirement fulfillment is tracked on **inquiries** (pipeline stages), not on properties.
 
 **Core fields**
 
@@ -175,7 +179,7 @@ Indian real estate agencies operate on WhatsApp, Excel, and fragmented CRMs. Lea
 | Area sqft | Decimal | 1450 |
 | Amenities | Multi | Gym, Parking, Pool |
 | Tags | Multi | Hot, Exclusive |
-| Status | Enum | Available |
+| Status | Enum | `draft` (new listing) or `published` (live on site) |
 | Assigned agents | M2M | Employee IDs |
 
 **Media:** Images (ordered), video URL, floor plan PDF (S3).

@@ -139,7 +139,9 @@ function AiKnowledgeInner() {
         description="FAQs, policies, and docs powering RAG retrieval for the assistant when OpenAI is configured."
       />
 
-      {error && <div className="rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
+      {error ? (
+        <p className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</p>
+      ) : null}
 
       <section>
         <form onSubmit={runSearch} className="space-y-3 rounded-lg border bg-white p-5">
@@ -216,7 +218,7 @@ function AiKnowledgeInner() {
           }
         />
 
-        {meta ? (
+        {!loading && meta && meta.total > 0 ? (
           <Pagination
             page={meta.page}
             totalPages={meta.total_pages}
@@ -231,10 +233,15 @@ function AiKnowledgeInner() {
       <FilterDrawer
         open={filterOpen}
         onClose={() => setFilterOpen(false)}
-        onApply={() => tableQuery.applyFilters(draft)}
+        title="Filter documents"
+        onApply={() => {
+          tableQuery.applyFilters(draft);
+          setFilterOpen(false);
+        }}
         onClear={() => {
           tableQuery.clearFilters();
           setDraft(Object.fromEntries(FILTER_KEYS.map((k) => [k, ''])));
+          setFilterOpen(false);
         }}
       >
         <FilterField label="Type">

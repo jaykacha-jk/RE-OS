@@ -3,6 +3,7 @@ import { BadRequestException, Injectable, Logger, NotFoundException } from '@nes
 import type { AuthUser } from '../../../common/context/auth-user';
 import { AuditService, type AuditRequestMeta } from '../../audit/audit.service';
 import { CrmService } from '../../crm/crm.service';
+import { QuotaService } from '../../billing/quota.service';
 import { AI_FEATURES, AI_FULL_ACCESS_ROLES, MIN_EXTRACTION_CONFIDENCE } from '../ai.constants';
 import { AiRepository, type AiScope } from '../ai.repository';
 import { CreateAgentDto, UpdateAgentDto } from '../dto/ai-agent.dto';
@@ -24,6 +25,7 @@ export class AiCallService {
     private readonly usage: AiUsageService,
     private readonly crm: CrmService,
     private readonly audit: AuditService,
+    private readonly quota: QuotaService,
   ) {}
 
   private resolveScope(user: AuthUser): AiScope {
@@ -156,6 +158,7 @@ export class AiCallService {
     if (!resolved.voice_enabled) {
       throw new BadRequestException('Voice agent is disabled for this tenant');
     }
+    await this.quota.assertAiMinutesAvailable(tenantId, 1);
     const bundle = this.factory.bundle(resolved.provider);
 
     const agent = dto.agent_id ? await this.repo.getAgent(tenantId, dto.agent_id) : null;
@@ -294,7 +297,7 @@ export class AiCallService {
         ended_at: new Date(),
       });
 
-      await this.repo.incrementAiMinutes(tenantId, durationSeconds / 60);
+      await this.quota.recordAiMinutes(tenantId, durationSeconds / 60);
 
       await this.usage.record({
         tenantId,

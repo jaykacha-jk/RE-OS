@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 
 import { PrismaService } from '../../common/database/prisma.service';
+import { tierToPlanCode } from '../platform/org-tier';
 
 @Injectable()
 export class EmployeesRepository {
@@ -14,13 +15,7 @@ export class EmployeesRepository {
   }
 
   async findPlanMaxEmployees(tier: string) {
-    const tierToPlan: Record<string, string> = {
-      basic: 'starter',
-      starter: 'starter',
-      pro: 'pro',
-      enterprise: 'enterprise',
-    };
-    const planCode = tierToPlan[tier] ?? 'starter';
+    const planCode = tierToPlanCode(tier);
     return this.prisma.dbClient.subscription_plans.findUnique({
       where: { code: planCode },
       select: { max_employees: true },
@@ -127,6 +122,57 @@ export class EmployeesRepository {
     ]);
 
     return { rows, total };
+  }
+
+  async findEmployeeByUserId(tenantId: string, userId: string) {
+    return this.prisma.dbClient.employees.findFirst({
+      where: {
+        deleted_at: null,
+        user: { tenant_id: tenantId, id: userId, deleted_at: null },
+      },
+      select: { id: true },
+    });
+  }
+
+  async findSubordinateEmployeeIds(managerEmployeeId: string) {
+    const rows = await this.prisma.dbClient.employees.findMany({
+      where: { manager_id: managerEmployeeId, deleted_at: null },
+      select: { id: true },
+    });
+    return rows.map((row) => row.id);
+  }
+
+  async countPropertyAssignmentsByEmployee(tenantId: string, employeeIds: string[]) {
+    if (employeeIds.length === 0) return new Map<string, number>();
+    const rows = await this.prisma.dbClient.property_assignments.groupBy({
+      by: ['employee_id'],
+      where: {
+        tenant_id: tenantId,
+        employee_id: { in: employeeIds },
+        property: { deleted_at: null },
+      },
+      _count: { _all: true },
+    });
+    return new Map(rows.map((row) => [row.employee_id, row._count._all]));
+  }
+
+  async countOpenInquiriesByEmployee(tenantId: string, employeeIds: string[]) {
+    if (employeeIds.length === 0) return new Map<string, number>();
+    const rows = await this.prisma.dbClient.inquiries.groupBy({
+      by: ['assigned_employee_id'],
+      where: {
+        tenant_id: tenantId,
+        assigned_employee_id: { in: employeeIds },
+        deleted_at: null,
+        stage: { notIn: ['CLOSED_WON', 'CLOSED_LOST'] },
+      },
+      _count: { _all: true },
+    });
+    return new Map(
+      rows
+        .filter((row) => row.assigned_employee_id)
+        .map((row) => [row.assigned_employee_id!, row._count._all]),
+    );
   }
 
   async createEmployee(input: {

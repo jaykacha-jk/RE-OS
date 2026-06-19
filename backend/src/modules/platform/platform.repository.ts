@@ -1,6 +1,13 @@
 import { Injectable } from '@nestjs/common';
 
 import { PrismaService } from '../../common/database/prisma.service';
+import { normalizeOrgTier } from './org-tier';
+
+function tierFilterValues(tier: string): string | { in: string[] } {
+  const normalized = normalizeOrgTier(tier);
+  if (normalized === 'starter') return { in: ['starter', 'basic'] };
+  return normalized;
+}
 
 @Injectable()
 export class PlatformRepository {
@@ -28,7 +35,7 @@ export class PlatformRepository {
     const where = {
       deleted_at: null,
       ...(input.status ? { status: input.status } : {}),
-      ...(input.tier ? { tier: input.tier } : {}),
+      ...(input.tier ? { tier: tierFilterValues(input.tier) } : {}),
     };
 
     const [rows, total] = await Promise.all([
@@ -72,12 +79,22 @@ export class PlatformRepository {
 
   async updateOrganization(
     id: string,
-    data: { status?: string; tier?: string; billing_email?: string; name?: string },
+    data: { status?: string; tier?: string; billing_email?: string; name?: string; logo_url?: string | null },
   ) {
     return this.prisma.dbClient.organizations.update({
       where: { id },
       data,
       include: { organization_usage: true },
+    });
+  }
+
+  async softDeleteOrganization(id: string) {
+    return this.prisma.dbClient.organizations.update({
+      where: { id },
+      data: {
+        deleted_at: new Date(),
+        status: 'cancelled',
+      },
     });
   }
 

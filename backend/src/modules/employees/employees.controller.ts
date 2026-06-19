@@ -75,8 +75,12 @@ export class EmployeesController {
   @Get(':id')
   @RequirePermissions('employees.read')
   @ApiOperation({ summary: 'Get employee by id' })
-  async getOne(@TenantId() tenantId: string, @Param('id') id: string) {
-    const data = await this.employeesService.getEmployee(tenantId, id);
+  async getOne(
+    @TenantId() tenantId: string,
+    @Param('id') id: string,
+    @CurrentUser() user: AuthUser,
+  ) {
+    const data = await this.employeesService.getEmployee(tenantId, id, user);
     return {
       data,
       meta: { request_id: randomBytes(16).toString('hex') },

@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 
 import { PrismaService } from '../../common/database/prisma.service';
 import { TenantScopedRepository } from '../../common/database/tenant-scoped.repository';
+import { tierToPlanCode } from '../platform/org-tier';
 
 export type PropertyScope = { type: 'all' } | { type: 'employees'; employeeIds: string[] };
 
@@ -47,13 +48,7 @@ export class PropertiesRepository extends TenantScopedRepository {
   }
 
   async findPlanMaxProperties(tier: string) {
-    const tierToPlan: Record<string, string> = {
-      basic: 'starter',
-      starter: 'starter',
-      pro: 'pro',
-      enterprise: 'enterprise',
-    };
-    const planCode = tierToPlan[tier] ?? 'starter';
+    const planCode = tierToPlanCode(tier);
     return this.prisma.dbClient.subscription_plans.findUnique({
       where: { code: planCode },
       select: { max_properties: true },

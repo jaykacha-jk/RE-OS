@@ -54,13 +54,15 @@ export default function InvoicesPage() {
     <div className="space-y-6">
       <PageHeader title="Invoices" description="Payment history and GST invoice records." />
 
-      {error && <div className="rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
+      {error ? (
+        <p className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</p>
+      ) : null}
 
       {assistedBilling ? (
         <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900">
           <p className="font-bold">Invoice PDFs are assisted during launch.</p>
           <p className="mt-1">
-            The product stores invoice records when payments are processed, but GST PDF generation/upload is handled offline until live billing mode is enabled.
+            Assisted billing mode records invoices when payments are captured. GST PDFs are generated automatically and stored for download when payment webhooks succeed.
           </p>
         </div>
       ) : null}

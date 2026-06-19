@@ -3,9 +3,11 @@
 import { useState } from 'react';
 
 import { FormDrawer, FormField, FormSection, PhoneInput } from '../../../components/ui';
+import { QuotaNotice, quotaApiNoticeProps } from '../../../components/billing/quota-notice';
 import { isValidIndianMobile, parseNationalDigits, toE164 } from '../../../lib/phone';
 import { apiFetch } from '../../../lib/api';
 import { getSession } from '../../../lib/auth';
+import { parseQuotaApiError, type QuotaErrorDetails } from '../../../lib/quota';
 
 const ROLES = [
   'org_admin',
@@ -37,6 +39,7 @@ export function CreateEmployeeForm({
   onCreated: () => void;
 }) {
   const [error, setError] = useState<string | null>(null);
+  const [quotaError, setQuotaError] = useState<QuotaErrorDetails | null>(null);
   const [invite, setInvite] = useState<CreateEmployeeResponse | null>(null);
   const [copied, setCopied] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -57,6 +60,7 @@ export function CreateEmployeeForm({
 
     setLoading(true);
     setError(null);
+    setQuotaError(null);
     setInvite(null);
     setCopied(false);
 
@@ -80,7 +84,13 @@ export function CreateEmployeeForm({
       setInvite(data);
       onCreated();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Create failed');
+      const parsed = parseQuotaApiError(err);
+      if (parsed) {
+        setQuotaError(parsed);
+        setError(null);
+      } else {
+        setError(err instanceof Error ? err.message : 'Create failed');
+      }
     } finally {
       setLoading(false);
     }
@@ -99,6 +109,7 @@ export function CreateEmployeeForm({
         onClose();
         setInvite(null);
         setError(null);
+        setQuotaError(null);
       }}
       title="Add employee"
       description="Invite a tenant-scoped team member and assign their operating role."
@@ -107,6 +118,7 @@ export function CreateEmployeeForm({
       error={error}
       submitLabel="Create employee"
     >
+      {quotaError ? <QuotaNotice {...quotaApiNoticeProps(quotaError)} /> : null}
       <FormSection compact>
         <FormField label="First name" required>
           <input value={firstName} onChange={(e) => setFirstName(e.target.value)} required className="input" />

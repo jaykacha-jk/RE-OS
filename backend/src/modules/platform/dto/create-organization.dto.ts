@@ -1,6 +1,8 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { IsEmail, IsIn, IsString, Matches } from 'class-validator';
 
+import { ORG_TIER_CODES } from '../org-tier';
+
 export class CreateOrganizationDto {
   @ApiProperty({ example: 'XYZ Realty' })
   @IsString()
@@ -13,8 +15,8 @@ export class CreateOrganizationDto {
   })
   slug!: string;
 
-  @ApiProperty({ enum: ['basic', 'pro', 'enterprise'] })
-  @IsIn(['basic', 'pro', 'enterprise'])
+  @ApiProperty({ enum: ORG_TIER_CODES })
+  @IsIn([...ORG_TIER_CODES, 'basic'])
   tier!: string;
 
   @ApiProperty({ example: 'bill@xyz.realty' })

@@ -5,6 +5,7 @@ import {
   saveSession,
   sessionFromMe,
   usesCookieAuth,
+  effectiveTenantId,
   type AuthSession,
   type MeResponse,
 } from './auth';
@@ -60,6 +61,7 @@ async function performRefresh(): Promise<string | null> {
       refresh_token: data.refresh_token,
       expires_in: data.expires_in,
       user: data.user,
+      impersonation: getSession()?.impersonation,
     });
 
     return data.access_token ?? (cookieMode ? 'cookie' : null);
@@ -100,12 +102,14 @@ async function rawFetch(
 ): Promise<Response> {
   const { token, headers, ...rest } = options;
   const resolved = resolveToken(token);
+  const impersonationTenantId = effectiveTenantId(getSession());
   return fetch(`${API_BASE}${path}`, {
     ...rest,
     credentials: 'include',
     headers: {
       'Content-Type': 'application/json',
       ...(resolved ? { Authorization: `Bearer ${resolved}` } : {}),
+      ...(impersonationTenantId ? { 'X-Tenant-Id': impersonationTenantId } : {}),
       ...headers,
     },
   });
@@ -160,6 +164,16 @@ export async function apiFetch<T>(
 
 export async function logout(): Promise<void> {
   const session = getSession();
+  if (session?.impersonation?.tenant_id) {
+    try {
+      await rawFetch('/api/v1/platform/impersonation/end', {
+        method: 'POST',
+        body: JSON.stringify({ tenant_id: session.impersonation.tenant_id }),
+      });
+    } catch {
+      /* proceed with logout */
+    }
+  }
   try {
     await fetch(`${API_BASE}/api/v1/auth/logout`, {
       method: 'POST',

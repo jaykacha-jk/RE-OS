@@ -17,6 +17,9 @@ import {
   type PropertyHistoryEntry,
 } from '../../../../lib/properties';
 import { AssignModal } from './assign-modal';
+import { PropertyMapPreview } from '../../../../components/properties/property-map-preview';
+import { PropertyNearbyPlaces } from '../../../../components/properties/property-nearby-places';
+import { PropertyVideoManager } from '../../../../components/properties/property-video-manager';
 
 function changeLabel(type: string): string {
   const map: Record<string, string> = {
@@ -175,6 +178,8 @@ export default function PropertyDetailPage() {
     ['City', property.city],
     ['State', property.state ?? '—'],
     ['Pincode', property.pincode ?? '—'],
+    ['Latitude', property.latitude?.toString() ?? '—'],
+    ['Longitude', property.longitude?.toString() ?? '—'],
     ['Bedrooms', property.bedrooms?.toString() ?? '—'],
     ['Bathrooms', property.bathrooms?.toString() ?? '—'],
     ['Balconies', property.balconies?.toString() ?? '—'],
@@ -324,6 +329,26 @@ export default function PropertyDetailPage() {
               </div>
             </ActionGuard>
           </section>
+
+          <PropertyVideoManager
+            propertyId={property.id}
+            videos={property.videos}
+            title={property.title}
+          />
+
+          {property.latitude != null && property.longitude != null ? (
+            <>
+              <PropertyMapPreview
+                latitude={property.latitude}
+                longitude={property.longitude}
+                title={property.title}
+              />
+              <PropertyNearbyPlaces
+                latitude={property.latitude}
+                longitude={property.longitude}
+              />
+            </>
+          ) : null}
 
           {/* Details */}
           <section className="card p-5">

@@ -64,14 +64,60 @@ describe('PermissionsGuard', () => {
 });
 
 describe('TenantGuard', () => {
-  it('requires tenant context and attaches req.tenant', () => {
-    const guard = new TenantGuard();
-    const req = { user: { tenantId: 'tenant_1' } };
+  const prisma = {
+    dbClient: {
+      organizations: {
+        findFirst: jest.fn(),
+      },
+    },
+  };
 
-    expect(guard.canActivate(contextWithRequest(req))).toBe(true);
+  it('requires tenant context and attaches req.tenant', async () => {
+    const guard = new TenantGuard(prisma as never);
+    const req = { user: { tenantId: 'tenant_1' }, headers: {} };
+
+    await expect(guard.canActivate(contextWithRequest(req))).resolves.toBe(true);
     expect(req).toHaveProperty('tenant', { tenantId: 'tenant_1' });
-    expect(() => guard.canActivate(contextWithRequest({ user: { tenantId: null } }))).toThrow(
-      'Tenant context required',
+    await expect(
+      guard.canActivate(contextWithRequest({ user: { tenantId: null }, headers: {} })),
+    ).rejects.toThrow('Tenant context required');
+  });
+
+  it('allows super admin impersonation with X-Tenant-Id header', async () => {
+    prisma.dbClient.organizations.findFirst.mockResolvedValue({ id: 'org_1' });
+    const guard = new TenantGuard(prisma as never);
+    const req = {
+      user: {
+        userId: 'admin_1',
+        tenantId: null,
+        roles: ['super_admin'],
+        permissions: ['platform.impersonate'],
+      },
+      headers: { 'x-tenant-id': 'org_1' },
+    };
+
+    await expect(guard.canActivate(contextWithRequest(req))).resolves.toBe(true);
+    expect(req).toHaveProperty('tenant', {
+      tenantId: 'org_1',
+      impersonated: true,
+      impersonatorUserId: 'admin_1',
+    });
+  });
+
+  it('rejects impersonation without permission', async () => {
+    const guard = new TenantGuard(prisma as never);
+    const req = {
+      user: {
+        userId: 'admin_1',
+        tenantId: null,
+        roles: ['super_admin'],
+        permissions: [],
+      },
+      headers: { 'x-tenant-id': 'org_1' },
+    };
+
+    await expect(guard.canActivate(contextWithRequest(req))).rejects.toThrow(
+      'Missing platform.impersonate permission',
     );
   });
 });

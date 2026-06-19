@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   NotFoundException,
   UnauthorizedException,
@@ -20,12 +21,17 @@ import {
 import { BillingRepository } from './billing.repository';
 import { CancelSubscriptionDto } from './dto/cancel-subscription.dto';
 import { ChangePlanDto } from './dto/change-plan.dto';
+import { CreatePlatformPlanDto } from './dto/create-platform-plan.dto';
 import { ListInvoicesQueryDto } from './dto/list-invoices-query.dto';
 import { RazorpayWebhookDto } from './dto/razorpay-webhook.dto';
 import { SubscribeDto } from './dto/subscribe.dto';
+import { UpdatePlatformPlanDto } from './dto/update-platform-plan.dto';
 import { MockProvider } from './providers/mock.provider';
 import type { PaymentProvider, ProviderSubscriptionResult } from './providers/payment-provider';
 import { RazorpayProvider } from './providers/razorpay.provider';
+import { buildInvoicePdf } from './invoice-pdf';
+import { StorageService } from '../properties/storage/storage.service';
+import { tierToPlanCode } from '../platform/org-tier';
 
 type SubscriptionRow = NonNullable<Awaited<ReturnType<BillingRepository['findCurrentSubscription']>>>;
 
@@ -37,6 +43,7 @@ export class BillingService {
     private readonly razorpayProvider: RazorpayProvider,
     private readonly audit: AuditService,
     private readonly events: DomainEventBus,
+    private readonly storage: StorageService,
   ) {}
 
   private provider(): PaymentProvider {
@@ -89,6 +96,7 @@ export class BillingService {
     max_properties: number;
     max_employees: number;
     storage_limit_bytes: bigint;
+    max_ai_minutes_monthly: number;
     features: Prisma.JsonValue;
     is_active: boolean;
   }) {
@@ -101,6 +109,7 @@ export class BillingService {
       property_limit: plan.max_properties,
       employee_limit: plan.max_employees,
       storage_limit: Number(plan.storage_limit_bytes),
+      ai_minutes_limit: plan.max_ai_minutes_monthly,
       features: plan.features,
       is_active: plan.is_active,
     };
@@ -146,7 +155,7 @@ export class BillingService {
       total: invoice.total,
       currency: invoice.currency,
       status: invoice.status,
-      pdf_url: invoice.pdf_url,
+      pdf_url: invoice.pdf_url ? this.storage.resolveUrl(invoice.pdf_url) : null,
       issued_at: invoice.issued_at.toISOString(),
       paid_at: invoice.paid_at?.toISOString() ?? null,
     };
@@ -335,10 +344,41 @@ export class BillingService {
     };
   }
 
+  async syncOrganizationPlanFromPlatform(
+    tenantId: string,
+    tier: string,
+    actor: AuthUser,
+    meta?: AuditRequestMeta,
+  ) {
+    const planCode = tierToPlanCode(tier);
+    const result = await this.changePlan(
+      tenantId,
+      { plan_code: planCode, billing_cycle: 'monthly' },
+      actor,
+      meta,
+    );
+    const subscriptionId =
+      result && 'subscription' in result
+        ? result.subscription?.id
+        : result && 'id' in result
+          ? result.id
+          : null;
+    await this.audit.record({
+      actor,
+      tenantId,
+      action: 'platform.subscription.synced',
+      entityType: 'subscription',
+      entityId: subscriptionId ?? tenantId,
+      afterState: { plan_code: planCode },
+      meta,
+    });
+    return result;
+  }
+
   async getUsage(tenantId: string) {
     const org = await this.repo.findOrganization(tenantId);
     if (!org) throw new NotFoundException('Organization not found');
-    const planCode = org.tier === 'basic' ? 'starter' : org.tier;
+    const planCode = tierToPlanCode(org.tier);
     const plan = await this.repo.findPlanByCode(planCode);
     if (!plan) throw new NotFoundException('Plan not found');
 
@@ -467,6 +507,42 @@ export class BillingService {
     }
   }
 
+  private async attachInvoicePdf(
+    tenantId: string,
+    invoice: {
+      id: string;
+      invoice_number: string;
+      subtotal: number;
+      tax: number;
+      total: number;
+      currency: string;
+      issued_at: Date;
+    },
+    planName: string,
+  ) {
+    try {
+      const org = await this.repo.findOrganization(tenantId);
+      const buffer = buildInvoicePdf({
+        invoiceNumber: invoice.invoice_number,
+        organizationName: org?.name ?? 'Customer',
+        planName,
+        subtotal: invoice.subtotal,
+        tax: invoice.tax,
+        total: invoice.total,
+        currency: invoice.currency,
+        issuedAt: invoice.issued_at,
+      });
+      const stored = await this.storage.saveInvoicePdf({
+        tenantId,
+        invoiceId: invoice.id,
+        buffer,
+      });
+      await this.repo.updateInvoicePdfUrl(tenantId, invoice.id, stored.storageKey);
+    } catch {
+      // PDF generation must not block payment capture.
+    }
+  }
+
   private async handlePaymentCaptured(subscription: SubscriptionRow, dto: RazorpayWebhookDto) {
     const payment = this.extractPayment(dto.payload);
     const subtotal = this.amountForPlan(subscription.plan, subscription.billing_cycle as BillingCycle);
@@ -486,6 +562,12 @@ export class BillingService {
       provider: 'razorpay',
       paidAt: new Date(),
     });
+
+    await this.attachInvoicePdf(
+      subscription.tenant_id,
+      invoice,
+      subscription.plan.name,
+    );
 
     await this.repo.createPayment({
       tenantId: subscription.tenant_id,
@@ -605,5 +687,103 @@ export class BillingService {
         cancelled: churned,
       },
     };
+  }
+
+  async listPlatformPlans() {
+    const plans = await this.repo.listAllPlans();
+    return Promise.all(
+      plans.map(async (plan) => ({
+        ...this.formatPlan(plan),
+        active_subscriptions: await this.repo.countActiveSubscriptionsForPlan(plan.id),
+      })),
+    );
+  }
+
+  async getPlatformPlan(id: string) {
+    const plan = await this.repo.findPlanById(id);
+    if (!plan) throw new NotFoundException('Plan not found');
+    const activeSubscriptions = await this.repo.countActiveSubscriptionsForPlan(id);
+    return { ...this.formatPlan(plan), active_subscriptions: activeSubscriptions };
+  }
+
+  async createPlatformPlan(dto: CreatePlatformPlanDto, actor: AuthUser, meta?: AuditRequestMeta) {
+    const existing = await this.repo.findPlanByCode(dto.code);
+    if (existing) {
+      throw new ConflictException({ code: 'PLAN_CODE_EXISTS', message: 'Plan code already exists' });
+    }
+
+    const created = await this.repo.createPlan({
+      code: dto.code,
+      name: dto.name,
+      price_inr_monthly: dto.price_inr_monthly,
+      price_inr_yearly: dto.price_inr_yearly ?? null,
+      max_properties: dto.max_properties,
+      max_employees: dto.max_employees,
+      storage_limit_bytes: BigInt(dto.storage_limit_bytes ?? 0),
+      max_ai_minutes_monthly: dto.max_ai_minutes_monthly,
+      features: (dto.features ?? {}) as Prisma.InputJsonValue,
+      is_active: dto.is_active ?? true,
+    });
+
+    await this.audit.record({
+      actor,
+      tenantId: null,
+      action: 'platform.plans.created',
+      entityType: 'subscription_plan',
+      entityId: created.id,
+      afterState: { code: created.code, name: created.name, is_active: created.is_active },
+      meta,
+    });
+
+    return this.formatPlan(created);
+  }
+
+  async updatePlatformPlan(
+    id: string,
+    dto: UpdatePlatformPlanDto,
+    actor: AuthUser,
+    meta?: AuditRequestMeta,
+  ) {
+    const plan = await this.repo.findPlanById(id);
+    if (!plan) throw new NotFoundException('Plan not found');
+
+    if (dto.is_active === false) {
+      const activeCount = await this.repo.countActiveSubscriptionsForPlan(id);
+      if (activeCount > 0) {
+        throw new BadRequestException({
+          code: 'PLAN_HAS_SUBSCRIPTIONS',
+          message: `Cannot deactivate plan with ${activeCount} active subscription(s). Migrate tenants first.`,
+        });
+      }
+    }
+
+    const updated = await this.repo.updatePlan(id, {
+      ...(dto.name !== undefined ? { name: dto.name } : {}),
+      ...(dto.price_inr_monthly !== undefined ? { price_inr_monthly: dto.price_inr_monthly } : {}),
+      ...(dto.price_inr_yearly !== undefined ? { price_inr_yearly: dto.price_inr_yearly } : {}),
+      ...(dto.max_properties !== undefined ? { max_properties: dto.max_properties } : {}),
+      ...(dto.max_employees !== undefined ? { max_employees: dto.max_employees } : {}),
+      ...(dto.storage_limit_bytes !== undefined
+        ? { storage_limit_bytes: BigInt(dto.storage_limit_bytes) }
+        : {}),
+      ...(dto.max_ai_minutes_monthly !== undefined
+        ? { max_ai_minutes_monthly: dto.max_ai_minutes_monthly }
+        : {}),
+      ...(dto.features !== undefined ? { features: dto.features as Prisma.InputJsonValue } : {}),
+      ...(dto.is_active !== undefined ? { is_active: dto.is_active } : {}),
+    });
+
+    await this.audit.record({
+      actor,
+      tenantId: null,
+      action: 'platform.plans.updated',
+      entityType: 'subscription_plan',
+      entityId: id,
+      beforeState: { code: plan.code, name: plan.name, is_active: plan.is_active },
+      afterState: { code: updated.code, name: updated.name, is_active: updated.is_active },
+      meta,
+    });
+
+    return this.formatPlan(updated);
   }
 }

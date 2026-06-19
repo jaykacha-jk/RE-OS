@@ -49,4 +49,23 @@ describe('MockAiProvider', () => {
     const viaProvider = (await provider.embed('test parity')).embedding;
     expect(hashingEmbedding('test parity', 128)).toEqual(viaProvider);
   });
+
+  describe('verifyWebhookSignature', () => {
+    const original = process.env.MOCK_AI_PROVIDER;
+
+    afterEach(() => {
+      if (original === undefined) delete process.env.MOCK_AI_PROVIDER;
+      else process.env.MOCK_AI_PROVIDER = original;
+    });
+
+    it('rejects webhooks by default (fail-closed)', () => {
+      delete process.env.MOCK_AI_PROVIDER;
+      expect(provider.verifyWebhookSignature('{}', undefined)).toBe(false);
+    });
+
+    it('accepts webhooks only when MOCK_AI_PROVIDER=true', () => {
+      process.env.MOCK_AI_PROVIDER = 'true';
+      expect(provider.verifyWebhookSignature('{}', undefined)).toBe(true);
+    });
+  });
 });

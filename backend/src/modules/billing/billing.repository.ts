@@ -163,6 +163,13 @@ export class BillingRepository {
     return { rows, total };
   }
 
+  async updateInvoicePdfUrl(tenantId: string, invoiceId: string, pdfUrl: string) {
+    return this.prisma.dbClient.invoices.updateMany({
+      where: { id: invoiceId, tenant_id: tenantId, deleted_at: null },
+      data: { pdf_url: pdfUrl },
+    });
+  }
+
   async createPayment(input: {
     tenantId: string;
     subscriptionId: string;
@@ -281,5 +288,53 @@ export class BillingRepository {
     ]);
 
     return { subscriptions, invoices, payments, plans: planRows };
+  }
+
+  async listAllPlans() {
+    return this.prisma.dbClient.subscription_plans.findMany({
+      orderBy: [{ is_active: 'desc' }, { price_inr_monthly: 'asc' }],
+    });
+  }
+
+  async findPlanById(id: string) {
+    return this.prisma.dbClient.subscription_plans.findUnique({ where: { id } });
+  }
+
+  async countActiveSubscriptionsForPlan(planId: string) {
+    return this.prisma.dbClient.subscriptions.count({
+      where: { plan_id: planId, deleted_at: null, status: { not: 'cancelled' } },
+    });
+  }
+
+  async createPlan(data: Prisma.subscription_plansCreateInput) {
+    return this.prisma.dbClient.subscription_plans.create({ data });
+  }
+
+  async updatePlan(id: string, data: Prisma.subscription_plansUpdateInput) {
+    return this.prisma.dbClient.subscription_plans.update({ where: { id }, data });
+  }
+
+  async adjustStorageBytes(tenantId: string, deltaBytes: number) {
+    if (!deltaBytes) return;
+    try {
+      await this.prisma.dbClient.organization_usage.update({
+        where: { tenant_id: tenantId },
+        data: { storage_bytes: { increment: BigInt(deltaBytes) } },
+      });
+    } catch {
+      // Legacy tenants without usage rows — non-fatal.
+    }
+  }
+
+  async incrementAiMinutes(tenantId: string, minutes: number) {
+    if (minutes <= 0) return;
+    try {
+      await this.prisma.dbClient.organization_usage.update({
+        where: { tenant_id: tenantId },
+        data: { ai_minutes_used: { increment: Math.max(0, Math.round(minutes)) } },
+      });
+    } catch {
+      // Legacy tenants without usage rows — non-fatal.
+    }
   }
 }

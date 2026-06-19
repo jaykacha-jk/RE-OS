@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 
+import { QuotaService } from '../../billing/quota.service';
 import { AI_FEATURES, PROMPT_KEYS } from '../ai.constants';
 import { AiRepository } from '../ai.repository';
 import { AiChatMessageDto, StartAiChatDto } from '../dto/ai-chat.dto';
@@ -33,6 +34,7 @@ export class AiChatService {
     private readonly knowledge: KnowledgeBaseService,
     private readonly prompts: PromptService,
     private readonly usage: AiUsageService,
+    private readonly quota: QuotaService,
   ) {}
 
   async start(tenantId: string, dto: StartAiChatDto): Promise<AiChatReply | { ai_conversation_id: string }> {
@@ -89,6 +91,8 @@ export class AiChatService {
   async sendMessage(tenantId: string, id: string, dto: AiChatMessageDto): Promise<AiChatReply> {
     const conv = await this.repo.getAiConversation(tenantId, id);
     if (!conv) throw new NotFoundException('AI conversation not found');
+
+    await this.quota.assertAiMinutesAvailable(tenantId, 1);
 
     const resolved = await this.settings.resolve(tenantId);
     const bundle = this.factory.bundle(resolved.provider);
@@ -179,6 +183,8 @@ export class AiChatService {
       entityId: id,
       outcome: handoff ? 'handoff' : 'success',
     });
+
+    await this.quota.recordAiMinutes(tenantId, 1);
 
     return {
       ai_conversation_id: id,

@@ -1,5 +1,11 @@
 export type FeatureFlags = Record<string, boolean>;
 
+export type ImpersonationState = {
+  tenant_id: string;
+  org_name: string;
+  org_slug: string;
+};
+
 export type AuthSession = {
   access_token?: string;
   refresh_token?: string;
@@ -13,6 +19,8 @@ export type AuthSession = {
     permissions: string[];
     feature_flags?: FeatureFlags;
   };
+  /** Super Admin support login into a tenant workspace. */
+  impersonation?: ImpersonationState | null;
 };
 
 const SESSION_KEY = 'reos_session';
@@ -73,6 +81,7 @@ export function sessionFromMe(data: MeResponse, existing?: AuthSession | null): 
       permissions: data.permissions,
       feature_flags: data.feature_flags,
     },
+    impersonation: existing?.impersonation,
   };
 }
 
@@ -100,6 +109,24 @@ export function clearSession() {
 
 export function isSuperAdmin(session: AuthSession | null) {
   return session?.user.roles.includes('super_admin') ?? false;
+}
+
+export function isImpersonating(session: AuthSession | null): boolean {
+  return !!session?.impersonation?.tenant_id;
+}
+
+export function effectiveTenantId(session: AuthSession | null): string | null {
+  if (!session) return null;
+  return session.impersonation?.tenant_id ?? session.user.tenant_id;
+}
+
+export function sessionWithEffectiveTenant(session: AuthSession): AuthSession {
+  const tenantId = effectiveTenantId(session);
+  if (!tenantId || tenantId === session.user.tenant_id) return session;
+  return {
+    ...session,
+    user: { ...session.user, tenant_id: tenantId },
+  };
 }
 
 export function hasPermission(session: AuthSession | null, permission: string) {

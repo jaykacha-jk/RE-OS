@@ -133,6 +133,7 @@ function PlatformDashboard({ session }: { session: AuthSession }) {
             </div>
 
             <aside className="space-y-5 lg:col-span-4">
+              <PlatformQuickActions />
               <PlatformBrief data={data} />
               <SystemHealth rows={healthRows} updatedAt={data.generated_at} />
               <ActivityFeed />
@@ -343,6 +344,62 @@ function BriefStat({ label, value, detail }: { label: string; value: string; det
       <p className="mt-1.5 text-xl font-bold tabular-nums tracking-tight text-teal-800">{value}</p>
       <p className="mt-0.5 text-2xs text-slate-500">{detail}</p>
     </div>
+  );
+}
+
+function PlatformQuickActions() {
+  const actions = [
+    {
+      href: '/platform/organizations',
+      label: 'Manage organizations',
+      helper: 'Create tenants, set tier and billing email',
+      icon: 'organizations' as IconName,
+    },
+    {
+      href: '/platform/plans',
+      label: 'Subscription plans',
+      helper: 'Edit catalog, limits, and pricing',
+      icon: 'billing' as IconName,
+    },
+    {
+      href: '/platform/billing',
+      label: 'Revenue & billing',
+      helper: 'MRR, churn, and invoice health',
+      icon: 'performance' as IconName,
+    },
+    {
+      href: '/platform/audit-logs',
+      label: 'Platform audit logs',
+      helper: 'Cross-tenant security and change trail',
+      icon: 'audit' as IconName,
+    },
+  ];
+
+  return (
+    <section className="card p-5">
+      <header className="mb-4">
+        <h3 className="text-h3">Platform actions</h3>
+        <p className="text-caption mt-1">Operate the multi-tenant control plane</p>
+      </header>
+      <div className="grid gap-2.5">
+        {actions.map((action) => (
+          <Link
+            key={action.href}
+            href={action.href}
+            className="group flex items-center gap-3 rounded-xl border border-reos-border bg-white p-3 transition hover:-translate-y-0.5 hover:border-teal-200 hover:bg-teal-50/50 hover:shadow-card"
+          >
+            <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-teal-50 text-teal-700">
+              <Icon name={action.icon} className="h-[18px] w-[18px]" />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-sm font-semibold text-slate-800">{action.label}</span>
+              <span className="block truncate text-2xs text-slate-500">{action.helper}</span>
+            </span>
+            <Icon name="arrowUpRight" className="h-4 w-4 text-slate-300 transition group-hover:text-teal-500" />
+          </Link>
+        ))}
+      </div>
+    </section>
   );
 }
 

@@ -54,6 +54,10 @@ export class HttpExceptionFilter implements ExceptionFilter {
       }
 
       code = this.mapStatusToCode(status, code, exception);
+    } else if (this.isPayloadTooLarge(exception)) {
+      status = HttpStatus.PAYLOAD_TOO_LARGE;
+      code = 'PAYLOAD_TOO_LARGE';
+      message = 'Request body is too large';
     }
 
     // Observability: log server-side faults (5xx) with full stack + request
@@ -109,8 +113,18 @@ export class HttpExceptionFilter implements ExceptionFilter {
         return 'BUSINESS_RULE_VIOLATION';
       case HttpStatus.TOO_MANY_REQUESTS:
         return 'RATE_LIMITED';
+      case HttpStatus.PAYLOAD_TOO_LARGE:
+        return 'PAYLOAD_TOO_LARGE';
       default:
         return 'INTERNAL_ERROR';
     }
+  }
+
+  private isPayloadTooLarge(exception: unknown): boolean {
+    if (!(exception instanceof Error)) return false;
+    return (
+      exception.name === 'PayloadTooLargeError' ||
+      exception.message.toLowerCase().includes('request entity too large')
+    );
   }
 }

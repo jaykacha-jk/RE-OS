@@ -21,12 +21,16 @@ describe('EmployeesService invitations', () => {
     };
     const auditService = { record: jest.fn() };
     const events = { emit: jest.fn() };
+    const quota = {
+      assertCanCreateEmployee: jest.fn().mockResolvedValue({}),
+    };
     const service = new EmployeesService(
       employeesRepository as never,
       auditService as never,
       events as never,
+      quota as never,
     );
-    return { service, employeesRepository, auditService, events };
+    return { service, employeesRepository, auditService, events, quota };
   };
 
   beforeEach(() => {
@@ -49,7 +53,6 @@ describe('EmployeesService invitations', () => {
       tier: 'starter',
       organization_usage: { employees_count: 1 },
     });
-    employeesRepository.findPlanMaxEmployees.mockResolvedValue({ max_employees: 5 });
     employeesRepository.findUserByEmail.mockResolvedValue(null);
     employeesRepository.findRoleByCode.mockResolvedValue({
       id: 'role_sales',
@@ -119,7 +122,6 @@ describe('EmployeesService invitations', () => {
       tier: 'starter',
       organization_usage: { employees_count: 1 },
     });
-    employeesRepository.findPlanMaxEmployees.mockResolvedValue({ max_employees: 5 });
     employeesRepository.findUserByEmail.mockResolvedValue(null);
     employeesRepository.findRoleByCode.mockResolvedValue({
       id: 'role_admin',
@@ -212,6 +214,90 @@ describe('EmployeesService invitations', () => {
       ),
     ).rejects.toThrow('Insufficient role hierarchy');
     expect(employeesRepository.softDeleteEmployee).not.toHaveBeenCalled();
+  });
+});
+
+describe('EmployeesService — peer access', () => {
+  const buildService = () => {
+    const employeesRepository = {
+      findEmployeeById: jest.fn(),
+      findEmployeeByUserId: jest.fn(),
+      findSubordinateEmployeeIds: jest.fn(),
+      countPropertyAssignmentsByEmployee: jest.fn().mockResolvedValue(new Map()),
+      countOpenInquiriesByEmployee: jest.fn().mockResolvedValue(new Map()),
+    };
+    const service = new EmployeesService(
+      employeesRepository as never,
+      { record: jest.fn() } as never,
+      { emit: jest.fn() } as never,
+      { assertCanCreateEmployee: jest.fn() } as never,
+    );
+    return { service, employeesRepository };
+  };
+
+  const targetEmployee = {
+    id: 'employee_peer',
+    status: 'active',
+    manager_id: null,
+    joined_at: new Date('2026-06-12T14:00:00.000Z'),
+    user: {
+      id: 'user_peer',
+      email: 'peer@acme.in',
+      phone: null,
+      first_name: 'Peer',
+      last_name: 'User',
+      status: 'active',
+      user_roles: [{ role: { code: 'sales_executive', name: 'Sales Executive' } }],
+    },
+    manager: null,
+  };
+
+  it('returns 403 when a sales executive requests a peer employee', async () => {
+    const { service, employeesRepository } = buildService();
+    employeesRepository.findEmployeeById.mockResolvedValue(targetEmployee);
+    employeesRepository.findEmployeeByUserId.mockResolvedValue({ id: 'employee_me' });
+
+    await expect(
+      service.getEmployee(
+        'tenant_1',
+        'employee_peer',
+        {
+          userId: 'user_me',
+          tenantId: 'tenant_1',
+          roles: ['sales_executive'],
+          permissions: ['employees.read'],
+        },
+      ),
+    ).rejects.toThrow('Insufficient access');
+  });
+
+  it('allows a sales executive to view their own employee record', async () => {
+    const { service, employeesRepository } = buildService();
+    employeesRepository.findEmployeeById.mockResolvedValue({
+      ...targetEmployee,
+      id: 'employee_me',
+    });
+    employeesRepository.findEmployeeByUserId.mockResolvedValue({ id: 'employee_me' });
+    employeesRepository.countPropertyAssignmentsByEmployee.mockResolvedValue(
+      new Map([['employee_me', 2]]),
+    );
+    employeesRepository.countOpenInquiriesByEmployee.mockResolvedValue(
+      new Map([['employee_me', 3]]),
+    );
+
+    const result = await service.getEmployee(
+      'tenant_1',
+      'employee_me',
+      {
+        userId: 'user_me',
+        tenantId: 'tenant_1',
+        roles: ['sales_executive'],
+        permissions: ['employees.read'],
+      },
+    );
+
+    expect(result.properties_assigned_count).toBe(2);
+    expect(result.open_inquiries_count).toBe(3);
   });
 });
 

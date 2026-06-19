@@ -4,7 +4,6 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
-  UnprocessableEntityException,
 } from '@nestjs/common';
 import { createHash, randomBytes } from 'crypto';
 
@@ -16,6 +15,7 @@ import type { AuthUser } from '../../common/context/auth-user';
 import { DomainEventBus } from '../../events/domain-event-bus';
 import { DOMAIN_EVENTS } from '../../events/domain-events';
 import { AuditService, type AuditRequestMeta } from '../audit/audit.service';
+import { QuotaService } from '../billing/quota.service';
 
 const INVITATION_TTL_DAYS = 7;
 const ROLE_RANK: Record<string, number> = {
@@ -25,6 +25,7 @@ const ROLE_RANK: Record<string, number> = {
   org_admin: 4,
   org_owner: 5,
 };
+const EMPLOYEE_FULL_ACCESS_ROLES = ['super_admin', 'org_owner', 'org_admin'];
 
 @Injectable()
 export class EmployeesService {
@@ -32,27 +33,31 @@ export class EmployeesService {
     private readonly employeesRepository: EmployeesRepository,
     private readonly auditService: AuditService,
     private readonly events: DomainEventBus,
+    private readonly quota: QuotaService,
   ) {}
 
-  private mapEmployee(employee: {
-    id: string;
-    status: string;
-    manager_id: string | null;
-    joined_at: Date | null;
-    user: {
+  private mapEmployee(
+    employee: {
       id: string;
-      email: string;
-      phone: string | null;
-      first_name: string | null;
-      last_name: string | null;
       status: string;
-      user_roles: { role: { code: string; name: string } }[];
-    };
-    manager?: {
-      id: string;
-      user: { first_name: string | null; last_name: string | null };
-    } | null;
-  }) {
+      manager_id: string | null;
+      joined_at: Date | null;
+      user: {
+        id: string;
+        email: string;
+        phone: string | null;
+        first_name: string | null;
+        last_name: string | null;
+        status: string;
+        user_roles: { role: { code: string; name: string } }[];
+      };
+      manager?: {
+        id: string;
+        user: { first_name: string | null; last_name: string | null };
+      } | null;
+    },
+    kpis?: { propertiesAssigned: number; openInquiries: number },
+  ) {
     const role = employee.user.user_roles[0]?.role;
     return {
       id: employee.id,
@@ -72,28 +77,48 @@ export class EmployeesService {
             .join(' ')
         : null,
       joined_at: employee.joined_at?.toISOString() ?? null,
-      properties_assigned_count: 0,
-      open_inquiries_count: 0,
+      properties_assigned_count: kpis?.propertiesAssigned ?? 0,
+      open_inquiries_count: kpis?.openInquiries ?? 0,
     };
   }
 
-  private async assertCanCreateEmployee(tenantId: string) {
-    const org = await this.employeesRepository.findOrganizationWithUsage(tenantId);
-    if (!org) throw new NotFoundException('Organization not found');
+  private async loadEmployeeKpis(tenantId: string, employeeIds: string[]) {
+    const [propertyCounts, inquiryCounts] = await Promise.all([
+      this.employeesRepository.countPropertyAssignmentsByEmployee(tenantId, employeeIds),
+      this.employeesRepository.countOpenInquiriesByEmployee(tenantId, employeeIds),
+    ]);
+    return { propertyCounts, inquiryCounts };
+  }
 
-    const plan = await this.employeesRepository.findPlanMaxEmployees(org.tier);
-    const maxEmployees = plan?.max_employees ?? 10;
-    const current = org.organization_usage?.employees_count ?? 0;
+  private async assertCanViewEmployee(
+    tenantId: string,
+    actor: AuthUser,
+    targetEmployeeId: string,
+  ) {
+    if (actor.roles.some((role) => EMPLOYEE_FULL_ACCESS_ROLES.includes(role))) return;
 
-    if (current >= maxEmployees) {
-      throw new UnprocessableEntityException({
-        code: 'QUOTA_EXCEEDED',
-        message: 'Employee quota exceeded for current plan',
-        rule_id: 'BR-T04',
-      });
+    const actorEmployee = await this.employeesRepository.findEmployeeByUserId(
+      tenantId,
+      actor.userId,
+    );
+    if (!actorEmployee) {
+      throw new ForbiddenException('Insufficient access to view employee');
     }
 
-    return org;
+    if (actor.roles.includes('sales_manager')) {
+      const subordinateIds = await this.employeesRepository.findSubordinateEmployeeIds(
+        actorEmployee.id,
+      );
+      const allowed = new Set([actorEmployee.id, ...subordinateIds]);
+      if (!allowed.has(targetEmployeeId)) {
+        throw new ForbiddenException('Insufficient access to view employee');
+      }
+      return;
+    }
+
+    if (targetEmployeeId !== actorEmployee.id) {
+      throw new ForbiddenException('Insufficient access to view employee');
+    }
   }
 
   private assertCanAssignRole(actor: AuthUser | undefined, targetRoleCode: string) {
@@ -138,8 +163,16 @@ export class EmployeesService {
       perPage,
     });
 
+    const employeeIds = rows.map((row) => row.id);
+    const { propertyCounts, inquiryCounts } = await this.loadEmployeeKpis(tenantId, employeeIds);
+
     return {
-      data: rows.map((row) => this.mapEmployee(row)),
+      data: rows.map((row) =>
+        this.mapEmployee(row, {
+          propertiesAssigned: propertyCounts.get(row.id) ?? 0,
+          openInquiries: inquiryCounts.get(row.id) ?? 0,
+        }),
+      ),
       meta: {
         page,
         per_page: perPage,
@@ -149,10 +182,16 @@ export class EmployeesService {
     };
   }
 
-  async getEmployee(tenantId: string, employeeId: string) {
+  async getEmployee(tenantId: string, employeeId: string, actor?: AuthUser) {
     const employee = await this.employeesRepository.findEmployeeById(tenantId, employeeId);
     if (!employee) throw new NotFoundException('Employee not found');
-    return this.mapEmployee(employee);
+    if (actor) await this.assertCanViewEmployee(tenantId, actor, employeeId);
+
+    const { propertyCounts, inquiryCounts } = await this.loadEmployeeKpis(tenantId, [employeeId]);
+    return this.mapEmployee(employee, {
+      propertiesAssigned: propertyCounts.get(employeeId) ?? 0,
+      openInquiries: inquiryCounts.get(employeeId) ?? 0,
+    });
   }
 
   async createEmployee(
@@ -161,7 +200,9 @@ export class EmployeesService {
     actor?: AuthUser,
     meta?: AuditRequestMeta,
   ) {
-    const org = await this.assertCanCreateEmployee(tenantId);
+    await this.quota.assertCanCreateEmployee(tenantId);
+    const org = await this.employeesRepository.findOrganizationWithUsage(tenantId);
+    if (!org) throw new NotFoundException('Organization not found');
 
     const existingEmail = await this.employeesRepository.findUserByEmail(tenantId, dto.email);
     if (existingEmail) {

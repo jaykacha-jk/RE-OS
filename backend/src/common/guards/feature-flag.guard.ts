@@ -24,7 +24,9 @@ export class FeatureFlagGuard implements CanActivate {
     if (!feature) return true;
 
     const req = context.switchToHttp().getRequest();
-    const tenantId = req.user?.tenantId as string | null | undefined;
+    const tenantId =
+      (req.tenant as { tenantId?: string } | undefined)?.tenantId ??
+      (req.user?.tenantId as string | null | undefined);
     if (!tenantId) {
       throw new ForbiddenException({
         code: 'FEATURE_TENANT_REQUIRED',

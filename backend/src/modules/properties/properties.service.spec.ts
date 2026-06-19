@@ -9,6 +9,7 @@ import { PropertiesService } from './properties.service';
 import type { PropertiesRepository, PropertyScope } from './properties.repository';
 import type { StorageService } from './storage/storage.service';
 import type { AuditService } from '../audit/audit.service';
+import type { QuotaService } from '../billing/quota.service';
 
 const TENANT = 'tenant-1';
 
@@ -89,23 +90,36 @@ function buildService() {
     softDelete: jest.fn(),
     replaceAssignments: jest.fn(),
     listHistory: jest.fn(),
+    addImage: jest.fn(),
+    addVideo: jest.fn(),
   };
   const storage = {
     saveBase64: jest.fn(),
     delete: jest.fn(),
     resolveUrl: jest.fn((value: string | null | undefined) => value ?? null),
+    decodedByteLength: jest.fn((contentBase64: string) => {
+      const raw = contentBase64.includes(',') ? contentBase64.split(',')[1]! : contentBase64;
+      return Buffer.from(raw, 'base64').length;
+    }),
   } as unknown as jest.Mocked<StorageService>;
   const audit = { record: jest.fn().mockResolvedValue(undefined) } as unknown as jest.Mocked<AuditService>;
 
   const events = { emit: jest.fn(), on: jest.fn() } as any;
+
+  const quota = {
+    assertCanCreateProperty: jest.fn().mockResolvedValue({}),
+    assertStorageAvailable: jest.fn().mockResolvedValue({}),
+    recordStorageBytes: jest.fn().mockResolvedValue(undefined),
+  } as unknown as jest.Mocked<QuotaService>;
 
   const service = new PropertiesService(
     repo as unknown as PropertiesRepository,
     storage,
     audit,
     events,
+    quota,
   );
-  return { service, repo, storage, audit, events };
+  return { service, repo, storage, audit, events, quota };
 }
 
 describe('PropertiesService — RBAC scope', () => {
@@ -258,25 +272,21 @@ describe('PropertiesService — create + quota + slug', () => {
     price: 5000000,
   } as never;
 
-  function primeCreate(repo: jest.Mocked<Partial<PropertiesRepository>>) {
-    repo.findOrganizationWithUsage!.mockResolvedValue({
-      id: TENANT,
-      tier: 'starter',
-      organization_usage: { properties_count: 1 },
-    } as never);
-    repo.findPlanMaxProperties!.mockResolvedValue({ max_properties: 50 } as never);
+  function primeCreate(repo: jest.Mocked<Partial<PropertiesRepository>>, quota: jest.Mocked<QuotaService>) {
+    quota.assertCanCreateProperty.mockResolvedValue({} as never);
     repo.createProperty!.mockResolvedValue('prop-1');
     repo.findById!.mockResolvedValue(makeProperty() as never);
   }
 
   it('enforces the plan property quota (BR-T04)', async () => {
-    const { service, repo } = buildService();
-    repo.findOrganizationWithUsage!.mockResolvedValue({
-      id: TENANT,
-      tier: 'starter',
-      organization_usage: { properties_count: 50 },
-    } as never);
-    repo.findPlanMaxProperties!.mockResolvedValue({ max_properties: 50 } as never);
+    const { service, repo, quota } = buildService();
+    quota.assertCanCreateProperty.mockRejectedValue(
+      new UnprocessableEntityException({
+        code: 'QUOTA_EXCEEDED',
+        message: 'Property quota exceeded for current plan',
+        rule_id: 'BR-T04',
+      }),
+    );
 
     await expect(service.create(TENANT, baseDto, makeUser(['org_admin']))).rejects.toMatchObject({
       response: { code: 'QUOTA_EXCEEDED', rule_id: 'BR-T04' },
@@ -285,8 +295,8 @@ describe('PropertiesService — create + quota + slug', () => {
   });
 
   it('creates a property and generates a unique slug + property code', async () => {
-    const { service, repo, audit } = buildService();
-    primeCreate(repo);
+    const { service, repo, audit, quota } = buildService();
+    primeCreate(repo, quota);
 
     const result = await service.create(TENANT, baseDto, makeUser(['org_admin']));
 
@@ -299,8 +309,8 @@ describe('PropertiesService — create + quota + slug', () => {
   });
 
   it('appends a numeric suffix when the slug already exists', async () => {
-    const { service, repo } = buildService();
-    primeCreate(repo);
+    const { service, repo, quota } = buildService();
+    primeCreate(repo, quota);
     repo.slugExists!.mockResolvedValueOnce(true).mockResolvedValue(false);
 
     await service.create(TENANT, baseDto, makeUser(['org_admin']));
@@ -445,5 +455,197 @@ describe('PropertiesService — soft delete', () => {
     expect(res).toEqual({ id: 'prop-1', deleted: true });
     expect(repo.softDelete).toHaveBeenCalledWith(TENANT, 'prop-1');
     expect(audit.record).toHaveBeenCalledWith(expect.objectContaining({ action: 'properties.deleted' }));
+  });
+});
+
+describe('PropertiesService — image upload validation', () => {
+  const tinyJpeg = Buffer.alloc(100).toString('base64');
+
+  it('rejects uploads without content_type', async () => {
+    const { service, repo, storage } = buildService();
+    repo.findById!.mockResolvedValue(makeProperty() as never);
+
+    await expect(
+      service.addImage(TENANT, makeUser(['org_admin']), 'prop-1', {
+        content_base64: tinyJpeg,
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(storage.saveBase64).not.toHaveBeenCalled();
+  });
+
+  it('rejects unsupported MIME types', async () => {
+    const { service, repo, storage } = buildService();
+    repo.findById!.mockResolvedValue(makeProperty() as never);
+
+    await expect(
+      service.addImage(TENANT, makeUser(['org_admin']), 'prop-1', {
+        content_base64: tinyJpeg,
+        content_type: 'application/pdf',
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(storage.saveBase64).not.toHaveBeenCalled();
+  });
+
+  it('rejects images exceeding the size limit', async () => {
+    const { service, repo, storage } = buildService();
+    repo.findById!.mockResolvedValue(makeProperty() as never);
+    storage.decodedByteLength.mockReturnValue(11 * 1024 * 1024);
+
+    await expect(
+      service.addImage(TENANT, makeUser(['org_admin']), 'prop-1', {
+        content_base64: tinyJpeg,
+        content_type: 'image/jpeg',
+      }),
+    ).rejects.toBeInstanceOf(UnprocessableEntityException);
+    expect(storage.saveBase64).not.toHaveBeenCalled();
+  });
+
+  it('accepts valid image uploads', async () => {
+    const { service, repo, storage } = buildService();
+    repo.findById!.mockResolvedValue(makeProperty() as never);
+    repo.addImage!.mockResolvedValue({
+      id: 'img-1',
+      url: 'tenants/t1/properties/p1/images/x.jpg',
+      thumbnail_url: null,
+      alt_text: null,
+      sort_order: 0,
+      is_cover: false,
+    } as never);
+    storage.saveBase64.mockResolvedValue({
+      storageKey: 'tenants/t1/properties/p1/images/x.jpg',
+      url: 'tenants/t1/properties/p1/images/x.jpg',
+    });
+
+    const res = await service.addImage(TENANT, makeUser(['org_admin']), 'prop-1', {
+      content_base64: tinyJpeg,
+      content_type: 'image/jpeg',
+      filename: 'x.jpg',
+    });
+
+    expect(storage.saveBase64).toHaveBeenCalled();
+    expect(res.id).toBe('img-1');
+  });
+});
+
+describe('PropertiesService — video upload validation', () => {
+  const tinyMp4 = Buffer.alloc(100).toString('base64');
+
+  it('rejects video uploads without content_type', async () => {
+    const { service, repo, storage } = buildService();
+    repo.findById!.mockResolvedValue(makeProperty() as never);
+
+    await expect(
+      service.addVideo(TENANT, makeUser(['org_admin']), 'prop-1', {
+        content_base64: tinyMp4,
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(storage.saveBase64).not.toHaveBeenCalled();
+  });
+
+  it('accepts valid video uploads', async () => {
+    const { service, repo, storage } = buildService();
+    repo.findById!.mockResolvedValue(makeProperty() as never);
+    repo.addVideo!.mockResolvedValue({
+      id: 'vid-1',
+      url: 'tenants/t1/properties/p1/videos/x.mp4',
+      title: 'Tour',
+      sort_order: 0,
+    } as never);
+    storage.saveBase64.mockResolvedValue({
+      storageKey: 'tenants/t1/properties/p1/videos/x.mp4',
+      url: 'tenants/t1/properties/p1/videos/x.mp4',
+    });
+
+    const res = await service.addVideo(TENANT, makeUser(['org_admin']), 'prop-1', {
+      content_base64: tinyMp4,
+      content_type: 'video/mp4',
+      filename: 'tour.mp4',
+      title: 'Tour',
+    });
+
+    expect(storage.saveBase64).toHaveBeenCalled();
+    expect(res.id).toBe('vid-1');
+  });
+});
+
+describe('PropertiesService — CSV import', () => {
+  const validCsv = `title,type,category,requirement_type,city,price
+3BHK SG Highway,residential,flat,sell,Ahmedabad,8500000
+2BHK Satellite,residential,flat,rent,Ahmedabad,28000`;
+
+  function primeCreate(repo: jest.Mocked<Partial<PropertiesRepository>>, quota: jest.Mocked<QuotaService>) {
+    quota.assertCanCreateProperty.mockResolvedValue({} as never);
+    repo.slugExists!.mockResolvedValue(false);
+    repo.propertyCodeExists!.mockResolvedValue(false);
+  }
+
+  it('rejects CSV missing required headers (BR-P05)', async () => {
+    const { service } = buildService();
+
+    await expect(
+      service.importFromCsv(
+        TENANT,
+        { csv_content: 'title,city\nFlat,Ahmedabad\n' },
+        makeUser(['org_admin']),
+      ),
+    ).rejects.toMatchObject({
+      response: expect.objectContaining({ code: 'CSV_INVALID', rule_id: 'BR-P05' }),
+    });
+  });
+
+  it('imports valid rows and reports per-row results', async () => {
+    const { service, repo, audit, quota } = buildService();
+    primeCreate(repo, quota);
+    repo.createProperty!
+      .mockResolvedValueOnce('prop-a')
+      .mockResolvedValueOnce('prop-b');
+    repo.findById!
+      .mockResolvedValueOnce(makeProperty({ id: 'prop-a', property_code: 'PROP-AAA' }) as never)
+      .mockResolvedValueOnce(makeProperty({ id: 'prop-b', property_code: 'PROP-BBB' }) as never);
+
+    const result = await service.importFromCsv(
+      TENANT,
+      { csv_content: validCsv },
+      makeUser(['org_admin']),
+    );
+
+    expect(result.total).toBe(2);
+    expect(result.succeeded).toBe(2);
+    expect(result.failed).toBe(0);
+    expect(result.results).toEqual([
+      expect.objectContaining({ row: 2, success: true, property_code: 'PROP-AAA' }),
+      expect.objectContaining({ row: 3, success: true, property_code: 'PROP-BBB' }),
+    ]);
+    expect(repo.createProperty).toHaveBeenCalledTimes(2);
+    expect(audit.record).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'properties.imported',
+        afterState: { total: 2, succeeded: 2, failed: 0 },
+      }),
+    );
+  });
+
+  it('continues after a row failure and reports errors', async () => {
+    const { service, repo, quota } = buildService();
+    primeCreate(repo, quota);
+    repo.createProperty!.mockResolvedValueOnce('prop-a');
+    repo.findById!.mockResolvedValueOnce(
+      makeProperty({ id: 'prop-a', property_code: 'PROP-AAA' }) as never,
+    );
+
+    const csv = `title,type,category,requirement_type,city,price
+3BHK SG Highway,residential,flat,sell,Ahmedabad,8500000
+Bad Row,residential,flat,not_a_type,Ahmedabad,100`;
+
+    const result = await service.importFromCsv(
+      TENANT,
+      { csv_content: csv },
+      makeUser(['org_admin']),
+    );
+
+    expect(result.succeeded).toBe(1);
+    expect(result.failed).toBe(1);
+    expect(result.results[1]).toMatchObject({ row: 3, success: false });
+    expect(result.results[1]!.errors[0]).toBeTruthy();
   });
 });

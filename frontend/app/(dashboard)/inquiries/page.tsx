@@ -323,7 +323,7 @@ function InquiriesInner() {
           )}
         />
 
-        {meta ? (
+        {!loading && meta && meta.total > 0 ? (
           <Pagination
             page={meta.page}
             totalPages={meta.total_pages}
@@ -338,10 +338,15 @@ function InquiriesInner() {
       <FilterDrawer
         open={filterOpen}
         onClose={() => setFilterOpen(false)}
-        onApply={() => query.applyFilters(draft)}
+        title="Filter inquiries"
+        onApply={() => {
+          query.applyFilters(draft);
+          setFilterOpen(false);
+        }}
         onClear={() => {
           query.clearFilters();
           setDraft(Object.fromEntries(FILTER_KEYS.map((k) => [k, ''])));
+          setFilterOpen(false);
         }}
       >
         <FilterField label="Stage">

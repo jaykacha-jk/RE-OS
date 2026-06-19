@@ -17,6 +17,13 @@ export const PROPERTY_STATUSES = [
   'archived',
 ] as const;
 
+export type PropertyVideo = {
+  id: string;
+  url: string;
+  title: string | null;
+  sort_order: number;
+};
+
 export type PropertyImage = {
   id: string;
   url: string;
@@ -67,7 +74,7 @@ export type Property = {
   amenities: string[];
   tags: string[];
   images: PropertyImage[];
-  videos: { id: string; url: string; title: string | null; sort_order: number }[];
+  videos: PropertyVideo[];
   documents: { id: string; name: string; url: string; doc_type: string | null }[];
   assignments: PropertyAssignment[];
   cover_image_url: string | null;

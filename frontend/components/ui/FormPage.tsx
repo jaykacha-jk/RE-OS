@@ -17,6 +17,7 @@ type FormPageProps = {
   statusBadge?: ReactNode;
   onSubmit: () => void;
   submitting?: boolean;
+  submitDisabled?: boolean;
   error?: string | null;
   submitLabel?: string;
   cancelLabel?: string;
@@ -41,6 +42,7 @@ export function FormPage({
   statusBadge,
   onSubmit,
   submitting = false,
+  submitDisabled = false,
   error,
   submitLabel = 'Save',
   cancelLabel = 'Cancel',
@@ -108,7 +110,7 @@ export function FormPage({
               {saveDraftLabel ?? 'Save draft'}
             </button>
           ) : null}
-          <button type="submit" className="btn-primary" disabled={submitting}>
+          <button type="submit" className="btn-primary" disabled={submitting || submitDisabled}>
             {submitting ? 'Saving…' : submitLabel}
           </button>
         </div>

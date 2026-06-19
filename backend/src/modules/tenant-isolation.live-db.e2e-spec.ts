@@ -49,6 +49,11 @@ describe('tenant isolation live-db e2e', () => {
       { saveBase64: jest.fn(), delete: jest.fn() } as never,
       audit,
       eventBus,
+      {
+        assertCanCreateProperty: jest.fn().mockResolvedValue({}),
+        assertStorageAvailable: jest.fn().mockResolvedValue({}),
+        recordStorageBytes: jest.fn().mockResolvedValue(undefined),
+      } as never,
     );
     crm = new CrmService(new CrmRepository(prisma), audit, eventBus);
 

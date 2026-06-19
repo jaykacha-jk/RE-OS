@@ -12,19 +12,33 @@ import type { AuthUser } from '../../common/context/auth-user';
 import { DomainEventBus } from '../../events/domain-event-bus';
 import { DOMAIN_EVENTS } from '../../events/domain-events';
 import { AuditService, type AuditRequestMeta } from '../audit/audit.service';
+import { QuotaService } from '../billing/quota.service';
 import { AssignPropertyDto } from './dto/assign-property.dto';
+import { BulkImportPropertiesDto } from './dto/bulk-import-properties.dto';
+import { GeocodeQueryDto } from './dto/geocode-query.dto';
+import { NearbyPlacesQueryDto } from './dto/nearby-places-query.dto';
 import { CreatePropertyDto } from './dto/create-property.dto';
 import { ListPropertiesQueryDto } from './dto/list-properties-query.dto';
 import { AddDocumentDto, AddImageDto, AddVideoDto, ReorderImagesDto } from './dto/media.dto';
 import { UpdatePropertyDto } from './dto/update-property.dto';
 import {
+  ALLOWED_PROPERTY_IMAGE_CONTENT_TYPES,
+  ALLOWED_PROPERTY_VIDEO_CONTENT_TYPES,
   PROPERTY_FULL_ACCESS_ROLES,
+  PROPERTY_IMAGE_MAX_BYTES,
   PROPERTY_STATUSES,
   PROPERTY_STATUS_TRANSITIONS,
   PROPERTY_TEAM_ACCESS_ROLES,
+  PROPERTY_VIDEO_MAX_BYTES,
   type PropertyStatus,
 } from './properties.constants';
 import { PropertiesRepository, type PropertyScope } from './properties.repository';
+import {
+  mapCsvRecordToCreateDto,
+  parsePropertyCsv,
+  type PropertyCsvImportResult,
+} from './property-csv-import';
+import { fetchNearbyPlaces, geocodeAddress } from './property-geospatial';
 import { StorageService } from './storage/storage.service';
 
 type WithRelations = NonNullable<Awaited<ReturnType<PropertiesRepository['findById']>>>;
@@ -36,6 +50,7 @@ export class PropertiesService {
     private readonly storage: StorageService,
     private readonly auditService: AuditService,
     private readonly events: DomainEventBus,
+    private readonly quota: QuotaService,
   ) {}
 
   // ===========================================================================
@@ -44,7 +59,7 @@ export class PropertiesService {
 
   /**
    * Resolves the data-scope for the authenticated user:
-   *  - full-access roles (owner/admin/marketing/super) => every tenant property
+   *  - full-access roles (owner/admin/super) => every tenant property
    *  - sales_manager => own + direct reports (team properties)
    *  - everyone else (sales_executive, telecaller) => assigned-only
    */
@@ -69,25 +84,6 @@ export class PropertiesService {
     if (!allowed) {
       // Hide existence across scope boundaries (mirror cross-tenant 404 policy).
       throw new NotFoundException('Property not found');
-    }
-  }
-
-  // ===========================================================================
-  // Quota
-  // ===========================================================================
-
-  private async assertCanCreate(tenantId: string) {
-    const org = await this.repo.findOrganizationWithUsage(tenantId);
-    if (!org) throw new NotFoundException('Organization not found');
-    const plan = await this.repo.findPlanMaxProperties(org.tier);
-    const max = plan?.max_properties ?? 100;
-    const current = org.organization_usage?.properties_count ?? 0;
-    if (current >= max) {
-      throw new UnprocessableEntityException({
-        code: 'QUOTA_EXCEEDED',
-        message: 'Property quota exceeded for current plan',
-        rule_id: 'BR-T04',
-      });
     }
   }
 
@@ -235,7 +231,7 @@ export class PropertiesService {
     actor: AuthUser,
     meta?: AuditRequestMeta,
   ) {
-    await this.assertCanCreate(tenantId);
+    await this.quota.assertCanCreateProperty(tenantId);
 
     const slug = dto.slug
       ? await this.generateUniqueSlug(tenantId, dto.slug)
@@ -300,6 +296,107 @@ export class PropertiesService {
     });
 
     return mapped;
+  }
+
+  async importFromCsv(
+    tenantId: string,
+    dto: BulkImportPropertiesDto,
+    actor: AuthUser,
+    meta?: AuditRequestMeta,
+  ): Promise<PropertyCsvImportResult> {
+    const parsed = parsePropertyCsv(dto.csv_content);
+    if (parsed.errors.length > 0) {
+      throw new BadRequestException({
+        code: 'CSV_INVALID',
+        message: parsed.errors[0],
+        errors: parsed.errors,
+        rule_id: 'BR-P05',
+      });
+    }
+
+    const results: PropertyCsvImportResult['results'] = [];
+    let succeeded = 0;
+    let failed = 0;
+
+    for (let index = 0; index < parsed.rows.length; index += 1) {
+      const rowNumber = index + 2;
+      const record = parsed.rows[index]!;
+      const mapped = await mapCsvRecordToCreateDto(record);
+      if (mapped.errors.length > 0 || !mapped.dto) {
+        failed += 1;
+        results.push({ row: rowNumber, success: false, errors: mapped.errors });
+        continue;
+      }
+
+      try {
+        const created = await this.create(tenantId, mapped.dto, actor, meta);
+        succeeded += 1;
+        results.push({
+          row: rowNumber,
+          success: true,
+          property_id: created.id,
+          property_code: created.property_code,
+          errors: [],
+        });
+      } catch (err) {
+        failed += 1;
+        results.push({
+          row: rowNumber,
+          success: false,
+          errors: [this.errorMessage(err)],
+        });
+      }
+    }
+
+    await this.auditService.record({
+      actor,
+      tenantId,
+      action: 'properties.imported',
+      entityType: 'property',
+      afterState: { total: parsed.rows.length, succeeded, failed },
+      meta,
+    });
+
+    return {
+      total: parsed.rows.length,
+      succeeded,
+      failed,
+      results,
+    };
+  }
+
+  async getNearbyPlaces(_tenantId: string, query: NearbyPlacesQueryDto) {
+    const places = await fetchNearbyPlaces(query.latitude, query.longitude, query.radius_m ?? 1500);
+    return { places, radius_m: query.radius_m ?? 1500 };
+  }
+
+  async geocodePropertyLocation(_tenantId: string, query: GeocodeQueryDto) {
+    const result = await geocodeAddress({
+      address: query.address,
+      city: query.city,
+      state: query.state,
+      pincode: query.pincode,
+      country: query.country,
+    });
+    if (!result) {
+      throw new NotFoundException({
+        code: 'GEOCODE_NOT_FOUND',
+        message: 'No coordinates found for the provided address',
+      });
+    }
+    return result;
+  }
+
+  private errorMessage(err: unknown): string {
+    if (err instanceof BadRequestException || err instanceof UnprocessableEntityException) {
+      const response = err.getResponse();
+      if (typeof response === 'string') return response;
+      if (response && typeof response === 'object' && 'message' in response) {
+        const message = (response as { message?: string | string[] }).message;
+        return Array.isArray(message) ? message.join('; ') : String(message);
+      }
+    }
+    return err instanceof Error ? err.message : 'Import failed';
   }
 
   async list(tenantId: string, user: AuthUser, query: ListPropertiesQueryDto) {
@@ -662,6 +759,38 @@ export class PropertiesService {
   // Media — images
   // ===========================================================================
 
+  private assertValidPropertyImageUpload(contentBase64: string, contentType?: string): void {
+    const bytes = this.storage.decodedByteLength(contentBase64);
+    if (bytes > PROPERTY_IMAGE_MAX_BYTES) {
+      throw new UnprocessableEntityException({
+        code: 'IMAGE_TOO_LARGE',
+        message: `Image exceeds the ${PROPERTY_IMAGE_MAX_BYTES / (1024 * 1024)} MB limit`,
+      });
+    }
+    if (!contentType) {
+      throw new BadRequestException('content_type is required for image uploads');
+    }
+    if (!(ALLOWED_PROPERTY_IMAGE_CONTENT_TYPES as readonly string[]).includes(contentType)) {
+      throw new BadRequestException(`Unsupported image type: ${contentType}`);
+    }
+  }
+
+  private assertValidPropertyVideoUpload(contentBase64: string, contentType?: string): void {
+    const bytes = this.storage.decodedByteLength(contentBase64);
+    if (bytes > PROPERTY_VIDEO_MAX_BYTES) {
+      throw new UnprocessableEntityException({
+        code: 'VIDEO_TOO_LARGE',
+        message: `Video exceeds the ${PROPERTY_VIDEO_MAX_BYTES / (1024 * 1024)} MB limit`,
+      });
+    }
+    if (!contentType) {
+      throw new BadRequestException('content_type is required for video uploads');
+    }
+    if (!(ALLOWED_PROPERTY_VIDEO_CONTENT_TYPES as readonly string[]).includes(contentType)) {
+      throw new BadRequestException(`Unsupported video type: ${contentType}`);
+    }
+  }
+
   private async getAccessibleProperty(tenantId: string, user: AuthUser, id: string) {
     const property = await this.repo.findById(tenantId, id);
     if (!property) throw new NotFoundException('Property not found');
@@ -680,7 +809,14 @@ export class PropertiesService {
 
     let url = dto.url ?? null;
     let storageKey: string | null = null;
+    const uploadBytes = dto.content_base64
+      ? this.storage.decodedByteLength(dto.content_base64)
+      : 0;
+    if (uploadBytes > 0) {
+      await this.quota.assertStorageAvailable(tenantId, uploadBytes);
+    }
     if (!url && dto.content_base64) {
+      this.assertValidPropertyImageUpload(dto.content_base64, dto.content_type);
       const stored = await this.storage.saveBase64({
         tenantId,
         propertyId: id,
@@ -704,6 +840,10 @@ export class PropertiesService {
       altText: dto.alt_text,
       isCover: dto.is_cover ?? false,
     });
+
+    if (uploadBytes > 0) {
+      await this.quota.recordStorageBytes(tenantId, uploadBytes);
+    }
 
     await this.auditService.record({
       actor: user,
@@ -774,7 +914,14 @@ export class PropertiesService {
     await this.getAccessibleProperty(tenantId, user, id);
     let url = dto.url ?? null;
     let storageKey: string | null = null;
+    const uploadBytes = dto.content_base64
+      ? this.storage.decodedByteLength(dto.content_base64)
+      : 0;
+    if (uploadBytes > 0) {
+      await this.quota.assertStorageAvailable(tenantId, uploadBytes);
+    }
     if (!url && dto.content_base64) {
+      this.assertValidPropertyVideoUpload(dto.content_base64, dto.content_type);
       const stored = await this.storage.saveBase64({
         tenantId,
         propertyId: id,
@@ -795,6 +942,9 @@ export class PropertiesService {
       title: dto.title,
       sortOrder: dto.sort_order,
     });
+    if (uploadBytes > 0) {
+      await this.quota.recordStorageBytes(tenantId, uploadBytes);
+    }
     return {
       id: video.id,
       url: this.storage.resolveUrl(video.url),
@@ -815,6 +965,12 @@ export class PropertiesService {
     await this.getAccessibleProperty(tenantId, user, id);
     let url = dto.url ?? null;
     let storageKey: string | null = null;
+    const uploadBytes = dto.content_base64
+      ? this.storage.decodedByteLength(dto.content_base64)
+      : 0;
+    if (uploadBytes > 0) {
+      await this.quota.assertStorageAvailable(tenantId, uploadBytes);
+    }
     if (!url && dto.content_base64) {
       const stored = await this.storage.saveBase64({
         tenantId,
@@ -836,6 +992,9 @@ export class PropertiesService {
       storageKey,
       docType: dto.doc_type,
     });
+    if (uploadBytes > 0) {
+      await this.quota.recordStorageBytes(tenantId, uploadBytes);
+    }
     return {
       id: doc.id,
       name: doc.name,

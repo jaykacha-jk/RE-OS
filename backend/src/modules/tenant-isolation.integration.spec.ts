@@ -78,6 +78,11 @@ function buildPropertiesService() {
     { saveBase64: jest.fn(), delete: jest.fn() } as never,
     { record: jest.fn() } as unknown as AuditService,
     { emit: jest.fn(), on: jest.fn() } as never,
+    {
+      assertCanCreateProperty: jest.fn().mockResolvedValue({}),
+      assertStorageAvailable: jest.fn().mockResolvedValue({}),
+      recordStorageBytes: jest.fn().mockResolvedValue(undefined),
+    } as never,
   );
   return { service, dbClient };
 }

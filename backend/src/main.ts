@@ -9,6 +9,7 @@ import { ValidationPipe } from '@nestjs/common';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { resolve as resolvePath } from 'node:path';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
+import { API_JSON_BODY_LIMIT } from './common/constants/http.constants';
 import { ErrorTrackingService } from './common/observability/error-tracking.service';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
@@ -35,6 +36,9 @@ async function bootstrap() {
       credentials: true,
     },
   });
+
+  app.useBodyParser('json', { limit: API_JSON_BODY_LIMIT });
+  app.useBodyParser('urlencoded', { limit: API_JSON_BODY_LIMIT, extended: true });
 
   // Serve locally-stored property media when STORAGE_DRIVER=local (dev fallback).
   const localStorageDir = resolvePath(

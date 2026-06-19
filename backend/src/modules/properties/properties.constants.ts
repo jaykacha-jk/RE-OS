@@ -72,3 +72,36 @@ export const PROPERTY_FULL_ACCESS_ROLES = [
 export const PROPERTY_TEAM_ACCESS_ROLES = ['sales_manager'];
 
 export const PROPERTY_TITLE_MAX = 200;
+
+/** Allowed image content types for property image uploads (server-enforced). */
+export const ALLOWED_PROPERTY_IMAGE_CONTENT_TYPES = [
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'image/gif',
+] as const;
+
+/** Max decoded property image size (10 MB). */
+export const PROPERTY_IMAGE_MAX_BYTES = 10 * 1024 * 1024;
+
+/** Allowed video content types for property video uploads (server-enforced). */
+export const ALLOWED_PROPERTY_VIDEO_CONTENT_TYPES = [
+  'video/mp4',
+  'video/webm',
+  'video/quicktime',
+] as const;
+
+/** Max decoded property video size (50 MB). */
+export const PROPERTY_VIDEO_MAX_BYTES = 50 * 1024 * 1024;
+
+/** Bulk CSV import row cap (BR-P05). */
+export const PROPERTY_CSV_MAX_ROWS = 500;
+
+/** Required CSV column headers (case-insensitive). */
+export const PROPERTY_CSV_REQUIRED_HEADERS = [
+  'title',
+  'type',
+  'category',
+  'requirement_type',
+  'city',
+] as const;

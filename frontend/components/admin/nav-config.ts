@@ -1,5 +1,5 @@
 import type { IconName } from '../ui/icons';
-import { hasPermission, isFeatureEnabled, isSuperAdmin, type AuthSession } from '../../lib/auth';
+import { hasPermission, isFeatureEnabled, isImpersonating, isSuperAdmin, sessionWithEffectiveTenant, type AuthSession } from '../../lib/auth';
 
 export type NavGroup =
   | 'Command'
@@ -113,6 +113,9 @@ export const routeRegistry: RouteMetadata[] = [
   { id: 'settings.public-analytics', matcher: '/settings/public-analytics', permission: 'analytics.public.read', featureFlag: 'analytics', tenantRequired: true },
   { id: 'settings.read', matcher: /^\/settings(\/.*)?$/, permission: 'settings.read', tenantRequired: true },
   { id: 'platform.organizations', matcher: /^\/platform\/organizations(\/.*)?$/, superAdminOnly: true, nav: { href: '/platform/organizations', label: 'Organizations', icon: 'organizations', group: 'Platform', roles: 'super_admin' } },
+  { id: 'platform.plans', matcher: /^\/platform\/plans(\/.*)?$/, permission: 'platform.plans.read', superAdminOnly: true, nav: { href: '/platform/plans', label: 'Plans', icon: 'billing', group: 'Platform', roles: 'super_admin' } },
+  { id: 'platform.billing', matcher: /^\/platform\/billing(\/.*)?$/, permission: 'platform.billing.read', superAdminOnly: true, nav: { href: '/platform/billing', label: 'Billing', icon: 'performance', group: 'Platform', roles: 'super_admin' } },
+  { id: 'platform.audit-logs', matcher: /^\/platform\/audit-logs(\/.*)?$/, permission: 'audit.logs.read', superAdminOnly: true, nav: { href: '/platform/audit-logs', label: 'Audit logs', icon: 'audit', group: 'Platform', roles: 'super_admin' } },
 ];
 
 export const navItems: NavItem[] = routeRegistry
@@ -190,9 +193,28 @@ export function isTenantOnlyPath(pathname: string): boolean {
   return tenantOnlyPrefixes.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
 }
 
+function isLaunchHiddenRoute(session: AuthSession, rule: RouteMetadata | undefined): boolean {
+  if (!isLaunchMode() || !rule) return false;
+  if (rule.superAdminOnly) return false;
+  if (LAUNCH_HIDDEN_NAV_IDS.has(rule.id)) return true;
+  if (hasOnlyAssignedSalesRole(session)) {
+    return rule.id === 'analytics' || rule.id === 'lead-sources';
+  }
+  return false;
+}
+
 export function getDashboardRouteAccess(session: AuthSession, pathname: string) {
   const rule = getRouteAccessRule(pathname);
+  const effective = sessionWithEffectiveTenant(session);
+  const impersonating = isImpersonating(session);
   if (!rule) return { allowed: true };
+
+  if (isLaunchHiddenRoute(effective, rule)) {
+    return {
+      allowed: false,
+      reason: 'This module is not available in the current launch preview.',
+    };
+  }
 
   if (rule.superAdminOnly) {
     return {
@@ -201,28 +223,28 @@ export function getDashboardRouteAccess(session: AuthSession, pathname: string) 
     };
   }
 
-  if (rule.tenantRequired && (!session.user.tenant_id || isSuperAdmin(session))) {
+  if (rule.tenantRequired && (!effective.user.tenant_id || (isSuperAdmin(session) && !impersonating))) {
     return {
       allowed: false,
       reason: 'This page requires an active tenant workspace.',
     };
   }
 
-  if (rule.roles && !session.user.roles.some((role) => rule.roles?.includes(role))) {
+  if (rule.roles && !effective.user.roles.some((role) => rule.roles?.includes(role))) {
     return {
       allowed: false,
       reason: `This page requires one of: ${rule.roles.join(', ')}.`,
     };
   }
 
-  if (rule.permission && !hasPermission(session, rule.permission)) {
+  if (rule.permission && !hasPermission(effective, rule.permission)) {
     return {
       allowed: false,
       reason: `Missing permission: ${rule.permission}.`,
     };
   }
 
-  if (rule.featureFlag && !isFeatureEnabled(session, rule.featureFlag)) {
+  if (rule.featureFlag && !isFeatureEnabled(effective, rule.featureFlag)) {
     return {
       allowed: false,
       reason: `Feature "${rule.featureFlag}" is disabled for this organization.`,
@@ -235,23 +257,27 @@ export function getDashboardRouteAccess(session: AuthSession, pathname: string) 
 /** Filter nav items by the session's roles + permissions. */
 export function visibleNavFor(session: AuthSession): NavItem[] {
   const superAdmin = isSuperAdmin(session);
+  const impersonating = isImpersonating(session);
+  const effective = sessionWithEffectiveTenant(session);
+
   return navItems.filter((item) => {
-    if (isLaunchHiddenNavItem(session, item)) return false;
+    if (isLaunchHiddenNavItem(effective, item)) return false;
     if (item.roles === 'all') return true;
     if (item.roles === 'super_admin') return superAdmin;
     if (item.roles === 'performance') {
       return (
-        !superAdmin &&
-        session.user.roles.some((r) => PERFORMANCE_ROLES.includes(r)) &&
-        isFeatureEnabled(session, item.featureFlag)
+        (!superAdmin || impersonating) &&
+        effective.user.roles.some((r) => PERFORMANCE_ROLES.includes(r)) &&
+        isFeatureEnabled(effective, item.featureFlag)
       );
     }
-    if (item.roles === 'audit') return session.user.permissions.includes('audit.logs.read');
+    if (item.roles === 'audit') return effective.user.permissions.includes('audit.logs.read');
     if (item.roles === 'permission') {
-      if (superAdmin || !session.user.tenant_id || !item.permission) return false;
-      if (!session.user.permissions.includes(item.permission)) return false;
-      return isFeatureEnabled(session, item.featureFlag);
+      if (superAdmin && !impersonating) return false;
+      if (!effective.user.tenant_id || !item.permission) return false;
+      if (!hasPermission(effective, item.permission)) return false;
+      return isFeatureEnabled(effective, item.featureFlag);
     }
-    return !superAdmin && !!session.user.tenant_id;
+    return (!superAdmin || impersonating) && !!effective.user.tenant_id;
   });
 }

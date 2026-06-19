@@ -4,6 +4,8 @@ import Link from 'next/link';
 import { Suspense, useCallback, useEffect, useState } from 'react';
 
 import { ActionGuard } from '../../../components/shared/ActionGuard';
+import { PropertyCsvImportButton } from '../../../components/properties/property-csv-import';
+import { QuotaNotice, proactiveQuotaNoticeProps } from '../../../components/billing/quota-notice';
 import {
   ActionMenu,
   CrudToolbar,
@@ -16,8 +18,10 @@ import {
   type DataTableColumn,
 } from '../../../components/ui';
 import { useTableQuery, type TableQueryValues } from '../../../hooks/use-table-query';
+import { useBillingUsage } from '../../../hooks/use-billing-usage';
 import { apiFetch } from '../../../lib/api';
 import { getSession, hasPermission, type AuthSession } from '../../../lib/auth';
+import { proactiveQuotaMessage } from '../../../lib/quota';
 import {
   formatINR,
   humanize,
@@ -55,6 +59,7 @@ function PropertiesInner() {
   const [filterOpen, setFilterOpen] = useState(false);
   const [draft, setDraft] = useState<TableQueryValues>(query.filters);
   const [session, setSession] = useState<AuthSession | null>(null);
+  const { usage, propertyAtLimit } = useBillingUsage();
 
   useEffect(() => {
     setSession(getSession());
@@ -182,12 +187,18 @@ function PropertiesInner() {
               Demo-ready inventory needs images, locality, price, status, and a clear owner.
             </p>
             <ActionGuard permission="properties.create">
-              <Link
-                href="/properties/new"
-                className="inline-flex items-center justify-center rounded-xl bg-white px-4 py-2 text-sm font-bold text-teal-900 shadow-card transition hover:bg-teal-50 focus:outline-none focus:ring-4 focus:ring-white/30"
-              >
-                Add property
-              </Link>
+              {propertyAtLimit ? (
+                <span className="inline-flex cursor-not-allowed items-center justify-center rounded-xl bg-white/60 px-4 py-2 text-sm font-bold text-slate-400">
+                  Add property
+                </span>
+              ) : (
+                <Link
+                  href="/properties/new"
+                  className="inline-flex items-center justify-center rounded-xl bg-white px-4 py-2 text-sm font-bold text-teal-900 shadow-card transition hover:bg-teal-50 focus:outline-none focus:ring-4 focus:ring-white/30"
+                >
+                  Add property
+                </Link>
+              )}
             </ActionGuard>
           </div>
         </div>
@@ -204,6 +215,16 @@ function PropertiesInner() {
         <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700 shadow-sm">
           <span className="font-semibold">Could not load properties.</span> {error}
         </div>
+      ) : null}
+
+      {usage && propertyAtLimit ? (
+        <QuotaNotice
+          {...proactiveQuotaNoticeProps(
+            'properties',
+            usage.plan.name,
+            `${proactiveQuotaMessage('properties', usage)} Upgrade to add more listings.`,
+          )}
+        />
       ) : null}
 
       <section className="overflow-hidden rounded-2xl border border-reos-border bg-white shadow-card">
@@ -237,9 +258,18 @@ function PropertiesInner() {
           refreshing={loading}
           addSlot={
             <ActionGuard permission="properties.create">
-              <Link href="/properties/new" className="btn-primary">
-                <Icon name="plus" className="h-4 w-4" /> Add property
-              </Link>
+              <div className="flex flex-wrap items-center gap-2">
+                <PropertyCsvImportButton onImported={load} disabled={propertyAtLimit} />
+                {propertyAtLimit ? (
+                  <span className="btn-primary cursor-not-allowed opacity-50">
+                    <Icon name="plus" className="h-4 w-4" /> Add property
+                  </span>
+                ) : (
+                  <Link href="/properties/new" className="btn-primary">
+                    <Icon name="plus" className="h-4 w-4" /> Add property
+                  </Link>
+                )}
+              </div>
             </ActionGuard>
           }
         />
@@ -256,9 +286,13 @@ function PropertiesInner() {
               description="Adjust filters or add a demo-ready listing with images, price, status, and a clear owner."
               action={
                 <ActionGuard permission="properties.create">
-                  <Link href="/properties/new" className="btn-primary">
-                    Add first property
-                  </Link>
+                  {propertyAtLimit ? (
+                    <span className="btn-primary cursor-not-allowed opacity-50">Add first property</span>
+                  ) : (
+                    <Link href="/properties/new" className="btn-primary">
+                      Add first property
+                    </Link>
+                  )}
                 </ActionGuard>
               }
             />
@@ -273,7 +307,7 @@ function PropertiesInner() {
           )}
         />
 
-        {meta ? (
+        {!loading && meta && meta.total > 0 ? (
           <Pagination
             page={meta.page}
             totalPages={meta.total_pages}
@@ -288,10 +322,15 @@ function PropertiesInner() {
       <FilterDrawer
         open={filterOpen}
         onClose={() => setFilterOpen(false)}
-        onApply={() => query.applyFilters(draft)}
+        title="Filter properties"
+        onApply={() => {
+          query.applyFilters(draft);
+          setFilterOpen(false);
+        }}
         onClear={() => {
           query.clearFilters();
           setDraft(Object.fromEntries(FILTER_KEYS.map((k) => [k, ''])));
+          setFilterOpen(false);
         }}
       >
         <FilterField label="Type">

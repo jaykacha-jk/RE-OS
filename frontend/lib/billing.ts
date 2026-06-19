@@ -3,13 +3,14 @@ import { getSession } from './auth';
 
 export type BillingPlan = {
   id: string;
-  code: 'starter' | 'pro' | 'enterprise';
+  code: string;
   name: string;
   monthly_price: number;
   yearly_price: number | null;
   property_limit: number;
   employee_limit: number;
   storage_limit: number;
+  ai_minutes_limit?: number;
   features: Record<string, unknown>;
   is_active: boolean;
 };

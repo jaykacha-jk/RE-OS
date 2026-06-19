@@ -142,8 +142,9 @@ export class MockAiProvider
     };
   }
 
-  verifyWebhookSignature(): boolean {
-    return process.env.NODE_ENV !== 'production';
+  verifyWebhookSignature(_payload: string, _signature: string | undefined): boolean {
+    // Fail-closed: only bypass signature checks when explicitly opted in for local dev.
+    return process.env.MOCK_AI_PROVIDER === 'true';
   }
 }
 

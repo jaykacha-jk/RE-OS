@@ -129,7 +129,9 @@ function AiCallsInner() {
         description="Demo call transcripts and rule-based qualification. Outbound calling is hidden until Exotel or Twilio is wired."
       />
 
-      {error && <div className="rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
+      {error ? (
+        <p className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</p>
+      ) : null}
 
       {canCreate && !voiceAvailable ? (
         <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
@@ -174,7 +176,7 @@ function AiCallsInner() {
           actions={(call) => <ActionMenu items={[{ label: 'View', href: `/ai/calls/${call.id}` }]} />}
         />
 
-        {meta ? (
+        {!loading && meta && meta.total > 0 ? (
           <Pagination
             page={meta.page}
             totalPages={meta.total_pages}
@@ -189,10 +191,15 @@ function AiCallsInner() {
       <FilterDrawer
         open={filterOpen}
         onClose={() => setFilterOpen(false)}
-        onApply={() => query.applyFilters(draft)}
+        title="Filter call logs"
+        onApply={() => {
+          query.applyFilters(draft);
+          setFilterOpen(false);
+        }}
         onClear={() => {
           query.clearFilters();
           setDraft(Object.fromEntries(FILTER_KEYS.map((k) => [k, ''])));
+          setFilterOpen(false);
         }}
       >
         <FilterField label="Status">

@@ -4,10 +4,15 @@ import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 
 import { FormField, FormPage, FormSection, TagInput } from '../../../components/ui';
+import { PropertyGeocodeButton } from '../../../components/properties/property-geocode-button';
 import { PropertyImageManager } from '../../../components/properties/property-image-manager';
+import { PropertyVideoManager } from '../../../components/properties/property-video-manager';
+import { QuotaNotice, proactiveQuotaNoticeProps, quotaApiNoticeProps } from '../../../components/billing/quota-notice';
+import { useBillingUsage } from '../../../hooks/use-billing-usage';
 import { useUnsavedChangesGuard } from '../../../hooks/use-unsaved-changes-guard';
 import { apiFetch } from '../../../lib/api';
 import { getSession } from '../../../lib/auth';
+import { parseQuotaApiError, proactiveQuotaMessage, type QuotaErrorDetails } from '../../../lib/quota';
 import {
   humanize,
   PROPERTY_CATEGORIES,
@@ -35,7 +40,9 @@ function strOrUndef(value: string): string | undefined {
 
 export function PropertyForm({ mode, property }: { mode: Mode; property?: Property }) {
   const router = useRouter();
+  const { usage, propertyAtLimit } = useBillingUsage();
   const [error, setError] = useState<string | null>(null);
+  const [quotaError, setQuotaError] = useState<QuotaErrorDetails | null>(null);
   const [loading, setLoading] = useState(false);
   const [dirty, setDirty] = useState(false);
 
@@ -55,6 +62,8 @@ export function PropertyForm({ mode, property }: { mode: Mode; property?: Proper
   const [stateVal, setStateVal] = useState(property?.state ?? '');
   const [country, setCountry] = useState(property?.country ?? 'India');
   const [pincode, setPincode] = useState(property?.pincode ?? '');
+  const [latitude, setLatitude] = useState(property?.latitude != null ? String(property.latitude) : '');
+  const [longitude, setLongitude] = useState(property?.longitude != null ? String(property.longitude) : '');
 
   const [bedrooms, setBedrooms] = useState(property?.bedrooms != null ? String(property.bedrooms) : '');
   const [bathrooms, setBathrooms] = useState(property?.bathrooms != null ? String(property.bathrooms) : '');
@@ -95,6 +104,8 @@ export function PropertyForm({ mode, property }: { mode: Mode; property?: Proper
       state: strOrUndef(stateVal),
       country: strOrUndef(country),
       pincode: strOrUndef(pincode),
+      latitude: numOrUndef(latitude),
+      longitude: numOrUndef(longitude),
       bedrooms: numOrUndef(bedrooms),
       bathrooms: numOrUndef(bathrooms),
       balconies: numOrUndef(balconies),
@@ -117,6 +128,7 @@ export function PropertyForm({ mode, property }: { mode: Mode; property?: Proper
     if (!session?.access_token) return;
     setLoading(true);
     setError(null);
+    setQuotaError(null);
     try {
       if (mode === 'create') {
         const res = await apiFetch<Property>('/api/v1/properties', {
@@ -136,7 +148,13 @@ export function PropertyForm({ mode, property }: { mode: Mode; property?: Proper
         router.push(`/properties/${property.id}`);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Save failed');
+      const parsed = parseQuotaApiError(err);
+      if (parsed) {
+        setQuotaError(parsed);
+        setError(null);
+      } else {
+        setError(err instanceof Error ? err.message : 'Save failed');
+      }
     } finally {
       setLoading(false);
     }
@@ -161,14 +179,26 @@ export function PropertyForm({ mode, property }: { mode: Mode; property?: Proper
           {humanize(status)}
         </span>
       }
-      error={error}
+      error={quotaError ? null : error}
       submitting={loading}
+      submitDisabled={mode === 'create' && propertyAtLimit}
       submitLabel={mode === 'create' ? 'Create property' : 'Save changes'}
       onSubmit={() => persist(buildPayload())}
       onCancel={() => router.back()}
       saveDraftLabel="Save as draft"
-      onSaveDraft={mode === 'create' ? saveDraft : undefined}
+      onSaveDraft={mode === 'create' && !propertyAtLimit ? saveDraft : undefined}
     >
+      {mode === 'create' && usage && propertyAtLimit ? (
+        <QuotaNotice
+          {...proactiveQuotaNoticeProps(
+            'properties',
+            usage.plan.name,
+            `${proactiveQuotaMessage('properties', usage)} Upgrade to add more listings.`,
+          )}
+        />
+      ) : null}
+      {quotaError ? <QuotaNotice {...quotaApiNoticeProps(quotaError)} /> : null}
+
       <FormSection title="Basic information" description="The essentials buyers and your team see first.">
         <FormField label="Title" required full>
           <input value={title} onChange={(e) => mark(setTitle)(e.target.value)} required className="input" placeholder="e.g. 3 BHK sea-facing apartment in Bandra" />
@@ -214,6 +244,23 @@ export function PropertyForm({ mode, property }: { mode: Mode; property?: Proper
         <FormField label="Pincode">
           <input value={pincode} onChange={(e) => mark(setPincode)(e.target.value)} className="input" placeholder="400050" inputMode="numeric" />
         </FormField>
+        <FormField label="Latitude" hint="Decimal degrees (e.g. 19.0760). Used for map placement.">
+          <input value={latitude} onChange={(e) => mark(setLatitude)(e.target.value)} type="number" step="any" className="input" placeholder="19.0760" />
+        </FormField>
+        <FormField label="Longitude" hint="Decimal degrees (e.g. 72.8777). Used for map placement.">
+          <input value={longitude} onChange={(e) => mark(setLongitude)(e.target.value)} type="number" step="any" className="input" placeholder="72.8777" />
+        </FormField>
+        <PropertyGeocodeButton
+          address={address}
+          city={city}
+          state={stateVal}
+          pincode={pincode}
+          country={country}
+          onResolved={(result) => {
+            mark(setLatitude)(String(result.latitude));
+            mark(setLongitude)(String(result.longitude));
+          }}
+        />
       </FormSection>
 
       <FormSection title="Pricing" description="All amounts in INR (₹).">
@@ -297,7 +344,10 @@ export function PropertyForm({ mode, property }: { mode: Mode; property?: Proper
       </FormSection>
 
       {mode === 'edit' && property ? (
-        <PropertyImageManager propertyId={property.id} images={property.images ?? []} title={property.title} />
+        <>
+          <PropertyImageManager propertyId={property.id} images={property.images ?? []} title={property.title} />
+          <PropertyVideoManager propertyId={property.id} videos={property.videos ?? []} title={property.title} />
+        </>
       ) : (
         <section className="rounded-2xl border border-dashed border-reos-border bg-slate-50 p-5 text-sm text-slate-600">
           <h2 className="font-semibold text-slate-900">Images</h2>

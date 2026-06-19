@@ -68,6 +68,17 @@ describe('BillingService', () => {
         plan,
       }),
       updateSubscription: jest.fn().mockResolvedValue(undefined),
+      createInvoice: jest.fn().mockResolvedValue({
+        id: 'inv-1',
+        invoice_number: 'INV-TEST-1',
+        subtotal: 1499900,
+        tax: 269982,
+        total: 1769882,
+        currency: 'INR',
+        issued_at: new Date('2026-06-18T00:00:00.000Z'),
+      }),
+      updateInvoicePdfUrl: jest.fn().mockResolvedValue({ count: 1 }),
+      createPayment: jest.fn().mockResolvedValue(undefined),
       ...overrides,
     };
     const mockProvider = {
@@ -87,6 +98,15 @@ describe('BillingService', () => {
     };
     const audit = { record: jest.fn().mockResolvedValue(undefined) };
     const events = { emit: jest.fn() };
+    const storage = {
+      saveInvoicePdf: jest.fn().mockResolvedValue({
+        storageKey: 'tenants/tenant-1/invoices/inv-1.pdf',
+        url: 'http://localhost:3001/static/tenants/tenant-1/invoices/inv-1.pdf',
+      }),
+      resolveUrl: jest.fn((value: string | null) =>
+        value ? `http://localhost:3001/static/${value}` : null,
+      ),
+    };
 
     const service = new BillingService(
       repo as never,
@@ -94,8 +114,9 @@ describe('BillingService', () => {
       razorpayProvider as never,
       audit as never,
       events as never,
+      storage as never,
     );
-    return { service, repo, mockProvider, razorpayProvider, audit, events };
+    return { service, repo, mockProvider, razorpayProvider, audit, events, storage };
   }
 
   beforeEach(() => {
@@ -289,5 +310,110 @@ describe('BillingService', () => {
       'Subscription not found for webhook',
     );
     expect(repo.markWebhookProcessed).not.toHaveBeenCalled();
+  });
+
+  it('generates and stores an invoice PDF when payment is captured', async () => {
+    const { service, repo, storage } = setup();
+    const dto = {
+      id: 'evt-pay',
+      event: 'payment.captured',
+      payload: {
+        payment: { entity: { id: 'pay-1', amount: 1769882, method: 'card' } },
+        subscription: { entity: { id: 'rzp-sub-1' } },
+      },
+    };
+
+    await expect(service.processRazorpayWebhook(dto, 'sig', Buffer.from('{}'))).resolves.toEqual({
+      processed: true,
+      duplicate: false,
+    });
+
+    expect(repo.createInvoice).toHaveBeenCalled();
+    expect(storage.saveInvoicePdf).toHaveBeenCalledWith(
+      expect.objectContaining({ tenantId: 'tenant-1', invoiceId: 'inv-1' }),
+    );
+    expect(repo.updateInvoicePdfUrl).toHaveBeenCalledWith(
+      'tenant-1',
+      'inv-1',
+      'tenants/tenant-1/invoices/inv-1.pdf',
+    );
+  });
+});
+
+describe('BillingService — platform plans', () => {
+  const actor = { userId: 'admin-1', tenantId: null, roles: ['super_admin'] } as never;
+
+  it('creates a platform plan', async () => {
+    const repo = {
+      findPlanByCode: jest.fn().mockResolvedValue(null),
+      createPlan: jest.fn().mockResolvedValue({
+        id: 'plan-new',
+        code: 'growth',
+        name: 'Growth',
+        price_inr_monthly: 999900,
+        price_inr_yearly: 9999000,
+        max_properties: 250,
+        max_employees: 15,
+        storage_limit_bytes: 10737418240n,
+        max_ai_minutes_monthly: 0,
+        features: { crm: true },
+        is_active: true,
+      }),
+    };
+    const audit = { record: jest.fn().mockResolvedValue(undefined) };
+    const service = new BillingService(
+      repo as never,
+      {} as never,
+      {} as never,
+      audit as never,
+      { emit: jest.fn() } as never,
+      { resolveUrl: jest.fn() } as never,
+    );
+
+    const result = await service.createPlatformPlan(
+      {
+        code: 'growth',
+        name: 'Growth',
+        price_inr_monthly: 999900,
+        price_inr_yearly: 9999000,
+        max_properties: 250,
+        max_employees: 15,
+        storage_limit_bytes: 10737418240,
+        max_ai_minutes_monthly: 0,
+        features: { crm: true },
+      },
+      actor,
+    );
+
+    expect(result.code).toBe('growth');
+    expect(audit.record).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'platform.plans.created' }),
+    );
+  });
+
+  it('rejects deactivating a plan with active subscriptions', async () => {
+    const repo = {
+      findPlanById: jest.fn().mockResolvedValue({
+        id: 'plan-pro',
+        code: 'pro',
+        name: 'Pro',
+        is_active: true,
+      }),
+      countActiveSubscriptionsForPlan: jest.fn().mockResolvedValue(2),
+    };
+    const service = new BillingService(
+      repo as never,
+      {} as never,
+      {} as never,
+      { record: jest.fn() } as never,
+      { emit: jest.fn() } as never,
+      { resolveUrl: jest.fn() } as never,
+    );
+
+    await expect(
+      service.updatePlatformPlan('plan-pro', { is_active: false }, actor),
+    ).rejects.toMatchObject({
+      response: expect.objectContaining({ code: 'PLAN_HAS_SUBSCRIPTIONS' }),
+    });
   });
 });

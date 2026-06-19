@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 
 import { FeatureFlagsModule } from '../../common/feature-flags.module';
 import { AuditModule } from '../audit/audit.module';
+import { BillingModule } from '../billing/billing.module';
 import { CrmModule } from '../crm/crm.module';
 import {
   AiAgentsController,
@@ -40,7 +41,7 @@ import { PropertyMatchingService } from './services/property-matching.service';
  * (via CrmService) — it never writes CRM entities directly from here.
  */
 @Module({
-  imports: [AuditModule, CrmModule, FeatureFlagsModule],
+  imports: [AuditModule, BillingModule, CrmModule, FeatureFlagsModule],
   controllers: [
     AiController,
     AiAgentsController,

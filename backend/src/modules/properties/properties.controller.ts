@@ -29,8 +29,11 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
 import { TenantGuard } from '../../common/guards/tenant.guard';
 import { AssignPropertyDto } from './dto/assign-property.dto';
+import { BulkImportPropertiesDto } from './dto/bulk-import-properties.dto';
 import { CreatePropertyDto } from './dto/create-property.dto';
+import { GeocodeQueryDto } from './dto/geocode-query.dto';
 import { ListPropertiesQueryDto } from './dto/list-properties-query.dto';
+import { NearbyPlacesQueryDto } from './dto/nearby-places-query.dto';
 import { AddDocumentDto, AddImageDto, AddVideoDto, ReorderImagesDto } from './dto/media.dto';
 import { UpdatePropertyDto } from './dto/update-property.dto';
 import { PropertiesService } from './properties.service';
@@ -80,6 +83,33 @@ export class PropertiesController {
     @Req() req: Request,
   ) {
     return envelope(await this.properties.create(tenantId, dto, user, requestMeta(req)));
+  }
+
+  @Post('import')
+  @RequirePermissions('properties.create')
+  @ApiOperation({ summary: 'Bulk import properties from CSV (max 500 rows, BR-P05)' })
+  @ApiOkResponse({ description: 'Per-row import results' })
+  async importCsv(
+    @TenantId() tenantId: string,
+    @CurrentUser() user: AuthUser,
+    @Body() dto: BulkImportPropertiesDto,
+    @Req() req: Request,
+  ) {
+    return envelope(await this.properties.importFromCsv(tenantId, dto, user, requestMeta(req)));
+  }
+
+  @Get('nearby-places')
+  @RequirePermissions('properties.read')
+  @ApiOperation({ summary: 'Nearby amenities and transit (OpenStreetMap, no API key)' })
+  async nearbyPlaces(@TenantId() tenantId: string, @Query() query: NearbyPlacesQueryDto) {
+    return envelope(await this.properties.getNearbyPlaces(tenantId, query));
+  }
+
+  @Get('geocode')
+  @RequirePermissions('properties.read')
+  @ApiOperation({ summary: 'Resolve address to lat/lng via Nominatim' })
+  async geocode(@TenantId() tenantId: string, @Query() query: GeocodeQueryDto) {
+    return envelope(await this.properties.geocodePropertyLocation(tenantId, query));
   }
 
   @Get('summary')

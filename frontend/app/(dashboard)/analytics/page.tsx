@@ -1,5 +1,6 @@
 'use client';
 
+import dynamic from 'next/dynamic';
 import { useCallback, useEffect, useState } from 'react';
 
 import {
@@ -12,12 +13,31 @@ import {
 } from '../../../lib/analytics';
 import { getSession, hasPermission } from '../../../lib/auth';
 import { KPICard, MetricCard } from '../../../components/analytics/kpi-card';
-import { ChartCard, KpiSkeletonGrid } from '../../../components/analytics/chart-card';
+import { ChartCard, KpiSkeletonGrid, Skeleton } from '../../../components/analytics/chart-card';
 import { RangeFilter } from '../../../components/analytics/range-filter';
-import { FunnelChart } from '../../../components/analytics/funnel-chart';
-import { LeadSourceChart } from '../../../components/analytics/lead-source-chart';
-import { PropertyStatusChart } from '../../../components/analytics/property-status-chart';
-import { ConversionChart, MonthlyLeadsChart } from '../../../components/analytics/conversion-chart';
+
+const chartFallback = () => <Skeleton className="h-48 w-full" />;
+
+const FunnelChart = dynamic(
+  () => import('../../../components/analytics/funnel-chart').then((m) => m.FunnelChart),
+  { loading: chartFallback },
+);
+const LeadSourceChart = dynamic(
+  () => import('../../../components/analytics/lead-source-chart').then((m) => m.LeadSourceChart),
+  { loading: chartFallback },
+);
+const PropertyStatusChart = dynamic(
+  () => import('../../../components/analytics/property-status-chart').then((m) => m.PropertyStatusChart),
+  { loading: chartFallback },
+);
+const ConversionChart = dynamic(
+  () => import('../../../components/analytics/conversion-chart').then((m) => m.ConversionChart),
+  { loading: chartFallback },
+);
+const MonthlyLeadsChart = dynamic(
+  () => import('../../../components/analytics/conversion-chart').then((m) => m.MonthlyLeadsChart),
+  { loading: chartFallback },
+);
 
 export default function AnalyticsPage() {
   const [allowed, setAllowed] = useState<boolean | null>(null);

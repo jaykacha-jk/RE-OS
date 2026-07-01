@@ -126,7 +126,7 @@ function AiCallsInner() {
     <div className="space-y-6">
       <PageHeader
         title="Voice call logs"
-        description="Demo call transcripts and rule-based qualification. Outbound calling is hidden until Exotel or Twilio is wired."
+        description="Call transcripts and rule-based qualification. Outbound calling is hidden until Exotel or Twilio is wired."
       />
 
       {error ? (
@@ -135,7 +135,7 @@ function AiCallsInner() {
 
       {canCreate && !voiceAvailable ? (
         <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-          Real outbound voice is not enabled yet. Existing rows may come from mock/demo calls; the call button appears only when
+          Real outbound voice is not enabled yet. Existing rows may come from test or mock calls; the call button appears only when
           <code className="mx-1 rounded bg-white px-1 py-0.5">NEXT_PUBLIC_VOICE_PROVIDER</code>
           is set to a supported provider.
         </div>

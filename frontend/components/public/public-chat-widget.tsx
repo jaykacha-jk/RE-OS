@@ -1,9 +1,13 @@
 'use client';
 
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import Script from 'next/script';
+import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { usePathname, useSearchParams } from 'next/navigation';
 
-import { API_BASE } from '../../lib/public-site';
+import { usePublicChatSocket } from '../../hooks/use-public-chat-socket';
+import { API_BASE, resolvePublicTenantSlug } from '../../lib/public-site';
+
+const RECAPTCHA_SITE_KEY = process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY?.trim();
 
 type WidgetSession = {
   conversationId: string;
@@ -17,6 +21,15 @@ type PublicMessage = {
   content: string;
   created_at: string;
 };
+
+declare global {
+  interface Window {
+    grecaptcha?: {
+      ready: (cb: () => void) => void;
+      execute: (siteKey: string, options: { action: string }) => Promise<string>;
+    };
+  }
+}
 
 function randomId() {
   if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
@@ -40,10 +53,24 @@ function propertySlugFromPath(pathname: string) {
   return null;
 }
 
+async function recaptchaToken(): Promise<string | undefined> {
+  if (!RECAPTCHA_SITE_KEY || typeof window === 'undefined' || !window.grecaptcha) {
+    return undefined;
+  }
+  return new Promise((resolve) => {
+    window.grecaptcha!.ready(() => {
+      void window
+        .grecaptcha!.execute(RECAPTCHA_SITE_KEY, { action: 'public_chat_start' })
+        .then((token) => resolve(token))
+        .catch(() => resolve(undefined));
+    });
+  });
+}
+
 export function PublicChatWidget() {
   const searchParams = useSearchParams();
   const pathname = usePathname();
-  const tenant = searchParams.get('tenant') ?? 'demo';
+  const tenant = resolvePublicTenantSlug(searchParams.get('tenant'));
   const propertySlug = useMemo(() => propertySlugFromPath(pathname), [pathname]);
 
   const [open, setOpen] = useState(false);
@@ -55,6 +82,19 @@ export function PublicChatWidget() {
   const [draft, setDraft] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [socketLive, setSocketLive] = useState(false);
+
+  const appendMessage = useCallback((message: PublicMessage) => {
+    setMessages((items) => (items.some((m) => m.id === message.id) ? items : [...items, message]));
+  }, []);
+
+  usePublicChatSocket(
+    session?.conversationId ?? null,
+    session?.token ?? null,
+    open && !!session,
+    appendMessage,
+    setSocketLive,
+  );
 
   useEffect(() => {
     const storedVisitor = localStorage.getItem(visitorKey(tenant)) ?? randomId();
@@ -82,18 +122,30 @@ export function PublicChatWidget() {
           activeSession.token,
         )}`,
       );
+      if (res.status === 403) {
+        localStorage.removeItem(storageKey(tenant));
+        setSession(null);
+        setMessages([]);
+        setError('Your chat session expired. Send a new message to start again.');
+        return;
+      }
       if (!res.ok) return;
       const body = (await res.json()) as { data: PublicMessage[] };
       if (!cancelled) setMessages(body.data);
     }
 
-    loadMessages();
-    const interval = window.setInterval(loadMessages, 10_000);
+    void loadMessages();
+
+    // Fallback poll when websocket is unavailable.
+    const interval = window.setInterval(() => {
+      if (!socketLive) void loadMessages();
+    }, 5_000);
+
     return () => {
       cancelled = true;
       window.clearInterval(interval);
     };
-  }, [open, session]);
+  }, [open, session, socketLive, tenant]);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -104,6 +156,7 @@ export function PublicChatWidget() {
     setError(null);
     try {
       if (!session) {
+        const captcha = await recaptchaToken();
         const res = await fetch(`${API_BASE}/api/v1/public/chat/conversations`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -114,6 +167,7 @@ export function PublicChatWidget() {
             client_phone: phone.trim() || undefined,
             property_slug: propertySlug ?? undefined,
             message: content,
+            recaptcha_token: captcha,
           }),
         });
         if (!res.ok) throw new Error('Unable to start chat');
@@ -147,9 +201,15 @@ export function PublicChatWidget() {
             body: JSON.stringify({ content }),
           },
         );
+        if (res.status === 403) {
+          localStorage.removeItem(storageKey(tenant));
+          setSession(null);
+          setMessages([]);
+          throw new Error('Your chat session expired. Send a new message to start again.');
+        }
         if (!res.ok) throw new Error('Unable to send message');
         const body = (await res.json()) as { data: PublicMessage };
-        setMessages((items) => [...items, body.data]);
+        appendMessage(body.data);
       }
       setDraft('');
     } catch (err) {
@@ -161,6 +221,10 @@ export function PublicChatWidget() {
 
   return (
     <div className="fixed bottom-4 right-4 z-50">
+      {RECAPTCHA_SITE_KEY ? (
+        <Script src={`https://www.google.com/recaptcha/api.js?render=${RECAPTCHA_SITE_KEY}`} />
+      ) : null}
+
       {open ? (
         <div className="mb-3 w-[calc(100vw-2rem)] max-w-sm overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl">
           <div className="bg-slate-950 px-5 py-4 text-white">

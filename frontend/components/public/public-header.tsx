@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 
-import { formatCityTitle } from '../../lib/public-site';
+import { formatCityTitle, resolvePublicTenantSlug } from '../../lib/public-site';
 
 const DEFAULT_CITY = 'ahmedabad';
 const CITY_OPTIONS = [
@@ -24,7 +24,7 @@ export function PublicHeader() {
   const searchParams = useSearchParams();
   const [open, setOpen] = useState(false);
 
-  const tenant = searchParams.get('tenant') ?? 'demo';
+  const tenant = resolvePublicTenantSlug(searchParams.get('tenant'));
   const q = (path: string) => `${path}?tenant=${encodeURIComponent(tenant)}`;
   const pathParts = pathname.split('/').filter(Boolean);
   const activeIntent = INTENTS.has(pathParts[0]) ? pathParts[0] : 'buy';

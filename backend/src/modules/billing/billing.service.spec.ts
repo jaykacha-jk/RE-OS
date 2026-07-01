@@ -94,7 +94,7 @@ describe('BillingService', () => {
         providerSubscriptionId: 'sub-rzp-1',
         checkoutUrl: 'https://rzp.io/i/subscription123',
       }),
-      verifyWebhookSignature: jest.fn().mockReturnValue(true),
+      verifyWebhookSignature: jest.fn().mockResolvedValue(true),
     };
     const audit = { record: jest.fn().mockResolvedValue(undefined) };
     const events = { emit: jest.fn() };

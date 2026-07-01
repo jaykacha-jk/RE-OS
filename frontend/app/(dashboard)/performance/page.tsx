@@ -1,5 +1,6 @@
 'use client';
 
+import dynamic from 'next/dynamic';
 import { useCallback, useEffect, useState } from 'react';
 
 import {
@@ -13,7 +14,14 @@ import { getSession, hasAnyRole } from '../../../lib/auth';
 import { KPICard } from '../../../components/analytics/kpi-card';
 import { ChartCard, KpiSkeletonGrid } from '../../../components/analytics/chart-card';
 import { RangeFilter } from '../../../components/analytics/range-filter';
-import { EmployeePerformanceTable } from '../../../components/analytics/employee-performance-table';
+
+const EmployeePerformanceTable = dynamic(
+  () =>
+    import('../../../components/analytics/employee-performance-table').then((m) => ({
+      default: m.EmployeePerformanceTable,
+    })),
+  { ssr: false, loading: () => <div className="h-64 animate-pulse rounded-xl bg-slate-100" /> },
+);
 
 const PERFORMANCE_ROLES = [
   'super_admin',

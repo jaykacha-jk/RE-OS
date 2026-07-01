@@ -23,9 +23,22 @@ export type TenantQuotaContext = {
 
 @Injectable()
 export class QuotaService {
+  private readonly contextCache = new Map<string, { ctx: TenantQuotaContext; expiresAt: number }>();
+  private readonly contextTtlMs = 5 * 60 * 1000;
+
   constructor(private readonly repo: BillingRepository) {}
 
   async getContext(tenantId: string): Promise<TenantQuotaContext> {
+    const now = Date.now();
+    const cached = this.contextCache.get(tenantId);
+    if (cached && cached.expiresAt > now) return cached.ctx;
+
+    const ctx = await this.loadContext(tenantId);
+    this.contextCache.set(tenantId, { ctx, expiresAt: now + this.contextTtlMs });
+    return ctx;
+  }
+
+  private async loadContext(tenantId: string): Promise<TenantQuotaContext> {
     const org = await this.repo.findOrganization(tenantId);
     if (!org) throw new NotFoundException('Organization not found');
 

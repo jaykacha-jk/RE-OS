@@ -70,10 +70,12 @@ export default function LoginPage() {
             </div>
           </div>
 
-          <div className="mt-4 rounded-2xl border border-teal-100 bg-teal-50/60 px-4 py-3 text-xs leading-5 text-teal-900">
-            <span className="font-bold">Demo access:</span> use <code className="font-mono">owner@demo.realty</code> with slug{' '}
-            <code className="font-mono">demo</code>, or leave the slug blank for Super Admin (<code className="font-mono">super@reos.dev</code>).
-          </div>
+          {process.env.NODE_ENV !== 'production' ? (
+            <div className="mt-4 rounded-2xl border border-teal-100 bg-teal-50/60 px-4 py-3 text-xs leading-5 text-teal-900">
+              <span className="font-bold">Dev access:</span> use <code className="font-mono">owner@demo.realty</code> with slug{' '}
+              <code className="font-mono">demo</code>, or leave the slug blank for Super Admin (<code className="font-mono">super@reos.dev</code>).
+            </div>
+          ) : null}
 
           <p className="mt-6 text-center text-xs text-slate-500">
             New to RE-OS?{' '}

@@ -11,6 +11,7 @@ import {
   propertyIntent,
   propertyMatchesRoute,
   propertyPath,
+  resolvePublicTenantSlug,
 } from '../../../../../lib/public-site';
 
 export const revalidate = 300;
@@ -26,7 +27,7 @@ export async function generateMetadata({
   const { tenant } = await searchParams;
   if (!isPublicIntent(intent)) return { title: 'Not found' };
 
-  const property = await fetchPublicProperty(slug, tenant ?? 'demo');
+  const property = await fetchPublicProperty(slug, resolvePublicTenantSlug(tenant));
   if (!property || !propertyMatchesRoute(property, intent, city)) return { title: 'Property not found' };
   return buildPropertyMetadata(property, propertyPath(property));
 }
@@ -42,7 +43,7 @@ export default async function SeoPropertyDetailPage({
   const { tenant } = await searchParams;
   if (!isPublicIntent(intent)) notFound();
 
-  const tenantSlug = tenant ?? 'demo';
+  const tenantSlug = resolvePublicTenantSlug(tenant);
   const property = await fetchPublicProperty(slug, tenantSlug);
   if (!property || !propertyMatchesRoute(property, intent, city)) notFound();
 

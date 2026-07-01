@@ -28,6 +28,7 @@ import { FeatureFlagGuard } from '../../common/guards/feature-flag.guard';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
 import { TenantGuard } from '../../common/guards/tenant.guard';
+import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 import { CrmService } from './crm.service';
 import { CreateLeadSourceDto, UpdateLeadSourceDto } from './dto/lead-source.dto';
 
@@ -38,8 +39,8 @@ function requestMeta(req: Request) {
   };
 }
 
-function envelope<T>(data: T) {
-  return { data, meta: { request_id: randomBytes(16).toString('hex') } };
+function envelope<T>(data: T, extraMeta?: Record<string, unknown>) {
+  return { data, meta: { request_id: randomBytes(16).toString('hex'), ...extraMeta } };
 }
 
 @ApiTags('CRM — Lead Sources')
@@ -57,9 +58,15 @@ export class LeadSourcesController {
   async list(
     @TenantId() tenantId: string,
     @Query('include_inactive') includeInactive?: string,
+    @Query() pagination?: PaginationQueryDto,
   ) {
-    const data = await this.crm.listLeadSources(tenantId, includeInactive === 'true');
-    return { data, meta: { request_id: randomBytes(16).toString('hex') } };
+    const result = await this.crm.listLeadSources(
+      tenantId,
+      includeInactive === 'true',
+      pagination?.page,
+      pagination?.per_page,
+    );
+    return envelope(result.data, result.pagination);
   }
 
   @Post()

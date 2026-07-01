@@ -406,7 +406,7 @@ export class BillingService {
     rawBody?: Buffer,
   ) {
     const payload = rawBody ?? Buffer.from(JSON.stringify(dto));
-    const valid = this.razorpayProvider.verifyWebhookSignature(payload, signature);
+    const valid = await this.razorpayProvider.verifyWebhookSignature(payload, signature);
     if (!valid) throw new UnauthorizedException('Invalid Razorpay webhook signature');
 
     const providerEventId = dto.id ?? `${dto.event}:${JSON.stringify(dto.payload).slice(0, 64)}`;
@@ -691,12 +691,11 @@ export class BillingService {
 
   async listPlatformPlans() {
     const plans = await this.repo.listAllPlans();
-    return Promise.all(
-      plans.map(async (plan) => ({
-        ...this.formatPlan(plan),
-        active_subscriptions: await this.repo.countActiveSubscriptionsForPlan(plan.id),
-      })),
-    );
+    const counts = await this.repo.countActiveSubscriptionsByPlanIds(plans.map((plan) => plan.id));
+    return plans.map((plan) => ({
+      ...this.formatPlan(plan),
+      active_subscriptions: counts.get(plan.id) ?? 0,
+    }));
   }
 
   async getPlatformPlan(id: string) {

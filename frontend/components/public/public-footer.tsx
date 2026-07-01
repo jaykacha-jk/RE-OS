@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 
-import { API_BASE, type PublicSettings } from '../../lib/public-site';
+import { API_BASE, type PublicSettings, resolvePublicTenantSlug } from '../../lib/public-site';
 import { NewsletterForm } from './newsletter-form';
 
 const DEFAULT_CITY = 'ahmedabad';
@@ -49,7 +49,7 @@ const SOCIAL_LABELS: Record<string, string> = {
 export function PublicFooter() {
   const year = new Date().getFullYear();
   const searchParams = useSearchParams();
-  const tenant = searchParams.get('tenant') ?? 'demo';
+  const tenant = resolvePublicTenantSlug(searchParams.get('tenant'));
   const [settings, setSettings] = useState<PublicSettings | null>(null);
 
   useEffect(() => {

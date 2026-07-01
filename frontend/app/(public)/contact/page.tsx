@@ -1,5 +1,5 @@
 import { ContactForm } from '../../../components/public/contact-form';
-import { fetchPublicSettings } from '../../../lib/public-site';
+import { fetchPublicSettings, resolvePublicTenantSlug } from '../../../lib/public-site';
 
 export const metadata = {
   title: 'Contact | RE-OS',
@@ -44,7 +44,7 @@ export default async function ContactPage({
   searchParams: Promise<{ tenant?: string }>;
 }) {
   const sp = await searchParams;
-  const tenant = sp.tenant ?? 'demo';
+  const tenant = resolvePublicTenantSlug(sp.tenant);
   const settings = await fetchPublicSettings(tenant);
   const siteName = settings?.name ?? 'RE-OS';
   const contact = settings?.website?.contact ?? {};

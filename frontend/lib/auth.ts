@@ -26,10 +26,33 @@ export type AuthSession = {
 const SESSION_KEY = 'reos_session';
 const COOKIE_SESSION_TOKEN = '__reos_cookie_session__';
 
+/**
+ * In local dev, prefer the Next.js `/api` rewrite when the UI and API run on
+ * different localhost ports (e.g. :3000 → :4545). Same-origin requests avoid
+ * CORS issues and keep httpOnly auth cookies on the UI origin.
+ */
+export function browserApiBase(): string {
+  const configured = process.env.NEXT_PUBLIC_API_URL?.trim();
+  if (!configured || typeof window === 'undefined') return configured ?? '';
+  if (process.env.NODE_ENV === 'production') return configured;
+  try {
+    const target = new URL(configured);
+    const here = new URL(window.location.href);
+    const localHost =
+      (target.hostname === 'localhost' || target.hostname === '127.0.0.1') &&
+      (here.hostname === 'localhost' || here.hostname === '127.0.0.1');
+    if (localHost && target.origin !== here.origin) return '';
+  } catch {
+    /* ignore invalid URL */
+  }
+  return configured;
+}
+
 /** Same-origin API (Next rewrite) — tokens live in httpOnly cookies only. */
 export function usesCookieAuth(): boolean {
   if (typeof window === 'undefined') return false;
-  return !process.env.NEXT_PUBLIC_API_URL;
+  if (!process.env.NEXT_PUBLIC_API_URL) return true;
+  return browserApiBase() === '';
 }
 
 export function saveSession(session: AuthSession) {

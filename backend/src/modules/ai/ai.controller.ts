@@ -21,6 +21,7 @@ import { FeatureFlagGuard } from '../../common/guards/feature-flag.guard';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
 import { TenantGuard } from '../../common/guards/tenant.guard';
+import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 import { AI_PERMISSIONS } from './ai.constants';
 import { AiChatMessageDto, StartAiChatDto } from './dto/ai-chat.dto';
 import { CreateAgentDto, UpdateAgentDto } from './dto/ai-agent.dto';
@@ -36,8 +37,8 @@ import { ConversationIntelligenceService } from './services/conversation-intelli
 import { LeadQualificationService } from './services/lead-qualification.service';
 import { PropertyMatchingService } from './services/property-matching.service';
 
-function envelope<T>(data: T) {
-  return { data, meta: { request_id: randomBytes(16).toString('hex') } };
+function envelope<T>(data: T, extraMeta?: Record<string, unknown>) {
+  return { data, meta: { request_id: randomBytes(16).toString('hex'), ...extraMeta } };
 }
 
 function requestMeta(req: Request) {
@@ -61,13 +62,6 @@ export class AiController {
   @RequirePermissions(AI_PERMISSIONS.DASHBOARD_READ)
   @ApiOperation({ summary: 'AI agent platform dashboard metrics' })
   async dashboard(@TenantId() tenantId: string, @Query('range') range?: string) {
-    return envelope(await this.analytics.dashboard(tenantId, range));
-  }
-
-  @Get('analytics')
-  @RequirePermissions(AI_PERMISSIONS.ANALYTICS_READ)
-  @ApiOperation({ summary: 'AI conversation, conversion, and cost analytics' })
-  async analyticsView(@TenantId() tenantId: string, @Query('range') range?: string) {
     return envelope(await this.analytics.dashboard(tenantId, range));
   }
 
@@ -109,8 +103,9 @@ export class AiAgentsController {
   @Get()
   @RequirePermissions(AI_PERMISSIONS.CALLS_READ)
   @ApiOperation({ summary: 'List AI voice/chat agents' })
-  async list(@TenantId() tenantId: string) {
-    return envelope(await this.calls.listAgents(tenantId));
+  async list(@TenantId() tenantId: string, @Query() query: PaginationQueryDto) {
+    const result = await this.calls.listAgents(tenantId, query.page, query.per_page);
+    return envelope(result.data, result.pagination);
   }
 
   @Post()

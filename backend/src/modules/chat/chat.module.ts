@@ -1,9 +1,12 @@
 import { Module } from '@nestjs/common';
 
 import { FeatureFlagsModule } from '../../common/feature-flags.module';
+import { RecaptchaService } from '../../common/security/recaptcha.service';
 import { AuditModule } from '../audit/audit.module';
 import { CrmModule } from '../crm/crm.module';
 import { StorageService } from '../properties/storage/storage.service';
+import { SettingsModule } from '../settings/settings.module';
+import { ChatAutoAssignService } from './chat-auto-assign.service';
 import { ChatController, ChatMessagesController, PublicChatController } from './chat.controller';
 import { ChatGateway } from './chat.gateway';
 import { ChatRepository } from './chat.repository';
@@ -18,9 +21,9 @@ import { ChatService } from './chat.service';
  * notification automation engine.
  */
 @Module({
-  imports: [AuditModule, CrmModule, FeatureFlagsModule],
+  imports: [AuditModule, CrmModule, FeatureFlagsModule, SettingsModule],
   controllers: [ChatController, ChatMessagesController, PublicChatController],
-  providers: [ChatService, ChatRepository, ChatGateway, StorageService],
+  providers: [ChatService, ChatRepository, ChatGateway, ChatAutoAssignService, RecaptchaService, StorageService],
   exports: [ChatService],
 })
 export class ChatModule {}

@@ -3,7 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 
-import { Combobox, FormField, FormPage, FormSection, PhoneInput, type ComboboxOption } from '../../../components/ui';
+import { Combobox, FormField, FormPage, FormSection, PhoneInput, StatusBadge, type ComboboxOption } from '../../../components/ui';
 import { useUnsavedChangesGuard } from '../../../hooks/use-unsaved-changes-guard';
 import { apiFetch } from '../../../lib/api';
 import { getSession } from '../../../lib/auth';
@@ -164,9 +164,7 @@ export function InquiryForm({ mode, inquiry }: { mode: Mode; inquiry?: Inquiry }
         { label: mode === 'create' ? 'New inquiry' : 'Edit' },
       ]}
       statusBadge={
-        <span className={`rounded-full px-2.5 py-1 text-2xs font-bold ${stageBadgeClass(currentStage)}`}>
-          {stageLabel(currentStage)}
-        </span>
+        <StatusBadge label={stageLabel(currentStage)} className={stageBadgeClass(currentStage)} />
       }
       error={error}
       submitting={saving}
@@ -294,7 +292,8 @@ export function InquiryForm({ mode, inquiry }: { mode: Mode; inquiry?: Inquiry }
       </FormSection>
 
       {mode === 'create' ? (
-        <label className="flex items-center gap-2 text-sm text-slate-600">
+        <div className="w-full basis-full">
+          <label className="flex items-center gap-2 text-sm text-slate-600">
           <input
             type="checkbox"
             checked={overrideDuplicate}
@@ -302,7 +301,8 @@ export function InquiryForm({ mode, inquiry }: { mode: Mode; inquiry?: Inquiry }
             className="h-4 w-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500"
           />
           Override duplicate detection (same phone within 30 days)
-        </label>
+          </label>
+        </div>
       ) : null}
     </FormPage>
   );

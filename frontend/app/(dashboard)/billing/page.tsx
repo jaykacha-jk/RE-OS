@@ -48,7 +48,7 @@ export default function BillingDashboardPage() {
             <p className="text-xs font-bold uppercase tracking-[0.2em] text-teal-200">SaaS revenue center</p>
             <h1 className="mt-3 text-3xl font-bold tracking-tight sm:text-4xl">Billing</h1>
             <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-200">
-              Track plan value, renewal health, usage limits, invoices, and upgrade paths for a demo-ready subscription story.
+              Track plan value, renewal health, usage limits, invoices, and upgrade paths for your subscription.
             </p>
           </div>
           <div className="rounded-2xl border border-white/10 bg-white/10 p-4 backdrop-blur">
@@ -155,7 +155,7 @@ export default function BillingDashboardPage() {
         <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
           <div>
             <h2 className="font-bold text-slate-900">Available plans</h2>
-            <p className="mt-1 text-xs text-slate-500">Pricing cards for upgrade conversations and investor demos.</p>
+            <p className="mt-1 text-xs text-slate-500">Pricing cards for upgrade conversations and plan comparisons.</p>
           </div>
           <Link href="/billing/plans" className="text-sm font-bold text-teal-700 hover:underline">Full comparison</Link>
         </div>

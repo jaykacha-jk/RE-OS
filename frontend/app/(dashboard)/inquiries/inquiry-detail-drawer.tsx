@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 
-import { Drawer } from '../../../components/ui';
+import { Drawer, StatusBadge } from '../../../components/ui';
 import { apiFetch } from '../../../lib/api';
 import { getSession } from '../../../lib/auth';
 import {
@@ -100,15 +100,9 @@ export function InquiryDetailDrawer({ inquiryId, onClose }: InquiryDetailDrawerP
       {inquiry ? (
         <div className="space-y-4">
           <div className="flex flex-wrap gap-2">
-            <span className={`rounded-full px-2.5 py-1 text-2xs font-bold ${stageBadgeClass(inquiry.stage)}`}>
-              {stageLabel(inquiry.stage)}
-            </span>
-            <span className={`rounded-full px-2.5 py-1 text-2xs font-bold ${temperatureBadgeClass(inquiry.temperature)}`}>
-              {humanize(inquiry.temperature)}
-            </span>
-            <span className={`rounded-full px-2.5 py-1 text-2xs font-bold ${priorityBadgeClass(inquiry.priority)}`}>
-              {humanize(inquiry.priority)} priority
-            </span>
+            <StatusBadge label={stageLabel(inquiry.stage)} className={stageBadgeClass(inquiry.stage)} />
+            <StatusBadge label={humanize(inquiry.temperature)} className={temperatureBadgeClass(inquiry.temperature)} />
+            <StatusBadge label={`${humanize(inquiry.priority)} priority`} className={priorityBadgeClass(inquiry.priority)} />
           </div>
 
           <div className="flex gap-1 overflow-x-auto border-b border-reos-border">

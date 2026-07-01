@@ -82,13 +82,14 @@ export default function NotificationSettingsPage() {
     }
   }
 
+  const filteredPrefs = prefs.filter((pref) =>
+    [pref.label, pref.type, pref.event_key].join(' ').toLowerCase().includes(search.trim().toLowerCase()),
+  );
+  const pager = useClientPagination(filteredPrefs, 50);
+
   if (!canRead) {
     return <p className="text-slate-600">You do not have permission to manage notification settings.</p>;
   }
-
-  const filteredPrefs = prefs.filter((pref) => [pref.label, pref.type, pref.event_key].join(' ').toLowerCase().includes(search.trim().toLowerCase()));
-
-  const pager = useClientPagination(filteredPrefs, 50);
 
   const columns: DataTableColumn<NotificationPreference>[] = [
     {

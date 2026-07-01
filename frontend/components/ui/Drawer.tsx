@@ -86,7 +86,7 @@ export function Drawer({
           </button>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto scrollbar-thin px-5 pb-5 pt-4">{children}</div>
+        <div className="min-h-0 flex-1 overflow-y-auto scrollbar-thin px-5 pb-4 pt-4">{children}</div>
 
         {footer ? (
           <div className="flex shrink-0 items-center justify-end gap-3 border-t border-reos-border bg-slate-50 px-5 py-4">

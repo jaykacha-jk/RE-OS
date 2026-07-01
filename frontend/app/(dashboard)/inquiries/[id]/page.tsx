@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
 
 import { ActionGuard } from '../../../../components/shared/ActionGuard';
-import { ConfirmDialog } from '../../../../components/ui';
+import { ConfirmDialog, StatusBadge } from '../../../../components/ui';
 import { apiFetch } from '../../../../lib/api';
 import { getSession } from '../../../../lib/auth';
 import {
@@ -152,9 +152,7 @@ export default function InquiryDetailPage() {
         <div>
           <div className="flex items-center gap-3">
             <h1 className="text-2xl font-bold tracking-tight text-slate-950">{inquiry.client_name}</h1>
-            <span className={`rounded-full px-2.5 py-1 text-2xs font-bold ${stageBadgeClass(inquiry.stage)}`}>
-              {stageLabel(inquiry.stage)}
-            </span>
+            <StatusBadge label={stageLabel(inquiry.stage)} className={stageBadgeClass(inquiry.stage)} />
           </div>
           <p className="mt-1 font-mono text-xs text-slate-500">{inquiry.inquiry_code} · {inquiry.phone}</p>
         </div>
@@ -198,14 +196,10 @@ export default function InquiryDetailPage() {
               <Field label="Email" value={inquiry.email} />
               <Field label="WhatsApp" value={inquiry.whatsapp} />
               <Field label="Priority">
-                <span className={`rounded-full px-2.5 py-1 text-2xs font-bold ${priorityBadgeClass(inquiry.priority)}`}>
-                  {humanize(inquiry.priority)}
-                </span>
+                <StatusBadge label={humanize(inquiry.priority)} className={priorityBadgeClass(inquiry.priority)} />
               </Field>
               <Field label="Temperature">
-                <span className={`rounded-full px-2.5 py-1 text-2xs font-bold ${temperatureBadgeClass(inquiry.temperature)}`}>
-                  {humanize(inquiry.temperature)}
-                </span>
+                <StatusBadge label={humanize(inquiry.temperature)} className={temperatureBadgeClass(inquiry.temperature)} />
               </Field>
               <Field label="Lead score" value={inquiry.lead_score != null ? String(inquiry.lead_score) : null} />
               <Field label="Budget" value={budgetLabel(inquiry.budget_min, inquiry.budget_max)} />

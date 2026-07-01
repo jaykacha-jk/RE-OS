@@ -1,6 +1,6 @@
 import Link from 'next/link';
 
-import { fetchPublicListings, fetchPublicSettings } from '../../../lib/public-site';
+import { fetchPublicListings, fetchPublicSettings, resolvePublicTenantSlug } from '../../../lib/public-site';
 
 export const metadata = {
   title: 'About | RE-OS',
@@ -46,7 +46,7 @@ export default async function AboutPage({
   searchParams: Promise<{ tenant?: string }>;
 }) {
   const sp = await searchParams;
-  const tenant = sp.tenant ?? 'demo';
+  const tenant = resolvePublicTenantSlug(sp.tenant);
   const tenantQuery = `?tenant=${encodeURIComponent(tenant)}`;
   const [settings, listings] = await Promise.all([
     fetchPublicSettings(tenant),

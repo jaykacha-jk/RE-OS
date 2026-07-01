@@ -291,6 +291,7 @@ export class AuthRepository {
 
       const employee = await tx.employees.create({
         data: {
+          tenant_id: organization.id,
           user_id: user.id,
           department: 'Leadership',
           status: 'active',

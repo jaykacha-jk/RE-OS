@@ -24,6 +24,7 @@ import { FeatureFlagGuard } from '../../common/guards/feature-flag.guard';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
 import { TenantGuard } from '../../common/guards/tenant.guard';
+import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 import { AI_PERMISSIONS } from './ai.constants';
 import { CallWebhookDto } from './dto/ai-call.dto';
 import { UpdateAiSettingsDto } from './dto/ai-settings.dto';
@@ -41,8 +42,8 @@ import { FollowupAutomationService } from './services/followup-automation.servic
 import { KnowledgeBaseService } from './services/knowledge-base.service';
 import { PromptService } from './services/prompt.service';
 
-function envelope<T>(data: T) {
-  return { data, meta: { request_id: randomBytes(16).toString('hex') } };
+function envelope<T>(data: T, extraMeta?: Record<string, unknown>) {
+  return { data, meta: { request_id: randomBytes(16).toString('hex'), ...extraMeta } };
 }
 
 function requestMeta(req: Request) {
@@ -127,8 +128,9 @@ export class AiPromptsController {
   @Get()
   @RequirePermissions(AI_PERMISSIONS.PROMPTS_MANAGE)
   @ApiOperation({ summary: 'List AI prompt templates (system + tenant)' })
-  async list(@TenantId() tenantId: string) {
-    return envelope(await this.prompts.list(tenantId));
+  async list(@TenantId() tenantId: string, @Query() query: PaginationQueryDto) {
+    const result = await this.prompts.list(tenantId, query.page, query.per_page);
+    return envelope(result.data, result.pagination);
   }
 
   @Post()

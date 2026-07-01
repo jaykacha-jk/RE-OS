@@ -17,6 +17,7 @@ export { FormPage, type Breadcrumb } from './FormPage';
 export { TagInput } from './TagInput';
 export { Combobox, type ComboboxOption } from './Combobox';
 export { PhoneInput } from './PhoneInput';
+export { StatusBadge } from './StatusBadge';
 
 // Re-exported existing shared building blocks so consumers have one import path.
 export { EmptyState } from '../shared/EmptyState';

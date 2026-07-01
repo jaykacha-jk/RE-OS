@@ -1,6 +1,7 @@
 import { createHmac, timingSafeEqual } from 'crypto';
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 
+import { PlatformPaymentConfigService } from '../../platform-settings/platform-payment-config.service';
 import type {
   PaymentProvider,
   ProviderSubscriptionRequest,
@@ -11,6 +12,8 @@ import type {
 export class RazorpayProvider implements PaymentProvider {
   readonly name = 'razorpay';
 
+  constructor(private readonly paymentConfig: PlatformPaymentConfigService) {}
+
   async createSubscription(
     input: ProviderSubscriptionRequest,
   ): Promise<ProviderSubscriptionResult> {
@@ -18,21 +21,30 @@ export class RazorpayProvider implements PaymentProvider {
       throw new Error('Razorpay subscriptions require a positive amount');
     }
 
-    const plan = await this.request<RazorpayPlanResponse>('/plans', {
-      period: input.billingCycle === 'yearly' ? 'yearly' : 'monthly',
-      interval: 1,
-      item: {
-        name: `RE-OS ${input.planName} ${input.billingCycle}`,
-        amount: input.amount,
-        currency: input.currency,
-        description: `${input.planName} plan for RE-OS`,
+    const credentials = await this.resolveCredentials();
+    if (!credentials) {
+      throw new Error('Razorpay credentials are not configured');
+    }
+
+    const plan = await this.request<RazorpayPlanResponse>(
+      '/plans',
+      {
+        period: input.billingCycle === 'yearly' ? 'yearly' : 'monthly',
+        interval: 1,
+        item: {
+          name: `RE-OS ${input.planName} ${input.billingCycle}`,
+          amount: input.amount,
+          currency: input.currency,
+          description: `${input.planName} plan for RE-OS`,
+        },
+        notes: {
+          tenant_id: input.tenantId,
+          plan_code: input.planCode,
+          billing_cycle: input.billingCycle,
+        },
       },
-      notes: {
-        tenant_id: input.tenantId,
-        plan_code: input.planCode,
-        billing_cycle: input.billingCycle,
-      },
-    });
+      credentials,
+    );
 
     if (!plan.id) {
       throw new Error('Razorpay plan creation did not return a plan id');
@@ -52,6 +64,7 @@ export class RazorpayProvider implements PaymentProvider {
           provider_plan_id: plan.id,
         },
       },
+      credentials,
     );
 
     if (!subscription.id) {
@@ -74,8 +87,12 @@ export class RazorpayProvider implements PaymentProvider {
     };
   }
 
-  verifyWebhookSignature(payload: Buffer | string, signature: string | undefined): boolean {
-    const secret = process.env.RAZORPAY_WEBHOOK_SECRET;
+  async verifyWebhookSignature(
+    payload: Buffer | string,
+    signature: string | undefined,
+  ): Promise<boolean> {
+    const credentials = await this.resolveCredentials();
+    const secret = credentials?.webhookSecret?.trim();
     if (!secret) throw new UnauthorizedException('Razorpay webhook secret is not configured');
     if (!signature) return false;
 
@@ -89,10 +106,16 @@ export class RazorpayProvider implements PaymentProvider {
     }
   }
 
-  private async request<T>(path: string, body: Record<string, unknown>): Promise<T> {
-    const keyId = this.requiredEnv('RAZORPAY_KEY_ID');
-    const keySecret = this.requiredEnv('RAZORPAY_KEY_SECRET');
-    const auth = Buffer.from(`${keyId}:${keySecret}`).toString('base64');
+  private async resolveCredentials() {
+    return this.paymentConfig.getActiveRazorpayCredentials();
+  }
+
+  private async request<T>(
+    path: string,
+    body: Record<string, unknown>,
+    credentials: { keyId: string; keySecret: string },
+  ): Promise<T> {
+    const auth = Buffer.from(`${credentials.keyId}:${credentials.keySecret}`).toString('base64');
 
     const response = await fetch(`https://api.razorpay.com/v1${path}`, {
       method: 'POST',
@@ -116,14 +139,6 @@ export class RazorpayProvider implements PaymentProvider {
     }
 
     return payload as T;
-  }
-
-  private requiredEnv(name: string): string {
-    const value = process.env[name]?.trim();
-    if (!value) {
-      throw new Error(`${name} is required when PAYMENT_PROVIDER=razorpay`);
-    }
-    return value;
   }
 }
 

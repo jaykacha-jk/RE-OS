@@ -13,6 +13,7 @@ import {
   FilterField,
   Icon,
   Pagination,
+  StatusBadge,
   type DataTableColumn,
 } from '../../../components/ui';
 import { useTableQuery, type TableQueryValues } from '../../../hooks/use-table-query';
@@ -161,23 +162,17 @@ function InquiriesInner() {
     {
       key: 'stage',
       header: 'Stage',
-      render: (row) => (
-        <span className={`rounded-full px-2.5 py-1 text-2xs font-bold ${stageBadgeClass(row.stage)}`}>{stageLabel(row.stage)}</span>
-      ),
+      render: (row) => <StatusBadge label={stageLabel(row.stage)} className={stageBadgeClass(row.stage)} />,
     },
     {
       key: 'priority',
       header: 'Priority',
-      render: (row) => (
-        <span className={`rounded-full px-2.5 py-1 text-2xs font-bold ${priorityBadgeClass(row.priority)}`}>{humanize(row.priority)}</span>
-      ),
+      render: (row) => <StatusBadge label={humanize(row.priority)} className={priorityBadgeClass(row.priority)} />,
     },
     {
       key: 'temperature',
       header: 'Temperature',
-      render: (row) => (
-        <span className={`rounded-full px-2.5 py-1 text-2xs font-bold ${temperatureBadgeClass(row.temperature)}`}>{humanize(row.temperature)}</span>
-      ),
+      render: (row) => <StatusBadge label={humanize(row.temperature)} className={temperatureBadgeClass(row.temperature)} />,
     },
     {
       key: 'budget',
@@ -209,7 +204,7 @@ function InquiriesInner() {
           </div>
           <div className="flex flex-col justify-between gap-4 rounded-2xl border border-white/10 bg-white/10 p-4 backdrop-blur">
             <p className="text-sm text-slate-200">
-              High-trust CRM demos need believable leads, clear assignment, and visible urgency.
+              Strong CRM workflows need believable leads, clear assignment, and visible urgency.
             </p>
             <div className="flex flex-wrap gap-2">
               <Link href="/pipeline" className="inline-flex items-center justify-center rounded-xl border border-white/20 px-4 py-2 text-sm font-bold text-white transition hover:bg-white/10">

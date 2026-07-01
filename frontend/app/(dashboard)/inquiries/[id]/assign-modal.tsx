@@ -2,13 +2,11 @@
 
 import { useEffect, useState } from 'react';
 
+import { FormDrawer, FormField } from '../../../../components/ui';
 import { apiFetch } from '../../../../lib/api';
 import { getSession } from '../../../../lib/auth';
 import type { Inquiry } from '../../../../lib/crm';
 import { employeeLabel, fetchEmployees, type EmployeeOption } from '../../../../lib/crm-api';
-import { ModalShell } from './modal-shell';
-
-const labelClass = 'mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500';
 
 export function AssignModal({
   inquiry,
@@ -53,18 +51,25 @@ export function AssignModal({
   }
 
   return (
-    <ModalShell title="Assign inquiry" onClose={onClose} onSave={save} saving={saving} error={error}>
-      <label className={labelClass}>Owner</label>
-      <select
-        value={selected}
-        onChange={(e) => setSelected(e.target.value)}
-        className="input"
-      >
-        <option value="">— select employee —</option>
-        {employees.map((emp) => (
-          <option key={emp.id} value={emp.id}>{employeeLabel(emp)}</option>
-        ))}
-      </select>
-    </ModalShell>
+    <FormDrawer
+      open
+      title="Assign inquiry"
+      description="Complete this quick CRM action without leaving the record."
+      onClose={onClose}
+      onSubmit={save}
+      submitting={saving}
+      error={error}
+    >
+      <FormField label="Owner">
+        <select value={selected} onChange={(e) => setSelected(e.target.value)} className="input">
+          <option value="">— select employee —</option>
+          {employees.map((emp) => (
+            <option key={emp.id} value={emp.id}>
+              {employeeLabel(emp)}
+            </option>
+          ))}
+        </select>
+      </FormField>
+    </FormDrawer>
   );
 }

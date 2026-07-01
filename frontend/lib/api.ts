@@ -1,4 +1,5 @@
 import {
+  browserApiBase,
   clearSession,
   getSession,
   hasActiveSession,
@@ -12,7 +13,7 @@ import {
 
 const API_BASE =
   typeof window !== 'undefined'
-    ? (process.env.NEXT_PUBLIC_API_URL ?? '')
+    ? browserApiBase()
     : (process.env.NEXT_PUBLIC_API_URL ?? process.env.API_URL ?? 'http://localhost:4545');
 
 export type ApiEnvelope<T> = {
@@ -190,16 +191,20 @@ export async function logout(): Promise<void> {
   clearSession();
 }
 
-/** Restore session from httpOnly cookies when sessionStorage is empty. */
+/** Restore session from httpOnly cookies when sessionStorage is empty or stale. */
 export async function hydrateSession(): Promise<AuthSession | null> {
-  if (!usesCookieAuth()) return getSession();
+  const existing = getSession();
+  const shouldTryMe =
+    usesCookieAuth() || (existing?.user?.id && !existing.access_token);
+  if (!shouldTryMe) return existing;
+
   try {
     const { data } = await apiFetch<MeResponse>('/api/v1/auth/me');
-    const session = sessionFromMe(data, getSession());
+    const session = sessionFromMe(data, existing);
     saveSession(session);
     return session;
   } catch {
-    return null;
+    return usesCookieAuth() ? null : existing;
   }
 }
 

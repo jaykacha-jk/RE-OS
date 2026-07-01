@@ -16,6 +16,8 @@ describe('TenantConfigService', () => {
     expect(cfg.timezone).toBe('Asia/Kolkata');
     expect(cfg.currency).toBe('INR');
     expect(cfg.number_format).toBe('en-IN');
+    expect(cfg.chat.auto_assign_enabled).toBe(true);
+    expect(cfg.chat.auto_assign_delay_minutes).toBe(5);
   });
 
   it('applies overrides', async () => {

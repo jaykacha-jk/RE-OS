@@ -1,6 +1,6 @@
 import Link from 'next/link';
 
-import { fetchPublicListings, fetchPublicSettings, inr, propertyPath } from '../../lib/public-site';
+import { fetchPublicListings, fetchPublicSettings, inr, propertyPath, resolvePublicTenantSlug } from '../../lib/public-site';
 
 export const revalidate = 300;
 
@@ -29,7 +29,7 @@ export default async function HomePage({
   searchParams: Promise<{ tenant?: string; city?: string }>;
 }) {
   const sp = await searchParams;
-  const tenant = sp.tenant ?? 'demo';
+  const tenant = resolvePublicTenantSlug(sp.tenant);
   const city = sp.city ?? 'Ahmedabad';
   const [{ data, meta }, settings] = await Promise.all([
     fetchPublicListings({ tenant, city, perPage: 6 }),
@@ -236,8 +236,8 @@ export default async function HomePage({
       ) : null}
 
       {/* CTA banner */}
-      <section className="mx-auto max-w-6xl px-4 pb-20">
-        <div className="overflow-hidden rounded-3xl bg-slate-950 px-8 py-12 text-center text-white sm:px-12">
+      <section className="mx-auto max-w-6xl px-4 pt-16 pb-20">
+        <div className="overflow-hidden rounded-3xl border border-white/10 bg-slate-950 px-8 py-12 text-center text-white shadow-premium sm:px-12">
           <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">Find your next property with {siteName}.</h2>
           <p className="mx-auto mt-3 max-w-xl text-slate-300">
             {contact.phone || contact.email

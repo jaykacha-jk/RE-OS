@@ -65,7 +65,7 @@ export function PropertyGeocodeButton({
   }
 
   return (
-    <div className="col-span-full space-y-2 rounded-2xl border border-reos-border bg-slate-50 px-4 py-3">
+    <div className="w-full basis-full space-y-2 rounded-2xl border border-reos-border bg-slate-50 px-4 py-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-slate-600">
           Look up map coordinates from the address fields above.

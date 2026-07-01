@@ -9,6 +9,7 @@ import { Prisma } from '@prisma/client';
 import { randomBytes } from 'crypto';
 
 import type { AuthUser } from '../../common/context/auth-user';
+import { paginationMeta, resolvePagination } from '../../common/pagination';
 import { DomainEventBus } from '../../events/domain-event-bus';
 import { DOMAIN_EVENTS } from '../../events/domain-events';
 import { AuditService, type AuditRequestMeta } from '../audit/audit.service';
@@ -416,6 +417,84 @@ export class CrmService {
     }
 
     return mapped;
+  }
+
+  /**
+   * Link an existing open inquiry by phone or create a new one from live chat.
+   * Duplicate open inquiries within the BR-C01 window are linked, not duplicated.
+   */
+  async linkOrCreateInquiryFromChat(
+    tenantId: string,
+    input: {
+      client_name: string;
+      phone: string;
+      email?: string | null;
+      property_id?: string | null;
+      assigned_employee_id?: string | null;
+    },
+    meta?: AuditRequestMeta,
+  ): Promise<{ inquiryId: string; inquiry_code: string; created: boolean }> {
+    const since = new Date(Date.now() - INQUIRY_DUPLICATE_WINDOW_DAYS * 24 * 60 * 60 * 1000);
+    const existing = await this.repo.findRecentOpenByPhone(tenantId, input.phone, since);
+    if (existing) {
+      return {
+        inquiryId: existing.id,
+        inquiry_code: existing.inquiry_code,
+        created: false,
+      };
+    }
+
+    const inquiryCode = await this.generateInquiryCode(tenantId);
+    const data: Prisma.inquiriesCreateInput = {
+      tenant: { connect: { id: tenantId } },
+      inquiry_code: inquiryCode,
+      client_name: input.client_name,
+      phone: input.phone,
+      email: input.email ?? null,
+      source_name: 'Live Chat',
+      stage: 'NEW',
+      created_by: null,
+      updated_by: null,
+      ...(input.property_id ? { property: { connect: { id: input.property_id } } } : {}),
+      ...(input.assigned_employee_id
+        ? { assigned_employee: { connect: { id: input.assigned_employee_id } } }
+        : {}),
+    };
+
+    const id = await this.repo.createInquiry({
+      tenantId,
+      data,
+      assignedEmployeeId: input.assigned_employee_id ?? null,
+      actorId: null,
+      actorEmail: null,
+    });
+
+    const created = await this.repo.findById(tenantId, id);
+    const mapped = this.mapDetail(created!, null);
+
+    await this.auditService.record({
+      actor: null,
+      tenantId,
+      action: 'crm.inquiry.created',
+      entityType: 'inquiry',
+      entityId: id,
+      afterState: { inquiry_code: mapped.inquiry_code, source_name: 'Live Chat' },
+      meta,
+    });
+
+    this.events.emit(DOMAIN_EVENTS.INQUIRY_CREATED, {
+      tenantId,
+      actorUserId: null,
+      entityType: 'inquiry',
+      entityId: id,
+      context: {
+        inquiryCode: mapped.inquiry_code,
+        clientName: mapped.client_name,
+        source: 'Live Chat',
+      },
+    });
+
+    return { inquiryId: id, inquiry_code: mapped.inquiry_code, created: true };
   }
 
   async createPublicInquiry(tenantSlug: string, dto: PublicInquiryDto, meta?: AuditRequestMeta) {
@@ -1019,17 +1098,26 @@ export class CrmService {
     return { id: inquiryId, lead_score: input.leadScore, temperature: input.temperature };
   }
 
-  async listNotes(tenantId: string, user: AuthUser, id: string) {
+  async listNotes(
+    tenantId: string,
+    user: AuthUser,
+    id: string,
+    page?: number,
+    perPage?: number,
+  ) {
     await this.getAccessibleInquiry(tenantId, user, id);
-    const rows = await this.repo.listNotes(tenantId, id);
+    const pagination = resolvePagination(page, perPage);
+    const { rows, total } = await this.repo.listNotes(tenantId, id, pagination);
     const operationalVisible = this.canSeeOperationalPii(user);
-    return rows.map((n) => ({
+    const data = rows.map((n) => ({
       id: n.id,
       note: operationalVisible ? n.note : null,
       created_by: operationalVisible ? n.created_by : null,
       created_by_email: operationalVisible ? n.created_by_email : null,
       created_at: n.created_at.toISOString(),
     }));
+    if (!pagination || total === null) return { data };
+    return { data, pagination: paginationMeta(pagination.page, pagination.perPage, total) };
   }
 
   // ===========================================================================
@@ -1101,10 +1189,19 @@ export class CrmService {
     return this.mapFollowup({ ...followup, employee: null, ...(full ?? {}) }, user);
   }
 
-  async listFollowups(tenantId: string, user: AuthUser, id: string) {
+  async listFollowups(
+    tenantId: string,
+    user: AuthUser,
+    id: string,
+    page?: number,
+    perPage?: number,
+  ) {
     await this.getAccessibleInquiry(tenantId, user, id);
-    const rows = await this.repo.listFollowups(tenantId, id);
-    return rows.map((f) => this.mapFollowup(f, user));
+    const pagination = resolvePagination(page, perPage);
+    const { rows, total } = await this.repo.listFollowups(tenantId, id, pagination);
+    const data = rows.map((f) => this.mapFollowup(f, user));
+    if (!pagination || total === null) return { data };
+    return { data, pagination: paginationMeta(pagination.page, pagination.perPage, total) };
   }
 
   async updateFollowup(
@@ -1299,14 +1396,21 @@ export class CrmService {
   // Timeline / history
   // ===========================================================================
 
-  async getHistory(tenantId: string, user: AuthUser, id: string) {
+  async getHistory(
+    tenantId: string,
+    user: AuthUser,
+    id: string,
+    page?: number,
+    perPage?: number,
+  ) {
     await this.getAccessibleInquiry(tenantId, user, id);
-    const [history, activities] = await Promise.all([
-      this.repo.listHistory(tenantId, id),
-      this.repo.listActivities(tenantId, id),
+    const pagination = resolvePagination(page, perPage);
+    const [historyResult, activitiesResult] = await Promise.all([
+      this.repo.listHistory(tenantId, id, pagination),
+      this.repo.listActivities(tenantId, id, pagination),
     ]);
-    return {
-      history: history.map((h) => ({
+    const data = {
+      history: historyResult.rows.map((h) => ({
         id: h.id,
         change_type: h.change_type,
         changed_fields: h.changed_fields,
@@ -1314,7 +1418,7 @@ export class CrmService {
         changed_by_email: h.changed_by_email,
         created_at: h.created_at.toISOString(),
       })),
-      activities: activities.map((a) => ({
+      activities: activitiesResult.rows.map((a) => ({
         id: a.id,
         activity_type: a.activity_type,
         content: a.content,
@@ -1324,15 +1428,31 @@ export class CrmService {
         created_at: a.created_at.toISOString(),
       })),
     };
+    if (!pagination || historyResult.total === null || activitiesResult.total === null) {
+      return { data };
+    }
+    return {
+      data,
+      pagination: {
+        ...paginationMeta(pagination.page, pagination.perPage, historyResult.total),
+        activities_total: activitiesResult.total,
+      },
+    };
   }
 
   // ===========================================================================
   // Lead sources
   // ===========================================================================
 
-  async listLeadSources(tenantId: string, includeInactive = false) {
-    const rows = await this.repo.listLeadSources(tenantId, includeInactive);
-    return rows.map((s) => ({
+  async listLeadSources(
+    tenantId: string,
+    includeInactive = false,
+    page?: number,
+    perPage?: number,
+  ) {
+    const pagination = resolvePagination(page, perPage);
+    const { rows, total } = await this.repo.listLeadSources(tenantId, includeInactive, pagination);
+    const data = rows.map((s) => ({
       id: s.id,
       name: s.name,
       code: s.code,
@@ -1340,6 +1460,8 @@ export class CrmService {
       is_system: s.is_system,
       created_at: s.created_at.toISOString(),
     }));
+    if (!pagination || total === null) return { data };
+    return { data, pagination: paginationMeta(pagination.page, pagination.perPage, total) };
   }
 
   async createLeadSource(

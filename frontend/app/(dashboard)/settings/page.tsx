@@ -26,14 +26,15 @@ const CARDS: Card[] = [
     group: 'Brand',
     accent: 'bg-teal-100 text-teal-800',
   },
-  {
-    href: '/settings/website',
-    title: 'Website Setup',
-    description: 'Launch-ready brand, homepage, contact, social, and SEO basics.',
-    permission: 'settings.website.manage',
-    group: 'Brand',
-    accent: 'bg-amber-100 text-amber-800',
-  },
+  // Website setup — temporarily disabled
+  // {
+  //   href: '/settings/website',
+  //   title: 'Website Setup',
+  //   description: 'Launch-ready brand, homepage, contact, social, and SEO basics.',
+  //   permission: 'settings.website.manage',
+  //   group: 'Brand',
+  //   accent: 'bg-amber-100 text-amber-800',
+  // },
   {
     href: '/settings/seo',
     title: 'SEO',
@@ -134,7 +135,7 @@ export default function SettingsHubPage() {
             <p className="text-xs font-bold uppercase tracking-[0.2em] text-teal-200">Launch settings</p>
             <h1 className="mt-3 text-3xl font-bold tracking-tight sm:text-4xl">Settings</h1>
             <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-200">
-              Manage the essentials needed to launch the agency workspace: profile, website setup, and alerts.
+              Manage the essentials needed to launch the agency workspace: profile and alerts.
             </p>
           </div>
           <div className="rounded-2xl border border-white/10 bg-white/10 p-4 backdrop-blur">

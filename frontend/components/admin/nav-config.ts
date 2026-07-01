@@ -26,11 +26,11 @@ export const PERFORMANCE_ROLES = ['org_owner', 'org_admin', 'sales_manager'];
 const ASSIGNED_SALES_ROLES = ['sales_executive', 'telecaller'];
 
 const LAUNCH_HIDDEN_NAV_IDS = new Set([
-  'chat',
   'settings.branding',
   'settings.seo',
   'settings.domains',
   'settings.configuration',
+  'settings.website',
   'audit-logs',
   'ai.playground',
   'ai.calls',
@@ -96,13 +96,14 @@ export const routeRegistry: RouteMetadata[] = [
   { id: 'settings.profile', matcher: '/settings/profile', nav: { href: '/settings/profile', label: 'Profile', icon: 'profile', group: 'Settings', roles: 'all' } },
   { id: 'settings.notifications', matcher: '/settings/notifications', permission: 'notifications.read', featureFlag: 'notifications', nav: { href: '/settings/notifications', label: 'Alert Settings', icon: 'notifications', group: 'Settings' } },
   { id: 'settings.branding', matcher: '/settings/branding', permission: 'settings.branding.manage', tenantRequired: true, nav: { href: '/settings/branding', label: 'Branding', icon: 'building', group: 'Settings' } },
-  { id: 'settings.website', matcher: '/settings/website', permission: 'settings.website.manage', featureFlag: 'website', tenantRequired: true, nav: { href: '/settings/website', label: 'Website Setup', icon: 'properties', group: 'Settings' } },
+  // Website setup — temporarily disabled
+  // { id: 'settings.website', matcher: '/settings/website', permission: 'settings.website.manage', featureFlag: 'website', tenantRequired: true, nav: { href: '/settings/website', label: 'Website Setup', icon: 'properties', group: 'Settings' } },
   { id: 'settings.seo', matcher: '/settings/seo', permission: 'settings.seo.manage', tenantRequired: true, nav: { href: '/settings/seo', label: 'SEO', icon: 'analytics', group: 'Settings' } },
   { id: 'settings.domains', matcher: '/settings/domains', permission: 'settings.read', featureFlag: 'domains', tenantRequired: true, nav: { href: '/settings/domains', label: 'Domains', icon: 'organizations', group: 'Settings' } },
   { id: 'settings.configuration', matcher: '/settings/configuration', permission: 'settings.configuration.manage', tenantRequired: true, nav: { href: '/settings/configuration', label: 'Configuration', icon: 'settings', group: 'Settings' } },
   { id: 'audit-logs', matcher: '/audit-logs', permission: 'audit.logs.read', tenantRequired: true, nav: { href: '/audit-logs', label: 'Audit Logs', icon: 'audit', group: 'Settings', roles: 'audit' } },
   { id: 'ai.playground', matcher: '/ai/playground', permission: 'ai.qualify', featureFlag: 'ai', tenantRequired: true, nav: { href: '/ai/playground', label: 'Assistant Workbench', icon: 'playground', group: 'Advanced' } },
-  { id: 'ai.calls', matcher: /^\/ai\/calls(\/.*)?$/, permission: 'ai.calls.read', featureFlag: 'ai', tenantRequired: true, nav: { href: '/ai/calls', label: 'Demo Call Logs', icon: 'calls', group: 'Advanced' } },
+  { id: 'ai.calls', matcher: /^\/ai\/calls(\/.*)?$/, permission: 'ai.calls.read', featureFlag: 'ai', tenantRequired: true, nav: { href: '/ai/calls', label: 'Call Logs', icon: 'calls', group: 'Advanced' } },
   { id: 'ai.followups', matcher: '/ai/followups', permission: 'ai.followups.read', featureFlag: 'ai', tenantRequired: true, nav: { href: '/ai/followups', label: 'Follow-ups', icon: 'followups', group: 'Advanced' } },
   { id: 'ai.knowledge', matcher: '/ai/knowledge', permission: 'ai.knowledge.read', featureFlag: 'ai', tenantRequired: true, nav: { href: '/ai/knowledge', label: 'Knowledge Base', icon: 'knowledge', group: 'Advanced' } },
   { id: 'ai.prompts', matcher: '/ai/prompts', permission: 'ai.prompts.manage', featureFlag: 'ai', tenantRequired: true, nav: { href: '/ai/prompts', label: 'Prompt Templates', icon: 'prompts', group: 'Advanced' } },
@@ -115,6 +116,7 @@ export const routeRegistry: RouteMetadata[] = [
   { id: 'platform.organizations', matcher: /^\/platform\/organizations(\/.*)?$/, superAdminOnly: true, nav: { href: '/platform/organizations', label: 'Organizations', icon: 'organizations', group: 'Platform', roles: 'super_admin' } },
   { id: 'platform.plans', matcher: /^\/platform\/plans(\/.*)?$/, permission: 'platform.plans.read', superAdminOnly: true, nav: { href: '/platform/plans', label: 'Plans', icon: 'billing', group: 'Platform', roles: 'super_admin' } },
   { id: 'platform.billing', matcher: /^\/platform\/billing(\/.*)?$/, permission: 'platform.billing.read', superAdminOnly: true, nav: { href: '/platform/billing', label: 'Billing', icon: 'performance', group: 'Platform', roles: 'super_admin' } },
+  { id: 'platform.payments', matcher: /^\/platform\/payments(\/.*)?$/, permission: 'platform.payment_providers.read', superAdminOnly: true, nav: { href: '/platform/payments', label: 'Payments', icon: 'billing', group: 'Platform', roles: 'super_admin' } },
   { id: 'platform.audit-logs', matcher: /^\/platform\/audit-logs(\/.*)?$/, permission: 'audit.logs.read', superAdminOnly: true, nav: { href: '/platform/audit-logs', label: 'Audit logs', icon: 'audit', group: 'Platform', roles: 'super_admin' } },
 ];
 

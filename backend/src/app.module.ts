@@ -9,9 +9,6 @@ import { ObservabilityModule } from './common/observability/observability.module
 
 import { HealthModule } from './modules/health/health.module';
 import { AuthModule } from './modules/auth/auth.module';
-import { TenantModule } from './modules/tenant/tenant.module';
-import { UsersModule } from './modules/users/users.module';
-import { RbacModule } from './modules/rbac/rbac.module';
 import { EmployeesModule } from './modules/employees/employees.module';
 import { PlatformModule } from './modules/platform/platform.module';
 import { PropertiesModule } from './modules/properties/properties.module';
@@ -45,6 +42,11 @@ import { PrismaModule } from './common/database/prisma.module';
         ttl: 60_000,
         limit: 10,
       },
+      {
+        name: 'public_chat',
+        ttl: 60_000,
+        limit: 15,
+      },
     ]),
     ObservabilityModule,
     PrismaModule,
@@ -53,9 +55,6 @@ import { PrismaModule } from './common/database/prisma.module';
     HealthModule,
     PlatformModule,
     AuthModule,
-    TenantModule,
-    UsersModule,
-    RbacModule,
     EmployeesModule,
     PropertiesModule,
     CrmModule,

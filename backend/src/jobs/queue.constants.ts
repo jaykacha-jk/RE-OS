@@ -5,6 +5,8 @@ export const QUEUES = {
   EMAIL: 'email',
   /** Delayed reminders (follow-up due, site-visit tomorrow, etc). */
   REMINDERS: 'reminders',
+  /** Chat automation (auto-assign, etc). */
+  CHAT: 'chat',
 } as const;
 
 export type QueueName = (typeof QUEUES)[keyof typeof QUEUES];
@@ -13,6 +15,7 @@ export const ALL_QUEUES: QueueName[] = [
   QUEUES.NOTIFICATIONS,
   QUEUES.EMAIL,
   QUEUES.REMINDERS,
+  QUEUES.CHAT,
 ];
 
 export interface JobOptions {

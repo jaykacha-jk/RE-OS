@@ -28,9 +28,14 @@ export default function PlatformBillingPage() {
         title="Billing & revenue"
         description="Subscription health, MRR/ARR, and invoice metrics across all tenants."
         actions={
-          <Link href="/platform/plans" className="btn-secondary">
-            <Icon name="billing" className="h-4 w-4" /> Manage plans
-          </Link>
+          <>
+            <Link href="/platform/payments" className="btn-secondary">
+              <Icon name="billing" className="h-4 w-4" /> Payment providers
+            </Link>
+            <Link href="/platform/plans" className="btn-secondary">
+              <Icon name="billing" className="h-4 w-4" /> Manage plans
+            </Link>
+          </>
         }
       />
 

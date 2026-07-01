@@ -1,9 +1,9 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
-import { FormField, FormPage, FormSection, TagInput } from '../../../components/ui';
+import { FormField, FormPage, FormSection, StatusBadge, TagInput } from '../../../components/ui';
 import { PropertyGeocodeButton } from '../../../components/properties/property-geocode-button';
 import { PropertyImageManager } from '../../../components/properties/property-image-manager';
 import { PropertyVideoManager } from '../../../components/properties/property-video-manager';
@@ -11,7 +11,7 @@ import { QuotaNotice, proactiveQuotaNoticeProps, quotaApiNoticeProps } from '../
 import { useBillingUsage } from '../../../hooks/use-billing-usage';
 import { useUnsavedChangesGuard } from '../../../hooks/use-unsaved-changes-guard';
 import { apiFetch } from '../../../lib/api';
-import { getSession } from '../../../lib/auth';
+import { getBearerToken, getSession, hasActiveSession } from '../../../lib/auth';
 import { parseQuotaApiError, proactiveQuotaMessage, type QuotaErrorDetails } from '../../../lib/quota';
 import {
   humanize,
@@ -26,6 +26,8 @@ import {
 type Mode = 'create' | 'edit';
 
 const AMENITY_SUGGESTIONS = ['Parking', 'Lift', 'Gym', 'Swimming pool', 'Power backup', 'Security', 'Garden', 'Clubhouse'];
+const DRAFT_TITLE_FALLBACK = 'New listing';
+const DRAFT_CITY_FALLBACK = 'Ahmedabad';
 
 function numOrUndef(value: string): number | undefined {
   if (value.trim() === '') return undefined;
@@ -45,6 +47,9 @@ export function PropertyForm({ mode, property }: { mode: Mode; property?: Proper
   const [quotaError, setQuotaError] = useState<QuotaErrorDetails | null>(null);
   const [loading, setLoading] = useState(false);
   const [dirty, setDirty] = useState(false);
+  const [draftProperty, setDraftProperty] = useState<Property | null>(null);
+  const [draftCreating, setDraftCreating] = useState(false);
+  const draftAttemptedRef = useRef(false);
 
   const [title, setTitle] = useState(property?.title ?? '');
   const [description, setDescription] = useState(property?.description ?? '');
@@ -78,6 +83,12 @@ export function PropertyForm({ mode, property }: { mode: Mode; property?: Proper
   const [metaTitle, setMetaTitle] = useState(property?.meta_title ?? '');
   const [metaDescription, setMetaDescription] = useState(property?.meta_description ?? '');
   const [isPublic, setIsPublic] = useState(property?.is_public ?? false);
+
+  const activeProperty = property ?? draftProperty;
+  const activePropertyId = activeProperty?.id;
+  const mediaTitle = title.trim() || activeProperty?.title || DRAFT_TITLE_FALLBACK;
+  const pageTitle = title.trim() || activeProperty?.title || 'New property';
+  const isEditing = Boolean(activePropertyId);
 
   useUnsavedChangesGuard(dirty && !loading);
 
@@ -123,30 +134,82 @@ export function PropertyForm({ mode, property }: { mode: Mode; property?: Proper
     return payload;
   }
 
+  async function ensurePropertyRecord(): Promise<Property | null> {
+    if (property || draftProperty) return property ?? draftProperty;
+    if (mode !== 'create' || propertyAtLimit) return null;
+
+    const session = getSession();
+    if (!hasActiveSession(session)) return null;
+
+    setDraftCreating(true);
+    setError(null);
+    setQuotaError(null);
+    try {
+      const draftTitle = title.trim().length >= 3 ? title.trim() : DRAFT_TITLE_FALLBACK;
+      const draftCity = city.trim() || DRAFT_CITY_FALLBACK;
+      const res = await apiFetch<Property>('/api/v1/properties', {
+        method: 'POST',
+        token: getBearerToken(session),
+        body: JSON.stringify({
+          ...buildPayload('draft'),
+          title: draftTitle,
+          city: draftCity,
+        }),
+      });
+      setDraftProperty(res.data);
+      if (!title.trim()) setTitle(draftTitle);
+      if (!city.trim()) setCity(draftCity);
+      draftAttemptedRef.current = true;
+      if (typeof window !== 'undefined') {
+        window.history.replaceState(null, '', `/properties/${res.data.id}/edit`);
+      }
+      return res.data;
+    } catch (err) {
+      const parsed = parseQuotaApiError(err);
+      if (parsed) {
+        setQuotaError(parsed);
+      } else {
+        setError(err instanceof Error ? err.message : 'Could not start listing');
+      }
+      draftAttemptedRef.current = true;
+      return null;
+    } finally {
+      setDraftCreating(false);
+    }
+  }
+
+  useEffect(() => {
+    if (mode !== 'create' || property || draftProperty || propertyAtLimit) return;
+    if (draftAttemptedRef.current) return;
+    void ensurePropertyRecord();
+  }, [mode, property, draftProperty, propertyAtLimit]);
+
   async function persist(payload: Record<string, unknown>) {
     const session = getSession();
-    if (!session?.access_token) return;
+    if (!hasActiveSession(session)) return;
+    if (title.trim().length < 3 || !city.trim()) {
+      setError('Title (3+ characters) and city are required.');
+      return;
+    }
+
     setLoading(true);
     setError(null);
     setQuotaError(null);
     try {
-      if (mode === 'create') {
-        const res = await apiFetch<Property>('/api/v1/properties', {
-          method: 'POST',
-          token: session.access_token,
-          body: JSON.stringify(payload),
-        });
-        setDirty(false);
-        router.push(`/properties/${res.data.id}`);
-      } else if (property) {
-        await apiFetch<Property>(`/api/v1/properties/${property.id}`, {
-          method: 'PATCH',
-          token: session.access_token,
-          body: JSON.stringify(payload),
-        });
-        setDirty(false);
-        router.push(`/properties/${property.id}`);
+      let targetId = property?.id ?? draftProperty?.id;
+      if (!targetId) {
+        const created = await ensurePropertyRecord();
+        targetId = created?.id;
       }
+      if (!targetId) return;
+
+      await apiFetch<Property>(`/api/v1/properties/${targetId}`, {
+        method: 'PATCH',
+        token: getBearerToken(session),
+        body: JSON.stringify(payload),
+      });
+      setDirty(false);
+      router.push(`/properties/${targetId}`);
     } catch (err) {
       const parsed = parseQuotaApiError(err);
       if (parsed) {
@@ -167,28 +230,24 @@ export function PropertyForm({ mode, property }: { mode: Mode; property?: Proper
 
   return (
     <FormPage
-      eyebrow={mode === 'create' ? 'New listing' : 'Edit listing'}
-      title={mode === 'create' ? 'New property' : property?.title ?? 'Edit property'}
-      description="A unique property code and SEO slug are generated automatically."
+      eyebrow={isEditing ? 'Edit listing' : 'New listing'}
+      title={pageTitle}
+      description="Complete every section below — details, media, and publishing — in one place."
       breadcrumbs={[
         { label: 'Properties', href: '/properties' },
-        { label: mode === 'create' ? 'New property' : 'Edit' },
+        { label: isEditing ? 'Edit' : 'New property' },
       ]}
-      statusBadge={
-        <span className={`rounded-full px-2.5 py-1 text-2xs font-bold ${statusBadgeClass(status)}`}>
-          {humanize(status)}
-        </span>
-      }
+      statusBadge={<StatusBadge label={humanize(status)} className={statusBadgeClass(status)} />}
       error={quotaError ? null : error}
-      submitting={loading}
-      submitDisabled={mode === 'create' && propertyAtLimit}
-      submitLabel={mode === 'create' ? 'Create property' : 'Save changes'}
+      submitting={loading || draftCreating}
+      submitDisabled={mode === 'create' && propertyAtLimit && !isEditing}
+      submitLabel="Save changes"
       onSubmit={() => persist(buildPayload())}
       onCancel={() => router.back()}
       saveDraftLabel="Save as draft"
-      onSaveDraft={mode === 'create' && !propertyAtLimit ? saveDraft : undefined}
+      onSaveDraft={!propertyAtLimit ? saveDraft : undefined}
     >
-      {mode === 'create' && usage && propertyAtLimit ? (
+      {mode === 'create' && usage && propertyAtLimit && !isEditing ? (
         <QuotaNotice
           {...proactiveQuotaNoticeProps(
             'properties',
@@ -278,8 +337,7 @@ export function PropertyForm({ mode, property }: { mode: Mode; property?: Proper
       <FormSection
         title="Configuration & area"
         description="Layout and measurements. Optional — fill what you know."
-        collapsible
-        defaultOpen={mode === 'edit'}
+        defaultOpen
       >
         <FormField label="Bedrooms">
           <input value={bedrooms} onChange={(e) => mark(setBedrooms)(e.target.value)} type="number" min="0" className="input" placeholder="3" />
@@ -304,7 +362,7 @@ export function PropertyForm({ mode, property }: { mode: Mode; property?: Proper
         </FormField>
       </FormSection>
 
-      <FormSection title="Amenities & tags" description="Press Enter or comma to add. Tags power internal search and filtering." collapsible defaultOpen={mode === 'edit'}>
+      <FormSection title="Amenities & tags" description="Press Enter or comma to add. Tags power internal search and filtering." defaultOpen>
         <FormField label="Amenities" full>
           <TagInput value={amenities} onChange={mark(setAmenities)} placeholder="Add an amenity…" suggestions={AMENITY_SUGGESTIONS} />
         </FormField>
@@ -316,8 +374,7 @@ export function PropertyForm({ mode, property }: { mode: Mode; property?: Proper
       <FormSection
         title="Publishing & SEO"
         description="Control public visibility and how this listing appears in search engines."
-        collapsible
-        defaultOpen={false}
+        defaultOpen
       >
         <FormField label="Meta title" full hint="Defaults to the property title if left blank.">
           <input value={metaTitle} onChange={(e) => mark(setMetaTitle)(e.target.value)} className="input" placeholder="3 BHK Sea-Facing Apartment in Bandra | Your Agency" />
@@ -325,7 +382,7 @@ export function PropertyForm({ mode, property }: { mode: Mode; property?: Proper
         <FormField label="Meta description" full hint="Recommended 150–160 characters for search snippets.">
           <textarea value={metaDescription} onChange={(e) => mark(setMetaDescription)(e.target.value)} rows={2} className="input" placeholder="Spacious 3 BHK with sea view, modular kitchen, and 2 covered parking spots in prime Bandra West." />
         </FormField>
-        <div className="sm:col-span-2">
+        <div className="w-full basis-full">
           <label className="flex items-start gap-3 rounded-xl border border-reos-border bg-slate-50 p-3">
             <input
               type="checkbox"
@@ -343,17 +400,37 @@ export function PropertyForm({ mode, property }: { mode: Mode; property?: Proper
         </div>
       </FormSection>
 
-      {mode === 'edit' && property ? (
-        <>
-          <PropertyImageManager propertyId={property.id} images={property.images ?? []} title={property.title} />
-          <PropertyVideoManager propertyId={property.id} videos={property.videos ?? []} title={property.title} />
-        </>
-      ) : (
-        <section className="rounded-2xl border border-dashed border-reos-border bg-slate-50 p-5 text-sm text-slate-600">
-          <h2 className="font-semibold text-slate-900">Images</h2>
-          <p className="mt-2">Save the property first, then upload photos on the next screen before publishing publicly.</p>
-        </section>
-      )}
+      <FormSection title="Images" description="Add listing photos and choose a cover image for your public website." defaultOpen>
+        <div className="w-full basis-full">
+          {draftCreating || !activePropertyId ? (
+            <p className="text-sm text-slate-500">Preparing your listing…</p>
+          ) : (
+            <PropertyImageManager
+              key={activePropertyId}
+              embedded
+              propertyId={activePropertyId}
+              images={activeProperty?.images ?? []}
+              title={mediaTitle}
+            />
+          )}
+        </div>
+      </FormSection>
+
+      <FormSection title="Videos" description="Walkthroughs and property tours." defaultOpen>
+        <div className="w-full basis-full">
+          {draftCreating || !activePropertyId ? (
+            <p className="text-sm text-slate-500">Preparing your listing…</p>
+          ) : (
+            <PropertyVideoManager
+              key={activePropertyId}
+              embedded
+              propertyId={activePropertyId}
+              videos={activeProperty?.videos ?? []}
+              title={mediaTitle}
+            />
+          )}
+        </div>
+      </FormSection>
     </FormPage>
   );
 }

@@ -2,7 +2,7 @@ import Link from 'next/link';
 
 import { EmptyState } from '../../../components/shared/EmptyState';
 import { ErrorState } from '../../../components/shared/ErrorState';
-import { fetchPublicListings, inr, propertyPath } from '../../../lib/public-site';
+import { fetchPublicListings, inr, propertyPath, resolvePublicTenantSlug } from '../../../lib/public-site';
 
 export const revalidate = 300;
 
@@ -30,7 +30,7 @@ export default async function PublicListingsPage({
   searchParams: Promise<{ tenant?: string; search?: string; city?: string }>;
 }) {
   const sp = await searchParams;
-  const tenant = sp.tenant ?? 'demo';
+  const tenant = resolvePublicTenantSlug(sp.tenant);
   const { data, error } = await fetchPublicListings({ tenant, search: sp.search, city: sp.city });
   const city = sp.city ?? 'Ahmedabad';
   const citySlug = city.toLowerCase().replace(/\s+/g, '-');

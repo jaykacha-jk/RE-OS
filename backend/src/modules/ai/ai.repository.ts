@@ -35,11 +35,23 @@ export class AiRepository {
 
   // --- Agents ----------------------------------------------------------------
 
-  async listAgents(tenantId: string) {
-    return this.db.ai_agents.findMany({
-      where: { tenant_id: tenantId, deleted_at: null },
-      orderBy: { created_at: 'desc' },
-    });
+  async listAgents(tenantId: string, pagination?: { skip: number; perPage: number } | null) {
+    const where = { tenant_id: tenantId, deleted_at: null };
+    const orderBy = { created_at: 'desc' as const };
+    if (!pagination) {
+      const rows = await this.db.ai_agents.findMany({ where, orderBy });
+      return { rows, total: null as number | null };
+    }
+    const [rows, total] = await Promise.all([
+      this.db.ai_agents.findMany({
+        where,
+        orderBy,
+        skip: pagination.skip,
+        take: pagination.perPage,
+      }),
+      this.db.ai_agents.count({ where }),
+    ]);
+    return { rows, total };
   }
 
   async createAgent(data: Prisma.ai_agentsUncheckedCreateInput) {
@@ -244,11 +256,23 @@ export class AiRepository {
 
   // --- Prompt templates ------------------------------------------------------
 
-  async listPrompts(tenantId: string) {
-    return this.db.ai_prompt_templates.findMany({
-      where: { OR: [{ tenant_id: tenantId }, { tenant_id: null }], deleted_at: null },
-      orderBy: [{ tenant_id: 'desc' }, { key: 'asc' }],
-    });
+  async listPrompts(tenantId: string, pagination?: { skip: number; perPage: number } | null) {
+    const where = { OR: [{ tenant_id: tenantId }, { tenant_id: null }], deleted_at: null };
+    const orderBy = [{ tenant_id: 'desc' as const }, { key: 'asc' as const }];
+    if (!pagination) {
+      const rows = await this.db.ai_prompt_templates.findMany({ where, orderBy });
+      return { rows, total: null as number | null };
+    }
+    const [rows, total] = await Promise.all([
+      this.db.ai_prompt_templates.findMany({
+        where,
+        orderBy,
+        skip: pagination.skip,
+        take: pagination.perPage,
+      }),
+      this.db.ai_prompt_templates.count({ where }),
+    ]);
+    return { rows, total };
   }
 
   /** Resolve a prompt by key: tenant override wins, else system default. */

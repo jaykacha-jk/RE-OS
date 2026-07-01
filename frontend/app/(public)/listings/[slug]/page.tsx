@@ -9,6 +9,7 @@ import {
   fetchPublicSettings,
   propertyIntent,
   propertyPath,
+  resolvePublicTenantSlug,
 } from '../../../../lib/public-site';
 
 export const revalidate = 300;
@@ -22,7 +23,7 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { slug } = await params;
   const { tenant } = await searchParams;
-  const property = await fetchPublicProperty(slug, tenant ?? 'demo');
+  const property = await fetchPublicProperty(slug, resolvePublicTenantSlug(tenant));
   if (!property) return { title: 'Property not found' };
   return buildPropertyMetadata(property, propertyPath(property));
 }
@@ -36,7 +37,7 @@ export default async function PublicPropertyDetailPage({
 }) {
   const { slug } = await params;
   const { tenant } = await searchParams;
-  const tenantSlug = tenant ?? 'demo';
+  const tenantSlug = resolvePublicTenantSlug(tenant);
   const property = await fetchPublicProperty(slug, tenantSlug);
   if (!property) notFound();
 

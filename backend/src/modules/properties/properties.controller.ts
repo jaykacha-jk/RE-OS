@@ -28,6 +28,7 @@ import type { AuthUser } from '../../common/context/auth-user';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
 import { TenantGuard } from '../../common/guards/tenant.guard';
+import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 import { AssignPropertyDto } from './dto/assign-property.dto';
 import { BulkImportPropertiesDto } from './dto/bulk-import-properties.dto';
 import { CreatePropertyDto } from './dto/create-property.dto';
@@ -45,8 +46,8 @@ function requestMeta(req: Request) {
   };
 }
 
-function envelope<T>(data: T) {
-  return { data, meta: { request_id: randomBytes(16).toString('hex') } };
+function envelope<T>(data: T, extraMeta?: Record<string, unknown>) {
+  return { data, meta: { request_id: randomBytes(16).toString('hex'), ...extraMeta } };
 }
 
 @ApiTags('Properties')
@@ -182,8 +183,10 @@ export class PropertiesController {
     @TenantId() tenantId: string,
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
+    @Query() query: PaginationQueryDto,
   ) {
-    return envelope(await this.properties.getHistory(tenantId, user, id));
+    const result = await this.properties.getHistory(tenantId, user, id, query.page, query.per_page);
+    return envelope(result.data, result.pagination);
   }
 
   // --- Images ----------------------------------------------------------------

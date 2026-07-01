@@ -57,7 +57,7 @@ export function FormPage({
   };
 
   return (
-    <form onSubmit={handleSubmit} className="pb-24">
+    <form onSubmit={handleSubmit}>
       <div className="space-y-6">
         <div className="space-y-3">
           {breadcrumbs && breadcrumbs.length ? (
@@ -98,10 +98,8 @@ export function FormPage({
         ) : null}
 
         <div className="panel space-y-6 p-6">{children}</div>
-      </div>
 
-      <div className="fixed inset-x-0 bottom-0 z-30 border-t border-reos-border bg-white/95 backdrop-blur lg:pl-64">
-        <div className="mx-auto flex max-w-5xl items-center justify-end gap-3 px-6 py-3">
+        <div className="sticky bottom-0 z-10 flex items-center justify-end gap-3 rounded-2xl border border-reos-border bg-white/95 px-4 py-3 shadow-card backdrop-blur sm:px-6">
           <button type="button" className="btn-secondary" onClick={onCancel} disabled={submitting}>
             {cancelLabel}
           </button>

@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
 
+import { StatusBadge } from '../../../../components/ui';
 import { apiFetch } from '../../../../lib/api';
 import { getSession, hasPermission } from '../../../../lib/auth';
 import {
@@ -86,12 +87,8 @@ export default function NotificationDetailPage() {
 
       <article className="mt-4 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
         <div className="mb-4 flex flex-wrap items-center gap-2">
-          <span className={`rounded px-2 py-0.5 text-xs font-medium uppercase ${typeBadgeClass(notification.type)}`}>
-            {notification.type}
-          </span>
-          <span className={`rounded px-2 py-0.5 text-xs font-medium uppercase ${priorityBadgeClass(notification.priority)}`}>
-            {notification.priority}
-          </span>
+          <StatusBadge size="compact" label={notification.type} className={typeBadgeClass(notification.type)} />
+          <StatusBadge size="compact" label={notification.priority} className={priorityBadgeClass(notification.priority)} />
           <span className="text-xs text-slate-400">{formatNotificationTime(notification.created_at)}</span>
         </div>
 

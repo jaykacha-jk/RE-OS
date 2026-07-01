@@ -30,6 +30,7 @@ import { FeatureFlagGuard } from '../../common/guards/feature-flag.guard';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
 import { TenantGuard } from '../../common/guards/tenant.guard';
+import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 import { CrmService } from './crm.service';
 import { AssignInquiryDto } from './dto/assign-inquiry.dto';
 import { ChangeStageDto } from './dto/change-stage.dto';
@@ -49,8 +50,8 @@ function requestMeta(req: Request) {
   };
 }
 
-function envelope<T>(data: T) {
-  return { data, meta: { request_id: randomBytes(16).toString('hex') } };
+function envelope<T>(data: T, extraMeta?: Record<string, unknown>) {
+  return { data, meta: { request_id: randomBytes(16).toString('hex'), ...extraMeta } };
 }
 
 @ApiTags('CRM — Inquiries')
@@ -202,8 +203,10 @@ export class CrmController {
     @TenantId() tenantId: string,
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
+    @Query() query: PaginationQueryDto,
   ) {
-    return envelope(await this.crm.listNotes(tenantId, user, id));
+    const result = await this.crm.listNotes(tenantId, user, id, query.page, query.per_page);
+    return envelope(result.data, result.pagination);
   }
 
   // --- Follow-ups ------------------------------------------------------------
@@ -228,8 +231,10 @@ export class CrmController {
     @TenantId() tenantId: string,
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
+    @Query() query: PaginationQueryDto,
   ) {
-    return envelope(await this.crm.listFollowups(tenantId, user, id));
+    const result = await this.crm.listFollowups(tenantId, user, id, query.page, query.per_page);
+    return envelope(result.data, result.pagination);
   }
 
   @Patch(':id/followups/:followupId')
@@ -299,7 +304,9 @@ export class CrmController {
     @TenantId() tenantId: string,
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
+    @Query() query: PaginationQueryDto,
   ) {
-    return envelope(await this.crm.getHistory(tenantId, user, id));
+    const result = await this.crm.getHistory(tenantId, user, id, query.page, query.per_page);
+    return envelope(result.data, result.pagination);
   }
 }

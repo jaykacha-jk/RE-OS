@@ -1,5 +1,7 @@
 import { Injectable } from '@nestjs/common';
 
+import { paginationMeta, resolvePagination } from '../../../common/pagination';
+
 import type { AuthUser } from '../../../common/context/auth-user';
 import { AuditService, type AuditRequestMeta } from '../../audit/audit.service';
 import { AiRepository } from '../ai.repository';
@@ -12,9 +14,10 @@ export class PromptService {
     private readonly audit: AuditService,
   ) {}
 
-  async list(tenantId: string) {
-    const rows = await this.repo.listPrompts(tenantId);
-    return rows.map((p) => ({
+  async list(tenantId: string, page?: number, perPage?: number) {
+    const pagination = resolvePagination(page, perPage);
+    const { rows, total } = await this.repo.listPrompts(tenantId, pagination);
+    const data = rows.map((p) => ({
       id: p.id,
       tenant_id: p.tenant_id,
       key: p.key,
@@ -28,6 +31,8 @@ export class PromptService {
       is_system: p.is_system,
       scope: p.tenant_id ? 'tenant' : 'system',
     }));
+    if (!pagination || total === null) return { data };
+    return { data, pagination: paginationMeta(pagination.page, pagination.perPage, total) };
   }
 
   /** Resolve the system prompt text for a key (tenant override → system → fallback). */

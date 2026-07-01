@@ -35,12 +35,19 @@ export type WebsiteSettings = {
 
 export type FeatureFlags = Record<string, boolean>;
 
+export type TenantChatConfiguration = {
+  auto_assign_enabled: boolean;
+  auto_assign_delay_minutes: number;
+  auto_create_inquiry_on_phone: boolean;
+};
+
 export type TenantConfiguration = {
   timezone: string;
   currency: string;
   language: string;
   date_format: string;
   number_format: string;
+  chat: TenantChatConfiguration;
   business_hours: Record<string, unknown>;
 };
 

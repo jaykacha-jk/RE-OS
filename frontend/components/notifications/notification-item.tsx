@@ -8,6 +8,7 @@ import {
   typeBadgeClass,
   type Notification,
 } from '../../lib/notifications';
+import { StatusBadge } from '../ui';
 
 type Props = {
   notification: Notification;
@@ -32,12 +33,8 @@ export function NotificationItem({ notification, compact, onMarkRead }: Props) {
             <p className="mt-1 line-clamp-2 text-sm text-slate-600">{notification.message}</p>
           )}
           <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-            <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium uppercase ${typeBadgeClass(notification.type)}`}>
-              {notification.type}
-            </span>
-            <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium uppercase ${priorityBadgeClass(notification.priority)}`}>
-              {notification.priority}
-            </span>
+            <StatusBadge size="compact" label={notification.type} className={typeBadgeClass(notification.type)} />
+            <StatusBadge size="compact" label={notification.priority} className={priorityBadgeClass(notification.priority)} />
             <span className="text-xs text-slate-400">{formatNotificationTime(notification.created_at)}</span>
           </div>
         </div>

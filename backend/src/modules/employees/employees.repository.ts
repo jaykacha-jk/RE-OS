@@ -74,9 +74,9 @@ export class EmployeesRepository {
     const search = input.search?.trim();
     const where = {
       deleted_at: null,
+      tenant_id: input.tenantId,
       ...(input.status ? { status: input.status } : {}),
       user: {
-        tenant_id: input.tenantId,
         deleted_at: null,
         ...(search
           ? {
@@ -128,7 +128,9 @@ export class EmployeesRepository {
     return this.prisma.dbClient.employees.findFirst({
       where: {
         deleted_at: null,
-        user: { tenant_id: tenantId, id: userId, deleted_at: null },
+        tenant_id: tenantId,
+        user_id: userId,
+        user: { deleted_at: null },
       },
       select: { id: true },
     });
@@ -201,6 +203,7 @@ export class EmployeesRepository {
 
       const employee = await tx.employees.create({
         data: {
+          tenant_id: input.tenantId,
           user_id: user.id,
           manager_id: input.managerId,
           status: 'active',

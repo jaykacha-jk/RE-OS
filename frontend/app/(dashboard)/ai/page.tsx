@@ -20,7 +20,7 @@ const QUICK_ACTIONS = [
   },
   {
     href: '/ai/calls',
-    label: 'View demo call logs & transcripts',
+    label: 'View call logs & transcripts',
     permission: 'ai.calls.read',
   },
   {
@@ -79,7 +79,7 @@ export default function AiDashboardPage() {
       <section className="grid gap-4 md:grid-cols-3 lg:grid-cols-4">
         <Metric label="Assistant conversations" value={data?.ai_conversations} />
         <Metric label="Assistant conversions" value={data?.ai_conversions} />
-        <Metric label="Demo voice calls" value={data?.calls_total} sub={`${data?.calls_completed ?? 0} completed`} />
+        <Metric label="Voice calls" value={data?.calls_total} sub={`${data?.calls_completed ?? 0} completed`} />
         <Metric label="Qualified calls" value={data?.qualified_calls} />
         <Metric label="Qualification rate" value={data ? `${data.qualification_rate}%` : undefined} />
         <Metric label="Conversion rate" value={data ? `${data.conversion_rate}%` : undefined} />
@@ -92,7 +92,7 @@ export default function AiDashboardPage() {
 
       <section className="grid gap-4 lg:grid-cols-2">
         <div className="rounded-lg border bg-white p-4">
-          <h2 className="mb-4 font-semibold text-slate-900">Lead temperature (demo calls)</h2>
+          <h2 className="mb-4 font-semibold text-slate-900">Lead temperature (voice calls)</h2>
           {data?.temperature_breakdown.length ? (
             <div className="space-y-2 text-sm">
               {data.temperature_breakdown.map((t) => (

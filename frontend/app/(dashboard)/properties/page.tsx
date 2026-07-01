@@ -15,6 +15,7 @@ import {
   FilterField,
   Icon,
   Pagination,
+  StatusBadge,
   type DataTableColumn,
 } from '../../../components/ui';
 import { useTableQuery, type TableQueryValues } from '../../../hooks/use-table-query';
@@ -153,9 +154,7 @@ function PropertiesInner() {
       key: 'status',
       header: 'Status',
       render: (row) => (
-        <span className={`rounded-full px-2.5 py-1 text-2xs font-bold ${statusBadgeClass(row.status)}`}>
-          {humanize(row.status)}
-        </span>
+        <StatusBadge label={humanize(row.status)} className={statusBadgeClass(row.status)} />
       ),
     },
     {
@@ -184,7 +183,7 @@ function PropertiesInner() {
           </div>
           <div className="flex flex-col justify-between gap-4 rounded-2xl border border-white/10 bg-white/10 p-4 backdrop-blur">
             <p className="text-sm text-slate-200">
-              Demo-ready inventory needs images, locality, price, status, and a clear owner.
+              Complete inventory needs images, locality, price, status, and a clear owner.
             </p>
             <ActionGuard permission="properties.create">
               {propertyAtLimit ? (
@@ -283,7 +282,7 @@ function PropertiesInner() {
           empty={
             <EmptyState
               title="No listings match your filters"
-              description="Adjust filters or add a demo-ready listing with images, price, status, and a clear owner."
+              description="Adjust filters or add a listing with images, price, status, and a clear owner."
               action={
                 <ActionGuard permission="properties.create">
                   {propertyAtLimit ? (

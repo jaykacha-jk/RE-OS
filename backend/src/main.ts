@@ -12,6 +12,7 @@ import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { API_JSON_BODY_LIMIT } from './common/constants/http.constants';
 import { ErrorTrackingService } from './common/observability/error-tracking.service';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { RedisIoAdapter } from './common/websocket/redis-io.adapter';
 import { AppModule } from './app.module';
 import type { Request, Response } from 'express';
 
@@ -90,6 +91,11 @@ async function bootstrap() {
   }
 
   const port = process.env.PORT ? Number(process.env.PORT) : 3001;
+
+  const redisIoAdapter = new RedisIoAdapter(app);
+  await redisIoAdapter.connect();
+  app.useWebSocketAdapter(redisIoAdapter);
+
   await app.listen(port);
 }
 

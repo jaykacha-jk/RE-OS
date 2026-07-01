@@ -2,6 +2,22 @@ import type { Metadata } from 'next';
 
 export const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4545';
 
+const DEV_DEFAULT_TENANT = 'demo';
+
+/** Resolve tenant slug for public marketing pages (dev query param → prod env/subdomain). */
+export function resolvePublicTenantSlug(explicit?: string | null, hostLabel?: string | null): string {
+  const trimmed = explicit?.trim();
+  if (trimmed) return trimmed;
+
+  const envDefault = process.env.NEXT_PUBLIC_DEFAULT_TENANT_SLUG?.trim();
+  if (process.env.NODE_ENV === 'production') {
+    if (hostLabel && !['localhost', '127', 'www'].includes(hostLabel)) return hostLabel;
+    return envDefault ?? '';
+  }
+
+  return envDefault || DEV_DEFAULT_TENANT;
+}
+
 export type PublicIntent = 'buy' | 'rent' | 'commercial';
 
 export type PublicProperty = {

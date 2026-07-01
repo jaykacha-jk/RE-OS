@@ -6,7 +6,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
 
 import { ActionGuard } from '../../../../components/shared/ActionGuard';
-import { ConfirmDialog } from '../../../../components/ui';
+import { ConfirmDialog, StatusBadge } from '../../../../components/ui';
 import { apiFetch } from '../../../../lib/api';
 import { getSession } from '../../../../lib/auth';
 import {
@@ -203,9 +203,7 @@ export default function PropertyDetailPage() {
         <div>
           <div className="flex items-center gap-3">
             <h1 className="text-2xl font-bold tracking-tight text-slate-950">{property.title}</h1>
-            <span className={`rounded-full px-2.5 py-1 text-2xs font-bold ${statusBadgeClass(property.status)}`}>
-              {humanize(property.status)}
-            </span>
+            <StatusBadge label={humanize(property.status)} className={statusBadgeClass(property.status)} />
             {property.is_public ? (
               <span className="badge badge-teal">Public</span>
             ) : null}
@@ -253,29 +251,31 @@ export default function PropertyDetailPage() {
                 No images yet. Add at least one image before publishing publicly.
               </div>
             ) : (
-              <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
+              <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
                 {property.images.map((img) => (
                   <div key={img.id} className="group relative overflow-hidden rounded-2xl border border-reos-border bg-slate-100">
-                    <Image
-                      src={img.url}
-                      alt={img.alt_text ?? property.title}
-                      width={320}
-                      height={128}
-                      unoptimized
-                      className="h-32 w-full object-cover"
-                    />
+                    <div className="relative aspect-[4/3] w-full">
+                      <Image
+                        src={img.url}
+                        alt={img.alt_text ?? property.title}
+                        fill
+                        unoptimized
+                        sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 200px"
+                        className="object-cover"
+                      />
+                    </div>
                     {img.is_cover ? (
                       <span className="absolute left-2 top-2 rounded-full bg-teal-700 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
                         Cover
                       </span>
                     ) : null}
                     <ActionGuard permission="properties.update">
-                      <div className="absolute inset-x-0 bottom-0 flex justify-between gap-1 bg-slate-950/70 p-2 opacity-0 transition group-hover:opacity-100">
+                      <div className="absolute inset-x-0 bottom-0 flex justify-end gap-2 bg-slate-950/70 p-2 opacity-0 transition group-hover:opacity-100">
                         {!img.is_cover ? (
                           <button type="button" onClick={() => setCover(img.id)} className="text-[11px] font-semibold text-white hover:underline">
                             Set cover
                           </button>
-                        ) : <span />}
+                        ) : null}
                         <button type="button" onClick={() => deleteImage(img.id)} className="text-[11px] font-semibold text-rose-200 hover:underline">
                           Delete
                         </button>

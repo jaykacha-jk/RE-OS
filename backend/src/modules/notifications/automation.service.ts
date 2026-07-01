@@ -50,21 +50,23 @@ export class AutomationService implements OnModuleInit {
 
     const actionUrl = this.buildActionUrl(payload.entityType, payload.entityId);
 
-    for (const userId of recipients) {
-      await this.notifications.dispatch({
-        tenantId: payload.tenantId,
-        userId,
-        eventKey,
-        type: rule.type,
-        priority: rule.priority,
-        channels: rule.channels,
-        context: payload.context ?? {},
-        entityType: payload.entityType ?? null,
-        entityId: payload.entityId ?? null,
-        actionUrl,
-        delayMs: payload.delayMs,
-      });
-    }
+    await Promise.all(
+      recipients.map((userId) =>
+        this.notifications.dispatch({
+          tenantId: payload.tenantId,
+          userId,
+          eventKey,
+          type: rule.type,
+          priority: rule.priority,
+          channels: rule.channels,
+          context: payload.context ?? {},
+          entityType: payload.entityType ?? null,
+          entityId: payload.entityId ?? null,
+          actionUrl,
+          delayMs: payload.delayMs,
+        }),
+      ),
+    );
   }
 
   private async resolveRecipients(
@@ -129,7 +131,7 @@ export class AutomationService implements OnModuleInit {
       case 'property':
         return `/properties/${entityId}`;
       case 'conversation':
-        return `/chat/${entityId}`;
+        return `/chat?conversation=${entityId}`;
       default:
         return null;
     }

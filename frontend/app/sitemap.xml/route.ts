@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server';
 
-import { fetchPublicListings, propertyPath } from '../../lib/public-site';
+import { fetchPublicListings, propertyPath, resolvePublicTenantSlug } from '../../lib/public-site';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,12 +13,9 @@ type SitemapUrl = {
 
 function tenantFromRequest(request: NextRequest) {
   const queryTenant = request.nextUrl.searchParams.get('tenant');
-  if (queryTenant) return queryTenant;
-
   const host = request.headers.get('host') ?? '';
   const firstLabel = host.split('.')[0];
-  if (firstLabel && !['localhost', '127', 'www'].includes(firstLabel)) return firstLabel;
-  return 'demo';
+  return resolvePublicTenantSlug(queryTenant, firstLabel);
 }
 
 function baseUrl(request: NextRequest) {

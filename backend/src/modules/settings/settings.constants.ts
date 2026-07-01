@@ -42,12 +42,21 @@ export const DEFAULT_FEATURES: Record<string, boolean> = {
 // Tenant configuration (Indian-market defaults — BUSINESS rule).
 // ---------------------------------------------------------------------------
 
+export const DEFAULT_CHAT_CONFIGURATION = {
+  /** BR-CH02: round-robin assign unassigned conversations after delay. */
+  auto_assign_enabled: true,
+  auto_assign_delay_minutes: 5,
+  /** Create/link CRM inquiry when a visitor provides a phone in live chat. */
+  auto_create_inquiry_on_phone: true,
+};
+
 export const DEFAULT_CONFIGURATION = {
   timezone: 'Asia/Kolkata',
   currency: 'INR',
   language: 'en',
   date_format: 'DD/MM/YYYY',
   number_format: 'en-IN',
+  chat: DEFAULT_CHAT_CONFIGURATION,
   business_hours: {
     monday: { open: '09:00', close: '18:00', closed: false },
     tuesday: { open: '09:00', close: '18:00', closed: false },

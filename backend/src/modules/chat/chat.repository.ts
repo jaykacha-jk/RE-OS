@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 
 import { PrismaService } from '../../common/database/prisma.service';
-import { CONVERSATION_ACTIVITY_TYPES } from './chat.constants';
+import { CHAT_FULL_ACCESS_ROLES, CONVERSATION_ACTIVITY_TYPES, CONVERSATION_OPEN_STATUSES } from './chat.constants';
 
 export type ConversationScope =
   | { type: 'all' }
@@ -52,6 +52,110 @@ export class ChatRepository {
       where: { id: employeeId, deleted_at: null, user: { tenant_id: tenantId, deleted_at: null } },
       include: employeeUserSelect,
     });
+  }
+
+  async findOrgAdminUserIds(tenantId: string): Promise<string[]> {
+    const rows = await this.prisma.dbClient.user_roles.findMany({
+      where: {
+        tenant_id: tenantId,
+        role: { code: { in: ['org_owner', 'org_admin'] } },
+      },
+      select: { user_id: true },
+    });
+    return [...new Set(rows.map((r) => r.user_id))];
+  }
+
+  async userHasFullChatAccess(tenantId: string, userId: string): Promise<boolean> {
+    const row = await this.prisma.dbClient.user_roles.findFirst({
+      where: {
+        tenant_id: tenantId,
+        user_id: userId,
+        role: { code: { in: [...CHAT_FULL_ACCESS_ROLES] } },
+      },
+      select: { user_id: true },
+    });
+    return !!row;
+  }
+
+  async usersWithFullChatAccess(tenantId: string, userIds: string[]): Promise<Set<string>> {
+    const unique = [...new Set(userIds.filter(Boolean))];
+    if (unique.length === 0) return new Set();
+    const rows = await this.prisma.dbClient.user_roles.findMany({
+      where: {
+        tenant_id: tenantId,
+        user_id: { in: unique },
+        role: { code: { in: [...CHAT_FULL_ACCESS_ROLES] } },
+      },
+      select: { user_id: true },
+    });
+    return new Set(rows.map((row) => row.user_id));
+  }
+
+  /**
+   * Batch unread counts for multiple users (avoids N+1 in pushUnreadBadges).
+   */
+  async unreadConversationCountsForUsers(tenantId: string, userIds: string[]): Promise<Map<string, number>> {
+    const unique = [...new Set(userIds.filter(Boolean))];
+    const counts = new Map<string, number>();
+    for (const uid of unique) counts.set(uid, 0);
+    if (unique.length === 0) return counts;
+
+    const fullAccessIds = await this.usersWithFullChatAccess(tenantId, unique);
+    const scopedUserIds = unique.filter((id) => !fullAccessIds.has(id));
+
+    if (scopedUserIds.length > 0) {
+      const rows = await this.prisma.dbClient.conversation_participants.findMany({
+        where: {
+          tenant_id: tenantId,
+          user_id: { in: scopedUserIds },
+          conversation: { deleted_at: null, last_message_at: { not: null } },
+        },
+        select: {
+          user_id: true,
+          last_read_at: true,
+          conversation: { select: { last_message_at: true } },
+        },
+      });
+      for (const row of rows) {
+        const last = row.conversation.last_message_at;
+        if (!last || !row.user_id) continue;
+        if (!row.last_read_at || row.last_read_at < last) {
+          counts.set(row.user_id, (counts.get(row.user_id) ?? 0) + 1);
+        }
+      }
+    }
+
+    if (fullAccessIds.size > 0) {
+      const conversations = await this.prisma.dbClient.conversations.findMany({
+        where: {
+          tenant_id: tenantId,
+          deleted_at: null,
+          last_message_at: { not: null },
+          status: { in: [...CONVERSATION_OPEN_STATUSES] },
+        },
+        select: {
+          last_message_at: true,
+          participants: {
+            where: { user_id: { in: [...fullAccessIds] } },
+            select: { user_id: true, last_read_at: true },
+          },
+        },
+      });
+      for (const conversation of conversations) {
+        const last = conversation.last_message_at;
+        if (!last) continue;
+        const participantByUser = new Map(
+          conversation.participants.map((participant) => [participant.user_id, participant]),
+        );
+        for (const uid of fullAccessIds) {
+          const participant = participantByUser.get(uid);
+          const unread = !participant || !participant.last_read_at || participant.last_read_at < last;
+          if (unread) counts.set(uid, (counts.get(uid) ?? 0) + 1);
+        }
+      }
+    }
+
+    return counts;
   }
 
   async findSubordinateEmployeeIds(tenantId: string, managerEmployeeId: string) {
@@ -350,11 +454,16 @@ export class ChatRepository {
     } | null;
   }) {
     return this.prisma.dbClient.$transaction(async (tx) => {
-      const updated = await tx.conversations.updateMany({
+      const existing = await tx.conversations.findFirst({
         where: { id: input.id, tenant_id: input.tenantId, deleted_at: null },
+        select: { id: true },
+      });
+      if (!existing) return false;
+
+      await tx.conversations.update({
+        where: { id: input.id },
         data: input.data,
       });
-      if (updated.count !== 1) return false;
 
       if (input.tags) {
         await tx.conversation_tags.deleteMany({
@@ -666,6 +775,11 @@ export class ChatRepository {
    * last_read_at (i.e. conversations with unread activity for this user).
    */
   async unreadConversationCount(tenantId: string, userId: string) {
+    const fullAccess = await this.userHasFullChatAccess(tenantId, userId);
+    if (fullAccess) {
+      return this.unreadConversationCountFullAccess(tenantId, userId);
+    }
+
     const rows = await this.prisma.dbClient.conversation_participants.findMany({
       where: {
         tenant_id: tenantId,
@@ -684,6 +798,36 @@ export class ChatRepository {
     }).length;
   }
 
+  /**
+   * Owner/admin inbox badge: active conversations with messages newer than the
+   * user's participant read cursor (missing participant row = unread).
+   */
+  async unreadConversationCountFullAccess(tenantId: string, userId: string) {
+    const rows = await this.prisma.dbClient.conversations.findMany({
+      where: {
+        tenant_id: tenantId,
+        deleted_at: null,
+        last_message_at: { not: null },
+        status: { in: [...CONVERSATION_OPEN_STATUSES] },
+      },
+      select: {
+        last_message_at: true,
+        participants: {
+          where: { user_id: userId },
+          select: { last_read_at: true },
+          take: 1,
+        },
+      },
+    });
+    return rows.filter((row) => {
+      const last = row.last_message_at;
+      if (!last) return false;
+      const participant = row.participants[0];
+      if (!participant) return true;
+      return !participant.last_read_at || participant.last_read_at < last;
+    }).length;
+  }
+
   // --- Activities ------------------------------------------------------------
 
   async listActivities(tenantId: string, conversationId: string) {
@@ -699,5 +843,44 @@ export class ChatRepository {
       orderBy: { assigned_at: 'desc' },
       include: { employee: { include: employeeUserSelect } },
     });
+  }
+
+  /** Active sales executives + telecallers eligible for chat auto-assign (BR-CH02). */
+  async listChatAssignableEmployees(tenantId: string) {
+    return this.prisma.dbClient.employees.findMany({
+      where: {
+        deleted_at: null,
+        user: {
+          tenant_id: tenantId,
+          deleted_at: null,
+          status: 'active',
+          user_roles: {
+            some: {
+              role: { code: { in: ['sales_executive', 'telecaller'] } },
+            },
+          },
+        },
+      },
+      orderBy: { created_at: 'asc' },
+      select: { id: true, user_id: true },
+    });
+  }
+
+  async findLastAutoAssignedEmployeeId(tenantId: string) {
+    const row = await this.prisma.dbClient.conversation_assignments.findFirst({
+      where: { tenant_id: tenantId, assigned_by: null },
+      orderBy: { assigned_at: 'desc' },
+      select: { employee_id: true },
+    });
+    return row?.employee_id ?? null;
+  }
+
+  async pickNextAssignableEmployee(tenantId: string) {
+    const agents = await this.listChatAssignableEmployees(tenantId);
+    if (!agents.length) return null;
+    if (agents.length === 1) return agents[0];
+    const lastId = await this.findLastAutoAssignedEmployeeId(tenantId);
+    const idx = lastId ? agents.findIndex((a) => a.id === lastId) : -1;
+    return agents[(idx + 1) % agents.length];
   }
 }

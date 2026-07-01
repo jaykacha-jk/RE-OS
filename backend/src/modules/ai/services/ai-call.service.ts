@@ -1,5 +1,7 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 
+import { paginationMeta, resolvePagination } from '../../../common/pagination';
+
 import type { AuthUser } from '../../../common/context/auth-user';
 import { AuditService, type AuditRequestMeta } from '../../audit/audit.service';
 import { CrmService } from '../../crm/crm.service';
@@ -36,9 +38,12 @@ export class AiCallService {
 
   // --- Voice agents ----------------------------------------------------------
 
-  async listAgents(tenantId: string) {
-    const rows = await this.repo.listAgents(tenantId);
-    return rows.map((a) => this.mapAgent(a));
+  async listAgents(tenantId: string, page?: number, perPage?: number) {
+    const pagination = resolvePagination(page, perPage);
+    const { rows, total } = await this.repo.listAgents(tenantId, pagination);
+    const data = rows.map((a) => this.mapAgent(a));
+    if (!pagination || total === null) return { data };
+    return { data, pagination: paginationMeta(pagination.page, pagination.perPage, total) };
   }
 
   async createAgent(tenantId: string, dto: CreateAgentDto, user: AuthUser, meta?: AuditRequestMeta) {

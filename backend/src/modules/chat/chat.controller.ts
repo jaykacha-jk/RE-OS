@@ -10,6 +10,7 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import {
   ApiBearerAuth,
   ApiCreatedResponse,
@@ -228,6 +229,7 @@ export class PublicChatController {
   constructor(private readonly chat: ChatService) {}
 
   @Post('conversations')
+  @Throttle({ public_chat: { limit: 5, ttl: 60_000 } })
   @ApiOperation({ summary: 'Start a public website chat conversation' })
   @ApiCreatedResponse({ description: 'Conversation created with visitor token' })
   async start(@Body() dto: StartPublicChatDto, @Req() req: Request) {
@@ -235,6 +237,7 @@ export class PublicChatController {
   }
 
   @Get('conversations/:id/messages')
+  @Throttle({ public_chat: { limit: 30, ttl: 60_000 } })
   @ApiOperation({ summary: 'List messages visible to the public chat visitor' })
   async listMessages(
     @Param('id') id: string,
@@ -252,6 +255,7 @@ export class PublicChatController {
   }
 
   @Post('conversations/:id/messages')
+  @Throttle({ public_chat: { limit: 12, ttl: 60_000 } })
   @ApiOperation({ summary: 'Send a public website chat message' })
   async sendMessage(
     @Param('id') id: string,

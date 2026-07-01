@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useState } from 'react';
 
+import { FormField } from '../../../../components/ui';
 import {
   fetchBranding,
   fetchSeo,
@@ -144,35 +145,35 @@ export default function WebsiteSettingsPage() {
             description="These values appear across the public website, emails, and downloadable material."
           />
           <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <Field label="Logo URL">
+            <FormField label="Logo URL">
               <input
                 className="input"
                 value={data.branding.logo_url ?? ''}
                 onChange={(e) => setBranding('logo_url', e.target.value || null)}
                 placeholder="https://cdn.example.com/logo.png"
               />
-            </Field>
-            <Field label="Favicon URL">
+            </FormField>
+            <FormField label="Favicon URL">
               <input
                 className="input"
                 value={data.branding.favicon_url ?? ''}
                 onChange={(e) => setBranding('favicon_url', e.target.value || null)}
                 placeholder="https://cdn.example.com/favicon.ico"
               />
-            </Field>
-            <Field label="Primary color">
+            </FormField>
+            <FormField label="Primary color">
               <ColorInput value={data.branding.primary_color} onChange={(value) => setBranding('primary_color', value)} />
-            </Field>
-            <Field label="Secondary color">
+            </FormField>
+            <FormField label="Secondary color">
               <ColorInput value={data.branding.secondary_color} onChange={(value) => setBranding('secondary_color', value)} />
-            </Field>
-            <Field label="Font family">
+            </FormField>
+            <FormField label="Font family">
               <input
                 className="input"
                 value={data.branding.font_family}
                 onChange={(e) => setBranding('font_family', e.target.value)}
               />
-            </Field>
+            </FormField>
           </div>
         </section>
 
@@ -183,21 +184,21 @@ export default function WebsiteSettingsPage() {
             description="Keep this focused on inventory, locality trust, and fast callback expectations."
           />
           <div className="mt-4 space-y-4">
-          <Field label="Hero title">
+          <FormField label="Hero title">
               <input
                 className="input"
                 value={data.website.hero_title ?? ''}
                 onChange={(e) => setWebsite('hero_title', e.target.value || null)}
               />
-          </Field>
-          <Field label="Hero subtitle">
+          </FormField>
+          <FormField label="Hero subtitle">
             <textarea
               className="input"
               rows={2}
                 value={data.website.hero_subtitle ?? ''}
                 onChange={(e) => setWebsite('hero_subtitle', e.target.value || null)}
             />
-          </Field>
+          </FormField>
           </div>
         </section>
 
@@ -208,18 +209,18 @@ export default function WebsiteSettingsPage() {
             description="These public contact details should route directly into the team that owns new inquiries."
           />
           <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <Field label="Email">
+            <FormField label="Email">
               <input className="input" value={contact.email ?? ''} onChange={(e) => setContact('email', e.target.value)} />
-            </Field>
-            <Field label="Phone">
+            </FormField>
+            <FormField label="Phone">
               <input className="input" value={contact.phone ?? ''} onChange={(e) => setContact('phone', e.target.value)} />
-            </Field>
-            <Field label="WhatsApp">
+            </FormField>
+            <FormField label="WhatsApp">
               <input className="input" value={contact.whatsapp ?? ''} onChange={(e) => setContact('whatsapp', e.target.value)} />
-            </Field>
-            <Field label="Address">
+            </FormField>
+            <FormField label="Address">
               <input className="input" value={contact.address ?? ''} onChange={(e) => setContact('address', e.target.value)} />
-            </Field>
+            </FormField>
           </div>
         </section>
 
@@ -231,9 +232,9 @@ export default function WebsiteSettingsPage() {
           />
           <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
             {['facebook', 'instagram', 'linkedin', 'twitter', 'youtube'].map((key) => (
-              <Field key={key} label={key[0].toUpperCase() + key.slice(1)}>
+              <FormField key={key} label={key[0].toUpperCase() + key.slice(1)}>
                 <input className="input" value={social[key] ?? ''} onChange={(e) => setSocial(key, e.target.value)} />
-              </Field>
+              </FormField>
             ))}
           </div>
         </section>
@@ -245,21 +246,21 @@ export default function WebsiteSettingsPage() {
             description="Launch-safe SEO controls. Advanced schema, Open Graph, and Twitter card settings remain available at /settings/seo."
           />
           <div className="mt-4 space-y-4">
-            <Field label="Meta title">
+            <FormField label="Meta title">
               <input
                 className="input"
                 value={data.seo.meta_title ?? ''}
                 onChange={(e) => setSeo('meta_title', e.target.value || null)}
               />
-            </Field>
-            <Field label="Meta description">
+            </FormField>
+            <FormField label="Meta description">
               <textarea
                 className="input"
                 rows={3}
                 value={data.seo.meta_description ?? ''}
                 onChange={(e) => setSeo('meta_description', e.target.value || null)}
               />
-            </Field>
+            </FormField>
             <div className="grid gap-3 sm:grid-cols-2">
               <Toggle label="Allow indexing" checked={robots.index !== false} onChange={(v) => setRobots('index', v)} />
               <Toggle label="Follow links" checked={robots.follow !== false} onChange={(v) => setRobots('follow', v)} />
@@ -295,15 +296,6 @@ function SectionHeader({ step, title, description }: { step: string; title: stri
         <p className="mt-1 text-sm leading-6 text-slate-600">{description}</p>
       </div>
     </div>
-  );
-}
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <label className="block">
-      <span className="mb-1 block text-sm font-medium text-slate-700">{label}</span>
-      {children}
-    </label>
   );
 }
 

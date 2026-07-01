@@ -21,11 +21,13 @@ export function PropertyVideoManager({
   videos: initialVideos,
   title,
   onChange,
+  embedded = false,
 }: {
   propertyId: string;
   videos: PropertyVideo[];
   title: string;
   onChange?: (videos: PropertyVideo[]) => void;
+  embedded?: boolean;
 }) {
   const [videos, setVideos] = useState(initialVideos);
   const [videoUrl, setVideoUrl] = useState('');
@@ -125,28 +127,36 @@ export function PropertyVideoManager({
     }
   }
 
+  const shellClass = embedded ? 'space-y-4' : 'rounded-2xl border border-reos-border bg-white p-5 shadow-card space-y-4';
+
   return (
-    <section className="rounded-2xl border border-reos-border bg-white p-5 shadow-card">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <h2 className="text-h3">Videos</h2>
-          <p className="mt-1 text-xs text-slate-500">
-            Walkthroughs and property tours for {title}. MP4, WebM, or MOV up to 50 MB.
-          </p>
+    <section className={shellClass}>
+      {!embedded ? (
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <h2 className="text-h3">Videos</h2>
+            <p className="mt-1 text-xs text-slate-500">
+              Walkthroughs and property tours for {title}. MP4, WebM, or MOV up to 50 MB.
+            </p>
+          </div>
+          <span className="badge badge-slate">{videos.length} videos</span>
         </div>
-        <span className="badge badge-slate">{videos.length} videos</span>
-      </div>
+      ) : (
+        <div className="flex justify-end">
+          <span className="badge badge-slate">{videos.length} videos</span>
+        </div>
+      )}
 
       {error ? (
         <p className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>
       ) : null}
 
       {videos.length === 0 ? (
-        <div className="mt-4 rounded-2xl border border-dashed border-reos-border bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
+        <div className="rounded-2xl border border-dashed border-reos-border bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
           No videos yet. Upload a walkthrough or paste a hosted video URL.
         </div>
       ) : (
-        <ul className="mt-4 space-y-3">
+        <ul className="space-y-3">
           {videos.map((video) => (
             <li key={video.id} className="rounded-2xl border border-reos-border bg-slate-50 p-3">
               <div className="flex flex-wrap items-start justify-between gap-3">
@@ -183,7 +193,7 @@ export function PropertyVideoManager({
       )}
 
       <ActionGuard permission="properties.update">
-        <div className="mt-4 space-y-3">
+        <div className="space-y-3">
           <FormFieldRow label="Video title (optional)">
             <input
               value={videoTitle}
@@ -193,7 +203,7 @@ export function PropertyVideoManager({
             />
           </FormFieldRow>
           <label
-            className={`flex cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed border-reos-border bg-slate-50 px-4 py-6 text-center text-sm transition hover:border-teal-400 hover:bg-teal-50/40 ${
+            className={`flex cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed border-reos-border bg-slate-50 px-4 py-5 text-center text-sm transition hover:border-teal-400 hover:bg-teal-50/40 ${
               uploading ? 'pointer-events-none opacity-60' : ''
             }`}
           >
@@ -210,18 +220,18 @@ export function PropertyVideoManager({
             <span className="font-semibold text-slate-700">{uploading ? 'Uploading…' : 'Click to upload a video'}</span>
             <span className="mt-1 text-xs text-slate-500">MP4, WebM, or MOV. One file at a time recommended.</span>
           </label>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
             <input
               value={videoUrl}
               onChange={(e) => setVideoUrl(e.target.value)}
               placeholder="Or paste a hosted video URL (https://…)"
-              className="input"
+              className="input min-w-0 flex-1"
             />
             <button
               type="button"
               onClick={() => void addVideoByUrl()}
               disabled={!videoUrl.trim() || uploading}
-              className="btn-secondary whitespace-nowrap disabled:opacity-50"
+              className="btn-secondary shrink-0 whitespace-nowrap disabled:opacity-50"
             >
               Add by URL
             </button>

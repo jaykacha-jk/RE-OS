@@ -27,6 +27,7 @@ model organizations {
 
   organization_usage organization_usage?
   users               users[]
+  employees           employees[]
   user_invitations    user_invitations[]
   roles               roles[]
   user_roles         user_roles[]
@@ -206,6 +207,7 @@ model user_roles {
 
 model employees {
   id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenant_id    String   @db.Uuid
   user_id      String   @unique @db.Uuid
   employee_code String?
   manager_id   String?  @db.Uuid
@@ -217,6 +219,7 @@ model employees {
   updated_at DateTime @updatedAt @map("updated_at")
   deleted_at DateTime? @map("deleted_at")
 
+  organization organizations @relation(fields: [tenant_id], references: [id])
   user users @relation(fields: [user_id], references: [id])
   manager employees? @relation("employee_manager", fields: [manager_id], references: [id])
   subordinates employees[] @relation("employee_manager")
@@ -228,6 +231,8 @@ model employees {
   assigned_conversations   conversations[]            @relation("conversation_assignee")
   conversation_assignments conversation_assignments[]
 
+  @@index([tenant_id])
+  @@index([tenant_id, status])
   @@index([status])
 }
 
@@ -1587,5 +1592,38 @@ model ai_usage_events {
 
   @@index([tenant_id, feature, created_at])
   @@index([tenant_id, created_at])
+}
+
+// ---------------------------------------------------------------------------
+// Platform-scoped settings (Super Admin). Secrets stored AES-256-GCM encrypted.
+// ---------------------------------------------------------------------------
+
+model platform_settings {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  key        String   @unique
+  value_enc  String
+  version    Int      @default(1)
+  updated_by String?  @db.Uuid
+
+  created_at DateTime @default(now()) @map("created_at")
+  updated_at DateTime @updatedAt @map("updated_at")
+
+  history platform_settings_history[]
+
+  @@index([key])
+}
+
+model platform_settings_history {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  settings_key String
+  version      Int
+  value_enc    String
+  changed_by   String?  @db.Uuid
+
+  created_at DateTime @default(now()) @map("created_at")
+
+  settings platform_settings @relation(fields: [settings_key], references: [key], onDelete: Cascade)
+
+  @@index([settings_key, version])
 }
 

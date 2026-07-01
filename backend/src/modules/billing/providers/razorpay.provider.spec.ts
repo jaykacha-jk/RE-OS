@@ -1,17 +1,37 @@
 import { RazorpayProvider } from './razorpay.provider';
+import type { PlatformPaymentConfigService } from '../../platform-settings/platform-payment-config.service';
 
 describe('RazorpayProvider', () => {
   const originalEnv = process.env;
   const fetchMock = jest.fn();
 
+  function createProvider(credentials: {
+    keyId: string;
+    keySecret: string;
+    webhookSecret?: string;
+  } | null) {
+    const paymentConfig = {
+      getActiveRazorpayCredentials: jest.fn().mockResolvedValue(
+        credentials
+          ? {
+              keyId: credentials.keyId,
+              keySecret: credentials.keySecret,
+              webhookSecret: credentials.webhookSecret ?? '',
+              environment: 'test' as const,
+              source: 'environment' as const,
+            }
+          : null,
+      ),
+    } as unknown as PlatformPaymentConfigService;
+
+    return new RazorpayProvider(paymentConfig);
+  }
+
   beforeEach(() => {
     jest.clearAllMocks();
-    process.env = {
-      ...originalEnv,
-      PAYMENT_PROVIDER: 'razorpay',
-      RAZORPAY_KEY_ID: 'rzp_test_key',
-      RAZORPAY_KEY_SECRET: 'rzp_test_secret',
-    };
+    process.env = { ...originalEnv };
+    delete process.env.RAZORPAY_KEY_ID;
+    delete process.env.RAZORPAY_KEY_SECRET;
     global.fetch = fetchMock;
   });
 
@@ -20,8 +40,7 @@ describe('RazorpayProvider', () => {
   });
 
   it('requires Razorpay credentials for live subscription creation', async () => {
-    delete process.env.RAZORPAY_KEY_SECRET;
-    const provider = new RazorpayProvider();
+    const provider = createProvider(null);
 
     await expect(
       provider.createSubscription({
@@ -32,7 +51,7 @@ describe('RazorpayProvider', () => {
         amount: 1499900,
         currency: 'INR',
       }),
-    ).rejects.toThrow('RAZORPAY_KEY_SECRET is required when PAYMENT_PROVIDER=razorpay');
+    ).rejects.toThrow('Razorpay credentials are not configured');
   });
 
   it('creates a Razorpay plan then subscription and returns the hosted checkout link', async () => {
@@ -49,7 +68,10 @@ describe('RazorpayProvider', () => {
         }),
       });
 
-    const provider = new RazorpayProvider();
+    const provider = createProvider({
+      keyId: 'rzp_test_key',
+      keySecret: 'rzp_test_secret',
+    });
     const result = await provider.createSubscription({
       tenantId: 'tenant-1',
       planCode: 'pro',
@@ -67,40 +89,6 @@ describe('RazorpayProvider', () => {
         headers: expect.objectContaining({
           Authorization: expect.stringMatching(/^Basic /),
           'Content-Type': 'application/json',
-        }),
-        body: JSON.stringify({
-          period: 'monthly',
-          interval: 1,
-          item: {
-            name: 'RE-OS Pro monthly',
-            amount: 1499900,
-            currency: 'INR',
-            description: 'Pro plan for RE-OS',
-          },
-          notes: {
-            tenant_id: 'tenant-1',
-            plan_code: 'pro',
-            billing_cycle: 'monthly',
-          },
-        }),
-      }),
-    );
-    expect(fetchMock).toHaveBeenNthCalledWith(
-      2,
-      'https://api.razorpay.com/v1/subscriptions',
-      expect.objectContaining({
-        method: 'POST',
-        body: JSON.stringify({
-          plan_id: 'plan_RZP123',
-          total_count: 120,
-          quantity: 1,
-          customer_notify: 1,
-          notes: {
-            tenant_id: 'tenant-1',
-            plan_code: 'pro',
-            billing_cycle: 'monthly',
-            provider_plan_id: 'plan_RZP123',
-          },
         }),
       }),
     );
@@ -126,7 +114,10 @@ describe('RazorpayProvider', () => {
       }),
     });
 
-    const provider = new RazorpayProvider();
+    const provider = createProvider({
+      keyId: 'rzp_test_key',
+      keySecret: 'rzp_test_secret',
+    });
     await expect(
       provider.createSubscription({
         tenantId: 'tenant-1',

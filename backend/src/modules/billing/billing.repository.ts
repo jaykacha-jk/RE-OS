@@ -306,6 +306,20 @@ export class BillingRepository {
     });
   }
 
+  async countActiveSubscriptionsByPlanIds(planIds: string[]) {
+    if (planIds.length === 0) return new Map<string, number>();
+    const rows = await this.prisma.dbClient.subscriptions.groupBy({
+      by: ['plan_id'],
+      where: {
+        plan_id: { in: planIds },
+        deleted_at: null,
+        status: { not: 'cancelled' },
+      },
+      _count: { _all: true },
+    });
+    return new Map(rows.map((row) => [row.plan_id, row._count._all]));
+  }
+
   async createPlan(data: Prisma.subscription_plansCreateInput) {
     return this.prisma.dbClient.subscription_plans.create({ data });
   }

@@ -149,19 +149,21 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   );
 
   return (
-    <div className="flex h-screen overflow-hidden bg-reos-bg">
-      {/* Desktop sidebar — fixed full-height, scrolls independently of content */}
-      <aside className="hidden h-screen w-64 shrink-0 lg:block">{sidebar}</aside>
+    <div className="min-h-svh bg-reos-bg lg:pl-64">
+      {/* Desktop sidebar — pinned full viewport height */}
+      <aside className="fixed inset-y-0 left-0 z-20 hidden w-64 bg-reos-sidebar lg:block">{sidebar}</aside>
 
       {/* Mobile drawer */}
       {mobileOpen ? (
         <div className="fixed inset-0 z-40 lg:hidden">
           <div className="absolute inset-0 animate-fade-in bg-slate-950/50" onClick={() => setMobileOpen(false)} aria-hidden />
-          <div className="absolute inset-y-0 left-0 w-72 animate-slide-in-left">{sidebar}</div>
+          <aside className="absolute inset-y-0 left-0 flex w-72 animate-slide-in-left flex-col bg-reos-sidebar">
+            {sidebar}
+          </aside>
         </div>
       ) : null}
 
-      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+      <div className="flex min-h-svh min-w-0 flex-col">
         {session.impersonation ? (
           <ImpersonationBanner
             impersonation={session.impersonation}
@@ -206,7 +208,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
           </div>
         </header>
 
-        <main className="scrollbar-thin flex-1 overflow-y-auto">
+        <main className="scrollbar-thin flex-1">
           <div className="mx-auto w-full max-w-[88rem] px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
             {routeAccess.allowed ? children : <AccessDenied reason={routeAccess.reason} />}
           </div>
@@ -268,7 +270,7 @@ function Sidebar({
       : 'Tenant operations';
 
   return (
-    <div className="flex h-full flex-col bg-reos-sidebar text-white">
+    <div className="flex h-full min-h-0 flex-col text-white">
       {/* Brand */}
       <div className="flex items-center gap-3 px-5 pb-4 pt-5">
         <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-teal-500 text-sm font-bold text-white shadow-raised">

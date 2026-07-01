@@ -75,7 +75,7 @@ function buildPropertiesService() {
   const repo = new PropertiesRepository({ dbClient } as never);
   const service = new PropertiesService(
     repo,
-    { saveBase64: jest.fn(), delete: jest.fn() } as never,
+    { saveBase64: jest.fn(), delete: jest.fn(), resolveUrl: jest.fn((value: string | null | undefined) => value ?? null) } as never,
     { record: jest.fn() } as unknown as AuditService,
     { emit: jest.fn(), on: jest.fn() } as never,
     {

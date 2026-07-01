@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useState } from 'react';
 
+import { FormField } from '../../../../components/ui';
 import { fetchSeo, updateSeo, type SeoSettings } from '../../../../lib/settings';
 
 export default function SeoSettingsPage() {
@@ -66,17 +67,17 @@ export default function SeoSettingsPage() {
       <p className="mt-1 text-sm text-slate-600">Meta tags, robots rules and sitemap options.</p>
 
       <form onSubmit={onSubmit} className="mt-6 space-y-5">
-        <Field label="Meta title">
+        <FormField label="Meta title">
           <input className="input" value={data.meta_title ?? ''} onChange={(e) => setTop('meta_title', e.target.value || null)} />
-        </Field>
-        <Field label="Meta description">
+        </FormField>
+        <FormField label="Meta description">
           <textarea
             className="input"
             rows={3}
             value={data.meta_description ?? ''}
             onChange={(e) => setTop('meta_description', e.target.value || null)}
           />
-        </Field>
+        </FormField>
 
         <section className="space-y-2">
           <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Robots</h2>
@@ -102,15 +103,6 @@ export default function SeoSettingsPage() {
         </button>
       </form>
     </div>
-  );
-}
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <label className="block">
-      <span className="mb-1 block text-sm font-medium text-slate-700">{label}</span>
-      {children}
-    </label>
   );
 }
 

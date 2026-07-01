@@ -15,6 +15,7 @@ import { readCookie } from '../../common/utils/auth-cookies.util';
 import { getJwtPublicKeyPem } from '../../config/jwt-keys';
 import { CHAT_FULL_ACCESS_ROLES } from './chat.constants';
 import { ChatRepository } from './chat.repository';
+import { verifyClientToken } from './chat-visitor-token';
 
 type JwtPayload = {
   sub: string;
@@ -71,6 +72,29 @@ export class ChatGateway implements OnGatewayConnection {
 
   async handleConnection(client: Socket) {
     try {
+      const visitorToken =
+        (client.handshake.auth?.visitorToken as string | undefined) ??
+        (typeof client.handshake.query?.visitorToken === 'string'
+          ? client.handshake.query.visitorToken
+          : undefined);
+
+      if (visitorToken) {
+        const verified = verifyClientToken(visitorToken);
+        if (!verified) return client.disconnect(true);
+        const conversation = await this.repo.findBasicById(
+          verified.tenantId,
+          verified.conversationId,
+        );
+        if (!conversation || conversation.client_identifier !== verified.clientIdentifier) {
+          return client.disconnect(true);
+        }
+        client.data.visitor = true;
+        client.data.conversationId = verified.conversationId;
+        client.data.tenantId = verified.tenantId;
+        await client.join(conversationRoom(verified.conversationId));
+        return;
+      }
+
       const token = this.extractToken(client);
       if (!token) return client.disconnect(true);
 
@@ -99,6 +123,10 @@ export class ChatGateway implements OnGatewayConnection {
     @ConnectedSocket() client: Socket,
     @MessageBody() body: { conversationId?: string },
   ) {
+    if (client.data.visitor) {
+      return { ok: client.data.conversationId === body?.conversationId };
+    }
+
     const conversationId = body?.conversationId;
     const userId = client.data.userId as string | undefined;
     const tenantId = client.data.tenantId as string | undefined;

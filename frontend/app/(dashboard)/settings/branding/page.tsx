@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useState } from 'react';
 
+import { FormField } from '../../../../components/ui';
 import { fetchBranding, updateBranding, type BrandingSettings } from '../../../../lib/settings';
 
 export default function BrandingSettingsPage() {
@@ -54,25 +55,25 @@ export default function BrandingSettingsPage() {
       <p className="mt-1 text-sm text-slate-600">Logo, favicon, colors and typography for your brand.</p>
 
       <form onSubmit={onSubmit} className="mt-6 space-y-5">
-        <Field label="Logo URL">
+        <FormField label="Logo URL">
           <input
             className="input"
             value={data.logo_url ?? ''}
             onChange={(e) => set('logo_url', e.target.value || null)}
             placeholder="https://cdn.example.com/logo.png"
           />
-        </Field>
-        <Field label="Favicon URL">
+        </FormField>
+        <FormField label="Favicon URL">
           <input
             className="input"
             value={data.favicon_url ?? ''}
             onChange={(e) => set('favicon_url', e.target.value || null)}
             placeholder="https://cdn.example.com/favicon.ico"
           />
-        </Field>
+        </FormField>
 
         <div className="grid grid-cols-2 gap-4">
-          <Field label="Primary color">
+          <FormField label="Primary color">
             <div className="flex items-center gap-2">
               <input
                 type="color"
@@ -86,8 +87,8 @@ export default function BrandingSettingsPage() {
                 onChange={(e) => set('primary_color', e.target.value)}
               />
             </div>
-          </Field>
-          <Field label="Secondary color">
+          </FormField>
+          <FormField label="Secondary color">
             <div className="flex items-center gap-2">
               <input
                 type="color"
@@ -101,16 +102,16 @@ export default function BrandingSettingsPage() {
                 onChange={(e) => set('secondary_color', e.target.value)}
               />
             </div>
-          </Field>
+          </FormField>
         </div>
 
-        <Field label="Font family">
+        <FormField label="Font family">
           <input
             className="input"
             value={data.font_family}
             onChange={(e) => set('font_family', e.target.value)}
           />
-        </Field>
+        </FormField>
 
         {error ? <p className="rounded bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p> : null}
         {saved ? <p className="rounded bg-green-50 px-3 py-2 text-sm text-green-700">Saved.</p> : null}
@@ -120,14 +121,5 @@ export default function BrandingSettingsPage() {
         </button>
       </form>
     </div>
-  );
-}
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <label className="block">
-      <span className="mb-1 block text-sm font-medium text-slate-700">{label}</span>
-      {children}
-    </label>
   );
 }

@@ -453,11 +453,27 @@ export class CrmRepository extends TenantScopedRepository {
     });
   }
 
-  async listNotes(tenantId: string, inquiryId: string) {
-    return this.prisma.dbClient.inquiry_notes.findMany({
-      where: { tenant_id: tenantId, inquiry_id: inquiryId },
-      orderBy: { created_at: 'desc' },
-    });
+  async listNotes(
+    tenantId: string,
+    inquiryId: string,
+    pagination?: { skip: number; perPage: number } | null,
+  ) {
+    const where = { tenant_id: tenantId, inquiry_id: inquiryId };
+    const orderBy = { created_at: 'desc' as const };
+    if (!pagination) {
+      const rows = await this.prisma.dbClient.inquiry_notes.findMany({ where, orderBy });
+      return { rows, total: null as number | null };
+    }
+    const [rows, total] = await Promise.all([
+      this.prisma.dbClient.inquiry_notes.findMany({
+        where,
+        orderBy,
+        skip: pagination.skip,
+        take: pagination.perPage,
+      }),
+      this.prisma.dbClient.inquiry_notes.count({ where }),
+    ]);
+    return { rows, total };
   }
 
   // --- Follow-ups ------------------------------------------------------------
@@ -489,12 +505,29 @@ export class CrmRepository extends TenantScopedRepository {
     });
   }
 
-  async listFollowups(tenantId: string, inquiryId: string) {
-    return this.prisma.dbClient.inquiry_followups.findMany({
-      where: { tenant_id: tenantId, inquiry_id: inquiryId },
-      orderBy: { followup_date: 'asc' },
-      include: { employee: { include: employeeUserSelect } },
-    });
+  async listFollowups(
+    tenantId: string,
+    inquiryId: string,
+    pagination?: { skip: number; perPage: number } | null,
+  ) {
+    const where = { tenant_id: tenantId, inquiry_id: inquiryId };
+    const orderBy = { followup_date: 'asc' as const };
+    const include = { employee: { include: employeeUserSelect } };
+    if (!pagination) {
+      const rows = await this.prisma.dbClient.inquiry_followups.findMany({ where, orderBy, include });
+      return { rows, total: null as number | null };
+    }
+    const [rows, total] = await Promise.all([
+      this.prisma.dbClient.inquiry_followups.findMany({
+        where,
+        orderBy,
+        include,
+        skip: pagination.skip,
+        take: pagination.perPage,
+      }),
+      this.prisma.dbClient.inquiry_followups.count({ where }),
+    ]);
+    return { rows, total };
   }
 
   async findFollowup(tenantId: string, inquiryId: string, followupId: string) {
@@ -607,18 +640,50 @@ export class CrmRepository extends TenantScopedRepository {
 
   // --- Timeline (history + activities) --------------------------------------
 
-  async listHistory(tenantId: string, inquiryId: string) {
-    return this.prisma.dbClient.inquiry_history.findMany({
-      where: { tenant_id: tenantId, inquiry_id: inquiryId },
-      orderBy: { created_at: 'desc' },
-    });
+  async listHistory(
+    tenantId: string,
+    inquiryId: string,
+    pagination?: { skip: number; perPage: number } | null,
+  ) {
+    const where = { tenant_id: tenantId, inquiry_id: inquiryId };
+    const orderBy = { created_at: 'desc' as const };
+    if (!pagination) {
+      const rows = await this.prisma.dbClient.inquiry_history.findMany({ where, orderBy });
+      return { rows, total: null as number | null };
+    }
+    const [rows, total] = await Promise.all([
+      this.prisma.dbClient.inquiry_history.findMany({
+        where,
+        orderBy,
+        skip: pagination.skip,
+        take: pagination.perPage,
+      }),
+      this.prisma.dbClient.inquiry_history.count({ where }),
+    ]);
+    return { rows, total };
   }
 
-  async listActivities(tenantId: string, inquiryId: string) {
-    return this.prisma.dbClient.inquiry_activities.findMany({
-      where: { tenant_id: tenantId, inquiry_id: inquiryId },
-      orderBy: { created_at: 'desc' },
-    });
+  async listActivities(
+    tenantId: string,
+    inquiryId: string,
+    pagination?: { skip: number; perPage: number } | null,
+  ) {
+    const where = { tenant_id: tenantId, inquiry_id: inquiryId };
+    const orderBy = { created_at: 'desc' as const };
+    if (!pagination) {
+      const rows = await this.prisma.dbClient.inquiry_activities.findMany({ where, orderBy });
+      return { rows, total: null as number | null };
+    }
+    const [rows, total] = await Promise.all([
+      this.prisma.dbClient.inquiry_activities.findMany({
+        where,
+        orderBy,
+        skip: pagination.skip,
+        take: pagination.perPage,
+      }),
+      this.prisma.dbClient.inquiry_activities.count({ where }),
+    ]);
+    return { rows, total };
   }
 
   async listAssignments(tenantId: string, inquiryId: string) {
@@ -635,15 +700,31 @@ export class CrmRepository extends TenantScopedRepository {
     return this.prisma.dbClient.lead_sources.create({ data });
   }
 
-  async listLeadSources(tenantId: string, includeInactive: boolean) {
-    return this.prisma.dbClient.lead_sources.findMany({
-      where: {
-        tenant_id: tenantId,
-        deleted_at: null,
-        ...(includeInactive ? {} : { is_active: true }),
-      },
-      orderBy: { name: 'asc' },
-    });
+  async listLeadSources(
+    tenantId: string,
+    includeInactive: boolean,
+    pagination?: { skip: number; perPage: number } | null,
+  ) {
+    const where = {
+      tenant_id: tenantId,
+      deleted_at: null,
+      ...(includeInactive ? {} : { is_active: true }),
+    };
+    const orderBy = { name: 'asc' as const };
+    if (!pagination) {
+      const rows = await this.prisma.dbClient.lead_sources.findMany({ where, orderBy });
+      return { rows, total: null as number | null };
+    }
+    const [rows, total] = await Promise.all([
+      this.prisma.dbClient.lead_sources.findMany({
+        where,
+        orderBy,
+        skip: pagination.skip,
+        take: pagination.perPage,
+      }),
+      this.prisma.dbClient.lead_sources.count({ where }),
+    ]);
+    return { rows, total };
   }
 
   async findLeadSourceById(tenantId: string, id: string) {

@@ -2,10 +2,15 @@
 
 import Link from 'next/link';
 import { FormEvent, useCallback, useEffect, useRef, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 
 import { ChatAssignModal } from '../../../components/chat/assign-modal';
+import { StatusBadge } from '../../../components/ui';
 import { useChatSocket } from '../../../hooks/use-chat-socket';
+import { FollowupModal } from '../inquiries/[id]/followup-modal';
+import { SiteVisitModal } from '../inquiries/[id]/site-visit-modal';
 import { getSession, hasPermission } from '../../../lib/auth';
+import { inquiryStubFromConversation } from '../../../lib/chat-inquiry-stub';
 import {
   assignConversation,
   closeConversation,
@@ -25,8 +30,10 @@ import {
 import { fetchEmployees, type EmployeeOption } from '../../../lib/crm-api';
 
 export default function ChatInboxPage() {
+  const searchParams = useSearchParams();
+  const conversationFromUrl = searchParams.get('conversation');
   const [conversations, setConversations] = useState<Conversation[]>([]);
-  const [activeId, setActiveId] = useState<string | null>(null);
+  const [activeId, setActiveId] = useState<string | null>(conversationFromUrl);
   const [active, setActive] = useState<Conversation | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [activities, setActivities] = useState<ConversationActivities | null>(null);
@@ -40,6 +47,8 @@ export default function ChatInboxPage() {
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
   const [showAssign, setShowAssign] = useState(false);
+  const [showFollowup, setShowFollowup] = useState(false);
+  const [showSiteVisit, setShowSiteVisit] = useState(false);
   const [employees, setEmployees] = useState<EmployeeOption[]>([]);
   const [typing, setTyping] = useState(false);
   const threadEndRef = useRef<HTMLDivElement>(null);
@@ -49,6 +58,7 @@ export default function ChatInboxPage() {
   const canConvert = hasPermission(getSession(), 'chat.conversations.convert');
   const canSend = hasPermission(getSession(), 'chat.messages.send');
   const canClose = hasPermission(getSession(), 'chat.conversations.update');
+  const inquiryStub = active ? inquiryStubFromConversation(active) : null;
 
   const loadList = useCallback(async () => {
     setLoadingList(true);
@@ -94,6 +104,10 @@ export default function ChatInboxPage() {
   }, []);
 
   useEffect(() => {
+    if (conversationFromUrl) setActiveId(conversationFromUrl);
+  }, [conversationFromUrl]);
+
+  useEffect(() => {
     void loadList();
     fetchEmployees().then(setEmployees).catch(() => undefined);
   }, [loadList]);
@@ -123,6 +137,11 @@ export default function ChatInboxPage() {
           }
         }
         setConversations((prev) => {
+          const exists = prev.some((c) => c.id === conversationId);
+          if (!exists) {
+            void loadList();
+            return prev;
+          }
           const updated = prev.map((c) =>
             c.id === conversationId
               ? {
@@ -263,9 +282,7 @@ export default function ChatInboxPage() {
                   </div>
                   <p className="truncate text-xs text-slate-500">{c.last_message_preview ?? 'No messages'}</p>
                   <div className="mt-1 flex items-center gap-2">
-                    <span className={`rounded px-1.5 py-0.5 text-[10px] uppercase ${statusBadgeClass(c.status)}`}>
-                      {c.status}
-                    </span>
+                    <StatusBadge size="compact" label={c.status} className={statusBadgeClass(c.status)} />
                     {c.assigned_employee_name && (
                       <span className="truncate text-[10px] text-slate-400">{c.assigned_employee_name}</span>
                     )}
@@ -432,6 +449,28 @@ export default function ChatInboxPage() {
                       {active.inquiry.inquiry_code}
                     </Link>
                   </dd>
+                  <div className="mt-3 flex flex-col gap-2">
+                    <Link
+                      href={`/inquiries/${active.inquiry.id}`}
+                      className="rounded border border-slate-300 px-3 py-2 text-center text-xs hover:bg-slate-50"
+                    >
+                      Open in CRM
+                    </Link>
+                    <button
+                      type="button"
+                      onClick={() => setShowFollowup(true)}
+                      className="rounded border border-slate-300 px-3 py-2 text-xs hover:bg-slate-50"
+                    >
+                      Schedule follow-up
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowSiteVisit(true)}
+                      className="rounded border border-slate-300 px-3 py-2 text-xs hover:bg-slate-50"
+                    >
+                      Schedule site visit
+                    </button>
+                  </div>
                 </div>
               ) : canConvert ? (
                 <div className="pt-2">
@@ -474,6 +513,22 @@ export default function ChatInboxPage() {
           employees={employees}
           onAssign={(employeeId) => assignConversation(active.id, employeeId).then(() => loadThread(active.id))}
           onClose={() => setShowAssign(false)}
+        />
+      )}
+
+      {showFollowup && inquiryStub && (
+        <FollowupModal
+          inquiry={inquiryStub}
+          onClose={() => setShowFollowup(false)}
+          onDone={() => activeId && void loadThread(activeId)}
+        />
+      )}
+
+      {showSiteVisit && inquiryStub && (
+        <SiteVisitModal
+          inquiry={inquiryStub}
+          onClose={() => setShowSiteVisit(false)}
+          onDone={() => activeId && void loadThread(activeId)}
         />
       )}
     </div>

@@ -6,13 +6,17 @@ import {
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { createHmac, randomBytes } from 'crypto';
+import { randomBytes } from 'crypto';
 
 import type { AuthUser } from '../../common/context/auth-user';
+import { RecaptchaService } from '../../common/security/recaptcha.service';
 import { DomainEventBus } from '../../events/domain-event-bus';
 import { DOMAIN_EVENTS } from '../../events/domain-events';
+import { QUEUES } from '../../jobs/queue.constants';
+import { QueueService } from '../../jobs/queue.service';
 import { AuditService, type AuditRequestMeta } from '../audit/audit.service';
 import { CrmService } from '../crm/crm.service';
+import { TenantConfigService } from '../settings/tenant-config.service';
 import { StorageService } from '../properties/storage/storage.service';
 import {
   ALLOWED_ATTACHMENT_CONTENT_TYPES,
@@ -37,11 +41,12 @@ import { ListMessagesQueryDto } from './dto/list-messages-query.dto';
 import { SendPublicChatMessageDto, StartPublicChatDto } from './dto/public-chat.dto';
 import { SendMessageDto } from './dto/send-message.dto';
 import { UpdateConversationDto } from './dto/update-conversation.dto';
+import { sanitizeChatContent } from './chat-sanitize';
+import { issueClientToken, verifyClientToken } from './chat-visitor-token';
+import { CHAT_AUTO_ASSIGN_JOB } from './chat.types';
 
 type ConversationDetail = NonNullable<Awaited<ReturnType<ChatRepository['findById']>>>;
 type ConversationBasic = NonNullable<Awaited<ReturnType<ChatRepository['findBasicById']>>>;
-
-const DEV_CHAT_CLIENT_TOKEN_SECRET = randomBytes(32).toString('hex');
 
 @Injectable()
 export class ChatService {
@@ -52,6 +57,9 @@ export class ChatService {
     private readonly events: DomainEventBus,
     private readonly gateway: ChatGateway,
     private readonly crm: CrmService,
+    private readonly queue: QueueService,
+    private readonly tenantConfig: TenantConfigService,
+    private readonly recaptcha: RecaptchaService,
   ) {}
 
   // ===========================================================================
@@ -150,14 +158,35 @@ export class ChatService {
     return this.repo.listParticipantUserIds(conversationId);
   }
 
+  /**
+   * Agents to notify in realtime + automation when a visitor sends a message.
+   * Unassigned → org owners/admins; assigned → assignee + existing participants.
+   */
+  private async resolveAgentNotificationRecipients(
+    tenantId: string,
+    conversation: { id: string; assigned_employee_id: string | null },
+  ): Promise<string[]> {
+    const recipients = new Set(await this.repo.listParticipantUserIds(conversation.id));
+
+    if (conversation.assigned_employee_id) {
+      const employee = await this.repo.findEmployeeById(
+        tenantId,
+        conversation.assigned_employee_id,
+      );
+      if (employee?.user_id) recipients.add(employee.user_id);
+    } else {
+      const admins = await this.repo.findOrgAdminUserIds(tenantId);
+      admins.forEach((id) => recipients.add(id));
+    }
+
+    return [...recipients];
+  }
+
   private async pushUnreadBadges(tenantId: string, userIds: string[]) {
-    const unique = [...new Set(userIds.filter(Boolean))];
-    await Promise.all(
-      unique.map(async (uid) => {
-        const count = await this.repo.unreadConversationCount(tenantId, uid);
-        this.gateway.emitUnreadCount(uid, count);
-      }),
-    );
+    const counts = await this.repo.unreadConversationCountsForUsers(tenantId, userIds);
+    for (const [uid, count] of counts) {
+      this.gateway.emitUnreadCount(uid, count);
+    }
   }
 
   // ===========================================================================
@@ -397,6 +426,8 @@ export class ChatService {
           payload: mapped,
         });
       }
+    } else {
+      await this.scheduleAutoAssign(tenantId, id);
     }
 
     return mapped;
@@ -775,7 +806,7 @@ export class ChatService {
       throw new UnprocessableEntityException('Cannot send messages to a closed conversation');
     }
 
-    const content = dto.content?.trim() ?? '';
+    const content = sanitizeChatContent(dto.content?.trim() ?? '');
     if (!content && (!dto.attachments || dto.attachments.length === 0)) {
       throw new BadRequestException('Message content or attachments are required');
     }
@@ -938,6 +969,133 @@ export class ChatService {
   }
 
   // ===========================================================================
+  // Automation (BR-CH02 auto-assign, inquiry linking)
+  // ===========================================================================
+
+  private async scheduleAutoAssign(tenantId: string, conversationId: string) {
+    const settings = await this.tenantConfig.getChatSettings(tenantId);
+    if (!settings.auto_assign_enabled) return;
+
+    const delayMs = Math.max(0, settings.auto_assign_delay_minutes) * 60_000;
+    await this.queue.enqueue<{
+      tenantId: string;
+      conversationId: string;
+    }>(
+      QUEUES.CHAT,
+      CHAT_AUTO_ASSIGN_JOB,
+      { tenantId, conversationId },
+      { delayMs, attempts: 3 },
+    );
+  }
+
+  /** Called by the chat queue worker after the auto-assign delay elapses. */
+  async performAutoAssign(tenantId: string, conversationId: string) {
+    const settings = await this.tenantConfig.getChatSettings(tenantId);
+    if (!settings.auto_assign_enabled) return;
+
+    const existing = await this.repo.findById(tenantId, conversationId);
+    if (!existing || existing.assigned_employee_id) return;
+    if (CONVERSATION_CLOSED_STATUSES.includes(existing.status as ConversationStatus)) return;
+
+    const next = await this.repo.pickNextAssignableEmployee(tenantId);
+    if (!next) return;
+
+    await this.repo.assign({
+      tenantId,
+      id: conversationId,
+      employeeId: next.id,
+      previousEmployeeId: null,
+      participantUserId: next.user_id,
+      participantName: null,
+      actorId: null,
+      actorEmail: null,
+    });
+
+    await this.auditService.record({
+      actor: null,
+      tenantId,
+      action: 'chat.conversation.auto_assigned',
+      entityType: 'conversation',
+      entityId: conversationId,
+      afterState: { assigned_employee_id: next.id },
+    });
+
+    this.events.emit(DOMAIN_EVENTS.CONVERSATION_ASSIGNED, {
+      tenantId,
+      actorUserId: null,
+      entityType: 'conversation',
+      entityId: conversationId,
+      context: {
+        employeeId: next.id,
+        conversationCode: existing.conversation_code,
+        clientName: existing.client_name ?? 'Visitor',
+      },
+    });
+
+    const updated = await this.repo.findById(tenantId, conversationId);
+    const mapped = this.mapDetail(updated!);
+    const recipients = await this.resolveAgentNotificationRecipients(tenantId, {
+      id: conversationId,
+      assigned_employee_id: next.id,
+    });
+    this.gateway.emitAssigned({
+      conversationId,
+      recipientUserIds: recipients,
+      payload: mapped,
+    });
+    await this.pushUnreadBadges(tenantId, recipients);
+  }
+
+  private async tryAutoLinkInquiryFromChat(
+    tenantId: string,
+    conversationId: string,
+    input: {
+      client_name?: string | null;
+      client_phone?: string | null;
+      client_email?: string | null;
+      property_id?: string | null;
+      assigned_employee_id?: string | null;
+      inquiry_id?: string | null;
+    },
+    meta?: AuditRequestMeta,
+  ) {
+    const phone = input.client_phone?.trim();
+    if (!phone || input.inquiry_id) return;
+
+    const settings = await this.tenantConfig.getChatSettings(tenantId);
+    if (!settings.auto_create_inquiry_on_phone) return;
+
+    const linked = await this.crm.linkOrCreateInquiryFromChat(
+      tenantId,
+      {
+        client_name: input.client_name?.trim() || 'Chat Lead',
+        phone,
+        email: input.client_email,
+        property_id: input.property_id,
+        assigned_employee_id: input.assigned_employee_id,
+      },
+      meta,
+    );
+
+    await this.repo.updateConversation({
+      tenantId,
+      id: conversationId,
+      data: {
+        inquiry: { connect: { id: linked.inquiryId } },
+        type: 'inquiry',
+      },
+      activity: {
+        activity_type: CONVERSATION_ACTIVITY_TYPES.CONVERTED_TO_INQUIRY,
+        content: linked.created
+          ? `Auto-created inquiry ${linked.inquiry_code}`
+          : `Linked to existing inquiry ${linked.inquiry_code}`,
+        metadata: { inquiry_id: linked.inquiryId, auto: true } as Prisma.InputJsonValue,
+        actorId: null,
+      },
+    });
+  }
+
+  // ===========================================================================
   // Public website chat (anonymous visitor, HMAC-scoped token)
   // ===========================================================================
 
@@ -949,7 +1107,7 @@ export class ChatService {
 
   private verifyPublicConversationToken(conversationId: string, token?: string) {
     if (!token) throw new ForbiddenException('Chat token is required');
-    const verified = this.verifyClientToken(token);
+    const verified = verifyClientToken(token);
     if (!verified || verified.conversationId !== conversationId) {
       throw new ForbiddenException('Invalid chat token');
     }
@@ -957,8 +1115,9 @@ export class ChatService {
   }
 
   async startPublicConversation(dto: StartPublicChatDto, meta?: AuditRequestMeta) {
+    await this.recaptcha.assertValid(dto.recaptcha_token, meta?.ipAddress);
     const org = await this.resolvePublicTenant(dto.tenant);
-    const message = dto.message.trim();
+    const message = sanitizeChatContent(dto.message.trim());
     if (!message) throw new BadRequestException('Message content is required');
 
     const property = dto.property_slug
@@ -1004,7 +1163,7 @@ export class ChatService {
 
     const created = await this.repo.findById(org.id, id);
     const mapped = this.mapDetail(created!);
-    const token = this.issueClientToken(org.id, id, dto.client_identifier);
+    const token = issueClientToken(org.id, id, dto.client_identifier);
 
     await this.auditService.record({
       actor: null,
@@ -1028,7 +1187,60 @@ export class ChatService {
       },
     });
 
-    return { conversation: mapped, token };
+    const recipientUserIds = await this.resolveAgentNotificationRecipients(org.id, {
+      id,
+      assigned_employee_id: null,
+    });
+    if (recipientUserIds.length) {
+      const initial = await this.repo.listMessages({
+        tenantId: org.id,
+        conversationId: id,
+        page: 1,
+        perPage: 1,
+      });
+      const first = initial.rows[0];
+      if (first) {
+        const mappedMessage = this.mapMessage(first);
+        this.gateway.emitMessage({
+          conversationId: id,
+          recipientUserIds,
+          message: mappedMessage,
+        });
+        this.events.emit(DOMAIN_EVENTS.MESSAGE_RECEIVED, {
+          tenantId: org.id,
+          actorUserId: null,
+          entityType: 'conversation',
+          entityId: id,
+          recipientUserIds,
+          context: {
+            conversationCode: mapped.conversation_code,
+            clientName: mapped.client_name ?? 'Website visitor',
+            senderName: mapped.client_name ?? 'Website visitor',
+            preview: mappedMessage.content.slice(0, 120),
+            employeeId: null,
+          },
+        });
+        await this.pushUnreadBadges(org.id, recipientUserIds);
+      }
+    }
+
+    await this.scheduleAutoAssign(org.id, id);
+    await this.tryAutoLinkInquiryFromChat(
+      org.id,
+      id,
+      {
+        client_name: dto.client_name,
+        client_phone: dto.client_phone,
+        client_email: dto.client_email,
+        property_id: property?.id ?? null,
+        assigned_employee_id: null,
+        inquiry_id: null,
+      },
+      meta,
+    );
+
+    const refreshed = await this.repo.findById(org.id, id);
+    return { conversation: this.mapDetail(refreshed!), token };
   }
 
   async listPublicMessages(conversationId: string, token?: string, query: ListMessagesQueryDto = {}) {
@@ -1061,15 +1273,30 @@ export class ChatService {
     meta?: AuditRequestMeta,
   ) {
     const verified = this.verifyPublicConversationToken(conversationId, token);
-    const conversation = await this.repo.findBasicById(verified.tenantId, conversationId);
+    let conversation = await this.repo.findBasicById(verified.tenantId, conversationId);
     if (!conversation || conversation.client_identifier !== verified.clientIdentifier) {
       throw new NotFoundException('Conversation not found');
     }
+
     if (CONVERSATION_CLOSED_STATUSES.includes(conversation.status as ConversationStatus)) {
-      throw new UnprocessableEntityException('Cannot send messages to a closed conversation');
+      await this.repo.updateConversation({
+        tenantId: verified.tenantId,
+        id: conversationId,
+        data: {
+          status: 'open',
+          closed_at: null,
+          closed_by: null,
+        },
+        activity: {
+          activity_type: CONVERSATION_ACTIVITY_TYPES.CONVERSATION_REOPENED,
+          content: 'Conversation reopened by visitor message',
+          actorId: null,
+        },
+      });
+      conversation = (await this.repo.findBasicById(verified.tenantId, conversationId))!;
     }
 
-    const content = dto.content.trim();
+    const content = sanitizeChatContent(dto.content.trim());
     if (!content) throw new BadRequestException('Message content is required');
 
     const message = await this.repo.addMessage({
@@ -1084,7 +1311,10 @@ export class ChatService {
       content,
     });
     const mapped = this.mapMessage(message);
-    const recipientUserIds = await this.repo.listParticipantUserIds(conversationId);
+    const recipientUserIds = await this.resolveAgentNotificationRecipients(
+      verified.tenantId,
+      conversation,
+    );
 
     await this.auditService.record({
       actor: null,
@@ -1154,43 +1384,5 @@ export class ChatService {
         assigned_at: a.assigned_at.toISOString(),
       })),
     };
-  }
-
-  // ===========================================================================
-  // Public widget token helpers (website messenger foundation)
-  // ===========================================================================
-
-  private clientTokenSecret(): string {
-    const secret = process.env.CHAT_CLIENT_TOKEN_SECRET || process.env.JWT_PRIVATE_KEY;
-    if (secret) return secret;
-    if (process.env.NODE_ENV === 'production') {
-      throw new Error('CHAT_CLIENT_TOKEN_SECRET is required in production');
-    }
-    return DEV_CHAT_CLIENT_TOKEN_SECRET;
-  }
-
-  /** Issue an HMAC-signed access token for an anonymous website visitor. */
-  issueClientToken(tenantId: string, conversationId: string, clientIdentifier: string): string {
-    const secret = this.clientTokenSecret();
-    const payload = `${tenantId}:${conversationId}:${clientIdentifier}`;
-    const sig = createHmac('sha256', secret).update(payload).digest('hex');
-    return Buffer.from(`${payload}:${sig}`).toString('base64url');
-  }
-
-  verifyClientToken(token: string): { tenantId: string; conversationId: string; clientIdentifier: string } | null {
-    try {
-      const decoded = Buffer.from(token, 'base64url').toString('utf8');
-      const parts = decoded.split(':');
-      if (parts.length !== 4) return null;
-      const [tenantId, conversationId, clientIdentifier, sig] = parts;
-      const secret = this.clientTokenSecret();
-      const expected = createHmac('sha256', secret)
-        .update(`${tenantId}:${conversationId}:${clientIdentifier}`)
-        .digest('hex');
-      if (sig !== expected) return null;
-      return { tenantId, conversationId, clientIdentifier };
-    } catch {
-      return null;
-    }
   }
 }

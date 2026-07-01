@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 
+import { FormField } from '../../../../components/ui';
 import {
   fetchWhiteLabel,
   updateWhiteLabel,
@@ -71,50 +72,50 @@ export default function WhiteLabelPage() {
           onChange={(v) => set('hide_branding', v)}
         />
 
-        <Field label="Custom logo URL">
+        <FormField label="Custom logo URL">
           <input
             className="input"
             value={wl.custom_logo_url ?? ''}
             onChange={(e) => set('custom_logo_url', e.target.value || null)}
             placeholder="https://cdn.example.com/logo.svg"
           />
-        </Field>
-        <Field label="Custom favicon URL">
+        </FormField>
+        <FormField label="Custom favicon URL">
           <input
             className="input"
             value={wl.custom_favicon_url ?? ''}
             onChange={(e) => set('custom_favicon_url', e.target.value || null)}
             placeholder="https://cdn.example.com/favicon.ico"
           />
-        </Field>
+        </FormField>
 
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Primary color">
+          <FormField label="Primary color">
             <input
               type="color"
               className="h-10 w-full rounded border border-slate-300"
               value={wl.primary_color ?? '#0f766e'}
               onChange={(e) => set('primary_color', e.target.value)}
             />
-          </Field>
-          <Field label="Secondary color">
+          </FormField>
+          <FormField label="Secondary color">
             <input
               type="color"
               className="h-10 w-full rounded border border-slate-300"
               value={wl.secondary_color ?? '#0369a1'}
               onChange={(e) => set('secondary_color', e.target.value)}
             />
-          </Field>
+          </FormField>
         </div>
 
-        <Field label="Custom email sender">
+        <FormField label="Custom email sender">
           <input
             className="input"
             value={wl.email_sender ?? ''}
             onChange={(e) => set('email_sender', e.target.value || null)}
             placeholder="noreply@abc-realty.com"
           />
-        </Field>
+        </FormField>
       </div>
 
       <div className="mt-8 rounded-lg border border-slate-200 p-4">
@@ -125,27 +126,27 @@ export default function WhiteLabelPage() {
             checked={wl.custom_login.enabled}
             onChange={(v) => setLogin('enabled', v)}
           />
-          <Field label="Headline">
+          <FormField label="Headline">
             <input
               className="input"
               value={wl.custom_login.headline ?? ''}
               onChange={(e) => setLogin('headline', e.target.value || null)}
             />
-          </Field>
-          <Field label="Subtext">
+          </FormField>
+          <FormField label="Subtext">
             <input
               className="input"
               value={wl.custom_login.subtext ?? ''}
               onChange={(e) => setLogin('subtext', e.target.value || null)}
             />
-          </Field>
-          <Field label="Background image URL">
+          </FormField>
+          <FormField label="Background image URL">
             <input
               className="input"
               value={wl.custom_login.background_url ?? ''}
               onChange={(e) => setLogin('background_url', e.target.value || null)}
             />
-          </Field>
+          </FormField>
         </div>
       </div>
 
@@ -153,15 +154,6 @@ export default function WhiteLabelPage() {
         {saving ? 'Saving…' : 'Save changes'}
       </button>
     </div>
-  );
-}
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <label className="block">
-      <span className="mb-1 block text-sm font-medium text-slate-700">{label}</span>
-      {children}
-    </label>
   );
 }
 

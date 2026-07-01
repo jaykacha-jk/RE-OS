@@ -403,11 +403,27 @@ export class PropertiesRepository extends TenantScopedRepository {
 
   // --- History ---------------------------------------------------------------
 
-  async listHistory(tenantId: string, propertyId: string) {
-    return this.prisma.dbClient.property_history.findMany({
-      where: { tenant_id: tenantId, property_id: propertyId },
-      orderBy: { created_at: 'desc' },
-    });
+  async listHistory(
+    tenantId: string,
+    propertyId: string,
+    pagination?: { skip: number; perPage: number } | null,
+  ) {
+    const where = { tenant_id: tenantId, property_id: propertyId };
+    const orderBy = { created_at: 'desc' as const };
+    if (!pagination) {
+      const rows = await this.prisma.dbClient.property_history.findMany({ where, orderBy });
+      return { rows, total: null as number | null };
+    }
+    const [rows, total] = await Promise.all([
+      this.prisma.dbClient.property_history.findMany({
+        where,
+        orderBy,
+        skip: pagination.skip,
+        take: pagination.perPage,
+      }),
+      this.prisma.dbClient.property_history.count({ where }),
+    ]);
+    return { rows, total };
   }
 
   // --- Images ----------------------------------------------------------------

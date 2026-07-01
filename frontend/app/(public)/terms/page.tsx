@@ -76,7 +76,7 @@ export default function TermsPage() {
         </div>
 
         <div className="mt-8 rounded-3xl bg-amber-50 p-6 text-sm leading-7 text-amber-950 ring-1 ring-inset ring-amber-100">
-          <strong>Launch note:</strong> These product terms are suitable for demo/readiness use and should be reviewed by counsel before production use.
+          <strong>Note:</strong> These product terms should be reviewed by counsel before production use.
         </div>
       </section>
     </main>

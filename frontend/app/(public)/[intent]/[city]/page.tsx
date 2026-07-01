@@ -9,6 +9,7 @@ import {
   intentLabel,
   isPublicIntent,
   propertyPath,
+  resolvePublicTenantSlug,
 } from '../../../../lib/public-site';
 
 export const revalidate = 300;
@@ -49,7 +50,7 @@ export default async function CityHubPage({
   const sp = await searchParams;
   if (!isPublicIntent(intent)) notFound();
 
-  const tenant = sp.tenant ?? 'demo';
+  const tenant = resolvePublicTenantSlug(sp.tenant);
   const cityTitle = formatCityTitle(city);
   const { data, meta } = await fetchPublicListings({
     tenant,

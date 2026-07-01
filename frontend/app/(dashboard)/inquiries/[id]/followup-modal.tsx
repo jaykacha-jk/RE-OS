@@ -2,13 +2,11 @@
 
 import { useEffect, useState } from 'react';
 
+import { FormDrawer, FormField } from '../../../../components/ui';
 import { apiFetch } from '../../../../lib/api';
 import { getSession } from '../../../../lib/auth';
 import { FOLLOWUP_TYPES, humanize, type Inquiry } from '../../../../lib/crm';
 import { employeeLabel, fetchEmployees, type EmployeeOption } from '../../../../lib/crm-api';
-import { ModalShell } from './modal-shell';
-
-const labelClass = 'mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500';
 
 export function FollowupModal({
   inquiry,
@@ -63,38 +61,52 @@ export function FollowupModal({
   }
 
   return (
-    <ModalShell title="Schedule follow-up" onClose={onClose} onSave={save} saving={saving} error={error} saveLabel="Create">
+    <FormDrawer
+      open
+      title="Schedule follow-up"
+      description="Complete this quick CRM action without leaving the record."
+      onClose={onClose}
+      onSubmit={save}
+      submitting={saving}
+      error={error}
+      submitLabel="Create"
+    >
       <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label className={labelClass}>Date *</label>
+        <FormField label="Date" required>
           <input value={date} onChange={(e) => setDate(e.target.value)} type="date" className="input" />
-        </div>
-        <div>
-          <label className={labelClass}>Time</label>
+        </FormField>
+        <FormField label="Time">
           <input value={time} onChange={(e) => setTime(e.target.value)} type="time" className="input" />
-        </div>
+        </FormField>
       </div>
-      <div>
-        <label className={labelClass}>Type</label>
+      <FormField label="Type">
         <select value={type} onChange={(e) => setType(e.target.value)} className="input">
           {FOLLOWUP_TYPES.map((t) => (
-            <option key={t} value={t}>{humanize(t)}</option>
+            <option key={t} value={t}>
+              {humanize(t)}
+            </option>
           ))}
         </select>
-      </div>
-      <div>
-        <label className={labelClass}>Owner</label>
+      </FormField>
+      <FormField label="Owner">
         <select value={employeeId} onChange={(e) => setEmployeeId(e.target.value)} className="input">
           <option value="">— assignee —</option>
           {employees.map((emp) => (
-            <option key={emp.id} value={emp.id}>{employeeLabel(emp)}</option>
+            <option key={emp.id} value={emp.id}>
+              {employeeLabel(emp)}
+            </option>
           ))}
         </select>
-      </div>
-      <div>
-        <label className={labelClass}>Notes</label>
-        <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} className="input" placeholder="Context for the next conversation…" />
-      </div>
-    </ModalShell>
+      </FormField>
+      <FormField label="Notes" full>
+        <textarea
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          rows={2}
+          className="input"
+          placeholder="Context for the next conversation…"
+        />
+      </FormField>
+    </FormDrawer>
   );
 }

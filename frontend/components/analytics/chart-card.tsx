@@ -50,24 +50,4 @@ export function KpiSkeletonGrid({ count = 4 }: { count?: number }) {
   );
 }
 
-/** Friendly empty state for charts/tables with no data yet. */
-export function EmptyState({
-  title,
-  message,
-  action,
-}: {
-  title: string;
-  message: string;
-  action?: ReactNode;
-}) {
-  return (
-    <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-teal-200 bg-gradient-to-br from-teal-50 to-white px-6 py-10 text-center">
-      <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-2xl bg-white text-teal-700 shadow-sm">
-        +
-      </div>
-      <p className="text-sm font-bold text-slate-800">{title}</p>
-      <p className="mt-2 max-w-sm text-xs leading-5 text-slate-500">{message}</p>
-      {action ? <div className="mt-4">{action}</div> : null}
-    </div>
-  );
-}
+export { EmptyState } from '../shared/EmptyState';

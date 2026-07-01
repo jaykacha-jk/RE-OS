@@ -9,6 +9,7 @@ import { Prisma } from '@prisma/client';
 import { randomBytes } from 'crypto';
 
 import type { AuthUser } from '../../common/context/auth-user';
+import { paginationMeta, resolvePagination } from '../../common/pagination';
 import { DomainEventBus } from '../../events/domain-event-bus';
 import { DOMAIN_EVENTS } from '../../events/domain-events';
 import { AuditService, type AuditRequestMeta } from '../audit/audit.service';
@@ -739,13 +740,20 @@ export class PropertiesService {
   // History
   // ===========================================================================
 
-  async getHistory(tenantId: string, user: AuthUser, id: string) {
+  async getHistory(
+    tenantId: string,
+    user: AuthUser,
+    id: string,
+    page?: number,
+    perPage?: number,
+  ) {
     const property = await this.repo.findById(tenantId, id);
     if (!property) throw new NotFoundException('Property not found');
     await this.assertCanAccess(user, tenantId, property);
 
-    const rows = await this.repo.listHistory(tenantId, id);
-    return rows.map((r) => ({
+    const pagination = resolvePagination(page, perPage);
+    const { rows, total } = await this.repo.listHistory(tenantId, id, pagination);
+    const data = rows.map((r) => ({
       id: r.id,
       change_type: r.change_type,
       changed_fields: r.changed_fields,
@@ -753,6 +761,8 @@ export class PropertiesService {
       changed_by_email: r.changed_by_email,
       created_at: r.created_at.toISOString(),
     }));
+    if (!pagination || total === null) return { data };
+    return { data, pagination: paginationMeta(pagination.page, pagination.perPage, total) };
   }
 
   // ===========================================================================

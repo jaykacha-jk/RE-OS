@@ -9,6 +9,7 @@ import {
   verifyDomain,
   type CustomDomain,
 } from '../../../../lib/settings';
+import { ConfirmDialog, StatusBadge } from '../../../../components/ui';
 
 const STATUS_STYLES: Record<string, string> = {
   verified: 'bg-green-100 text-green-700',
@@ -16,15 +17,8 @@ const STATUS_STYLES: Record<string, string> = {
   pending: 'bg-amber-100 text-amber-700',
   provisioning: 'bg-blue-100 text-blue-700',
   failed: 'bg-red-100 text-red-700',
+  primary: 'bg-teal-100 text-teal-800',
 };
-
-function Badge({ value }: { value: string }) {
-  return (
-    <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_STYLES[value] ?? 'bg-slate-100 text-slate-600'}`}>
-      {value}
-    </span>
-  );
-}
 
 export default function DomainsPage() {
   const [domains, setDomains] = useState<CustomDomain[]>([]);
@@ -33,6 +27,7 @@ export default function DomainsPage() {
   const [newDomain, setNewDomain] = useState('');
   const [busy, setBusy] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [removeTarget, setRemoveTarget] = useState<CustomDomain | null>(null);
 
   function load() {
     setLoading(true);
@@ -74,11 +69,12 @@ export default function DomainsPage() {
     }
   }
 
-  async function onRemove(id: string) {
-    if (!confirm('Remove this domain?')) return;
+  async function onRemove() {
+    if (!removeTarget) return;
     setBusy(true);
     try {
-      await removeDomain(id);
+      await removeDomain(removeTarget.id);
+      setRemoveTarget(null);
       load();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to remove');
@@ -121,13 +117,13 @@ export default function DomainsPage() {
             <div className="flex flex-wrap items-center justify-between gap-3 p-4">
               <div className="flex items-center gap-2">
                 <span className="font-medium text-slate-900">{d.domain}</span>
-                {d.is_primary ? <Badge value="primary" /> : null}
+                {d.is_primary ? <StatusBadge label="primary" className={STATUS_STYLES.primary} /> : null}
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-xs text-slate-500">verification</span>
-                <Badge value={d.verification_status} />
+                <StatusBadge label={d.verification_status} className={STATUS_STYLES[d.verification_status] ?? 'bg-slate-100 text-slate-600'} />
                 <span className="text-xs text-slate-500">ssl</span>
-                <Badge value={d.ssl_status} />
+                <StatusBadge label={d.ssl_status} className={STATUS_STYLES[d.ssl_status] ?? 'bg-slate-100 text-slate-600'} />
               </div>
               <div className="flex gap-2">
                 <button
@@ -147,7 +143,7 @@ export default function DomainsPage() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => onRemove(d.id)}
+                  onClick={() => setRemoveTarget(d)}
                   disabled={busy}
                   className="rounded border border-red-300 px-3 py-1 text-sm text-red-600 disabled:opacity-50"
                 >
@@ -186,6 +182,17 @@ export default function DomainsPage() {
           </div>
         ))}
       </div>
+
+      <ConfirmDialog
+        open={Boolean(removeTarget)}
+        title="Remove domain?"
+        description={removeTarget ? `${removeTarget.domain} will be disconnected from your site.` : undefined}
+        confirmLabel="Remove"
+        danger
+        loading={busy}
+        onConfirm={onRemove}
+        onCancel={() => setRemoveTarget(null)}
+      />
     </div>
   );
 }

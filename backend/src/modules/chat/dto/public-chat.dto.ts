@@ -47,6 +47,12 @@ export class StartPublicChatDto {
   @IsString()
   @MaxLength(MESSAGE_CONTENT_MAX)
   message!: string;
+
+  @ApiPropertyOptional({ description: 'Google reCAPTCHA v3 token (required when RECAPTCHA_SECRET_KEY is set)' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(4096)
+  recaptcha_token?: string;
 }
 
 export class SendPublicChatMessageDto {

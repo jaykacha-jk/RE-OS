@@ -29,7 +29,7 @@ export function FormField({
   children,
 }: FormFieldProps) {
   return (
-    <div className={full ? 'sm:col-span-2' : ''}>
+    <div className={full ? 'w-full basis-full' : 'w-full min-w-0 sm:basis-[calc(50%-0.5rem)] sm:grow'}>
       <label htmlFor={htmlFor} className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500">
         {label}
         {required ? <span className="ml-0.5 text-rose-500">*</span> : null}
@@ -73,12 +73,14 @@ export function FormSection({
   const isOpen = collapsible ? open : true;
 
   if (compact) {
-    return <section className="grid gap-4 sm:grid-cols-2">{children}</section>;
+    return <section className="flex flex-wrap gap-x-4 gap-y-4">{children}</section>;
   }
 
   return (
-    <section className="border-b border-reos-border pb-6 last:border-0 last:pb-0">
-      <div className="mb-4 flex items-start justify-between gap-3">
+    <section
+      className={`border-b border-reos-border last:border-0 last:pb-0 ${isOpen ? 'pb-6' : 'pb-3'}`}
+    >
+      <div className={`flex items-start justify-between gap-3 ${isOpen ? 'mb-4' : 'mb-0'}`}>
         {collapsible ? (
           <button
             type="button"
@@ -103,7 +105,7 @@ export function FormSection({
         )}
         {aside}
       </div>
-      {isOpen ? <div className="grid gap-4 sm:grid-cols-2">{children}</div> : null}
+      {isOpen ? <div className="flex flex-wrap gap-x-4 gap-y-4">{children}</div> : null}
     </section>
   );
 }

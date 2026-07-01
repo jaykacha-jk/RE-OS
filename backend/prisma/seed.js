@@ -53,6 +53,8 @@ const permissions = [
   { code: 'billing.invoices.read', module: 'billing', description: 'Read tenant invoices' },
   { code: 'billing.usage.read', module: 'billing', description: 'Read tenant usage against plan limits' },
   { code: 'platform.billing.read', module: 'billing', description: 'Read platform billing revenue metrics' },
+  { code: 'platform.payment_providers.read', module: 'platform', description: 'Read platform payment provider configuration (masked)' },
+  { code: 'platform.payment_providers.update', module: 'platform', description: 'Update platform payment provider credentials' },
   // Phase 9 — Enterprise + White Label Platform (settings, domains, public analytics).
   { code: 'settings.read', module: 'settings', description: 'Read tenant settings (all categories)' },
   { code: 'settings.branding.manage', module: 'settings', description: 'Manage branding settings' },
@@ -286,6 +288,8 @@ const superAdminPermissions = [
   ...notificationAdminPermissions,
   ...billingAdminPermissions,
   'platform.billing.read',
+  'platform.payment_providers.read',
+  'platform.payment_providers.update',
   ...settingsOwnerPermissions,
   ...aiFullPermissions,
 ];
@@ -597,7 +601,7 @@ async function seedDemoOrganization() {
       data: { user_id: owner.id, role_id: ownerRole.id, tenant_id: org.id },
     });
     await prisma.employees.create({
-      data: { user_id: owner.id, status: 'active', joined_at: new Date() },
+      data: { tenant_id: org.id, user_id: owner.id, status: 'active', joined_at: new Date() },
     });
     await prisma.organization_usage.update({
       where: { tenant_id: org.id },
@@ -645,7 +649,7 @@ async function seedDemoSalesExecutive(org) {
       data: { user_id: user.id, role_id: salesRole.id, tenant_id: org.id },
     });
     await prisma.employees.create({
-      data: { user_id: user.id, status: 'active', joined_at: new Date() },
+      data: { tenant_id: org.id, user_id: user.id, status: 'active', joined_at: new Date() },
     });
     await prisma.organization_usage.update({
       where: { tenant_id: org.id },
@@ -1473,9 +1477,11 @@ async function main() {
   }
   await seedCompleteDemoExperience();
   console.log('Seed completed');
-  console.log(`Super admin: ${SUPER_ADMIN_EMAIL} / ${SUPER_ADMIN_PASSWORD}`);
-  console.log(`Demo owner: ${DEMO_OWNER_EMAIL} / ${DEMO_OWNER_PASSWORD} (slug: ${DEMO_ORG_SLUG})`);
-  console.log(`Demo sales exec: ${DEMO_SALES_EMAIL} / ${DEMO_SALES_PASSWORD} (slug: ${DEMO_ORG_SLUG})`);
+  if (process.env.NODE_ENV !== 'production') {
+    console.log(`Super admin: ${SUPER_ADMIN_EMAIL} (see .env.example for dev password)`);
+    console.log(`Demo owner: ${DEMO_OWNER_EMAIL} (slug: ${DEMO_ORG_SLUG})`);
+    console.log(`Demo sales exec: ${DEMO_SALES_EMAIL} (slug: ${DEMO_ORG_SLUG})`);
+  }
 }
 
 main()

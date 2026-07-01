@@ -363,19 +363,22 @@ describe('CrmService — field-level PII stripping', () => {
     const { service, repo } = buildService();
     repo.findBasicById!.mockResolvedValue(sensitiveInquiry() as never);
     repo.findEmployeeByUserId!.mockResolvedValue({ id: 'emp-me' } as never);
-    repo.listNotes!.mockResolvedValue([
-      {
-        id: 'note-1',
-        note: 'Client PAN is ABCDE1234F',
-        created_by: 'user-1',
-        created_by_email: 'owner@example.com',
-        created_at: new Date('2026-01-02T00:00:00.000Z'),
-      },
-    ] as never);
+    repo.listNotes!.mockResolvedValue({
+      rows: [
+        {
+          id: 'note-1',
+          note: 'Client PAN is ABCDE1234F',
+          created_by: 'user-1',
+          created_by_email: 'owner@example.com',
+          created_at: new Date('2026-01-02T00:00:00.000Z'),
+        },
+      ],
+      total: null,
+    } as never);
 
     const result = await service.listNotes(TENANT, makeUser(['telecaller']), 'inq-1');
 
-    expect(result).toEqual([
+    expect(result.data).toEqual([
       {
         id: 'note-1',
         note: null,

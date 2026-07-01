@@ -4,10 +4,14 @@ import type { AuthUser } from '../../common/context/auth-user';
 import { DomainEventBus } from '../../events/domain-event-bus';
 import { AuditService } from '../audit/audit.service';
 import { CrmService } from '../crm/crm.service';
+import { QueueService } from '../../jobs/queue.service';
+import { TenantConfigService } from '../settings/tenant-config.service';
+import { RecaptchaService } from '../../common/security/recaptcha.service';
 import { StorageService } from '../properties/storage/storage.service';
 import { ChatGateway } from './chat.gateway';
 import { ChatRepository } from './chat.repository';
 import { ChatService } from './chat.service';
+import { issueClientToken, verifyClientToken } from './chat-visitor-token';
 
 function build() {
   const repo = {
@@ -20,6 +24,11 @@ function build() {
     addMessage: jest.fn(),
     assign: jest.fn(),
     unreadConversationCount: jest.fn().mockResolvedValue(0),
+    unreadConversationCountsForUsers: jest.fn().mockImplementation((_tenantId: string, userIds: string[]) => {
+      const counts = new Map<string, number>();
+      for (const uid of userIds) counts.set(uid, 0);
+      return Promise.resolve(counts);
+    }),
     findParticipant: jest.fn(),
     markRead: jest.fn(),
     findMessageById: jest.fn(),
@@ -27,6 +36,9 @@ function build() {
     findInquiryById: jest.fn(),
     findOrganizationBySlug: jest.fn(),
     findPublicPropertyBySlug: jest.fn(),
+    findOrgAdminUserIds: jest.fn().mockResolvedValue(['admin-user-1']),
+    userHasFullChatAccess: jest.fn().mockResolvedValue(false),
+    unreadConversationCountFullAccess: jest.fn().mockResolvedValue(0),
     createConversation: jest.fn(),
     conversationCodeExists: jest.fn().mockResolvedValue(false),
     findPropertyById: jest.fn(),
@@ -35,6 +47,9 @@ function build() {
     listMessages: jest.fn(),
     listActivities: jest.fn().mockResolvedValue([]),
     listAssignments: jest.fn().mockResolvedValue([]),
+    pickNextAssignableEmployee: jest.fn(),
+    listChatAssignableEmployees: jest.fn(),
+    updateConversation: jest.fn().mockResolvedValue(true),
   };
   const storage = {
     decodedByteLength: jest.fn().mockReturnValue(100),
@@ -50,7 +65,24 @@ function build() {
     emitRead: jest.fn(),
     emitUnreadCount: jest.fn(),
   };
-  const crm = { create: jest.fn() };
+  const crm = {
+    create: jest.fn(),
+    linkOrCreateInquiryFromChat: jest.fn().mockResolvedValue({
+      inquiryId: 'inq-1',
+      inquiry_code: 'INQ-001',
+      created: true,
+    }),
+  };
+  const queue = { enqueue: jest.fn().mockResolvedValue(undefined) };
+  const tenantConfig = {
+    getChatSettings: jest.fn().mockResolvedValue({
+      auto_assign_enabled: true,
+      auto_assign_delay_minutes: 5,
+      auto_create_inquiry_on_phone: true,
+    }),
+  };
+
+  const recaptcha = { assertValid: jest.fn().mockResolvedValue(undefined) };
 
   const service = new ChatService(
     repo as unknown as ChatRepository,
@@ -59,9 +91,12 @@ function build() {
     events as unknown as DomainEventBus,
     gateway as unknown as ChatGateway,
     crm as unknown as CrmService,
+    queue as unknown as QueueService,
+    tenantConfig as unknown as TenantConfigService,
+    recaptcha as unknown as RecaptchaService,
   );
 
-  return { service, repo, storage, audit, events, gateway, crm };
+  return { service, repo, storage, audit, events, gateway, crm, queue, tenantConfig, recaptcha };
 }
 
 const owner: AuthUser = {
@@ -260,15 +295,18 @@ describe('ChatService', () => {
     });
 
     it('starts a public conversation and returns a scoped visitor token', async () => {
-      const { service, repo, audit, events } = build();
+      const { service, repo, audit, events, gateway, queue, crm } = build();
       repo.findOrganizationBySlug.mockResolvedValue({ id: 'tenant-1', slug: 'demo', status: 'active' });
       repo.createConversation.mockResolvedValue('conv-1');
       repo.findById.mockResolvedValue(conversation());
+      repo.findOrgAdminUserIds.mockResolvedValue(['admin-user-1']);
+      repo.listMessages.mockResolvedValue({ rows: [message()], total: 1 });
 
       const result = await service.startPublicConversation({
         tenant: 'demo',
         client_identifier: 'visitor-1',
         client_name: 'Rahul',
+        client_phone: '+919876543210',
         message: 'I need help',
       });
 
@@ -281,21 +319,92 @@ describe('ChatService', () => {
           }),
         }),
       );
-      expect(service.verifyClientToken(result.token)).toEqual({
+      expect(verifyClientToken(result.token)).toEqual({
         tenantId: 'tenant-1',
         conversationId: 'conv-1',
         clientIdentifier: 'visitor-1',
       });
       expect(audit.record).toHaveBeenCalledWith(expect.objectContaining({ actor: null }));
       expect(events.emit).toHaveBeenCalled();
+      expect(gateway.emitMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ recipientUserIds: ['admin-user-1'] }),
+      );
+      expect(queue.enqueue).toHaveBeenCalled();
+      expect(crm.linkOrCreateInquiryFromChat).toHaveBeenCalled();
+    });
+
+    it('performs round-robin auto-assign when still unassigned', async () => {
+      const { service, repo, events, gateway } = build();
+      repo.findById.mockResolvedValue(conversation({ assigned_employee_id: null }));
+      repo.pickNextAssignableEmployee.mockResolvedValue({ id: 'emp-2', user_id: 'user-2' });
+      repo.findById.mockResolvedValueOnce(conversation({ assigned_employee_id: null }));
+      repo.findById.mockResolvedValueOnce(
+        conversation({ assigned_employee_id: 'emp-2', status: 'assigned' }),
+      );
+      repo.findOrgAdminUserIds.mockResolvedValue([]);
+
+      await service.performAutoAssign('tenant-1', 'conv-1');
+
+      expect(repo.assign).toHaveBeenCalledWith(
+        expect.objectContaining({ employeeId: 'emp-2', actorId: null }),
+      );
+      expect(events.emit).toHaveBeenCalled();
+      expect(gateway.emitAssigned).toHaveBeenCalled();
+    });
+
+    it('skips auto-assign when conversation already has an assignee', async () => {
+      const { service, repo } = build();
+      repo.findById.mockResolvedValue(conversation({ assigned_employee_id: 'emp-1' }));
+
+      await service.performAutoAssign('tenant-1', 'conv-1');
+
+      expect(repo.assign).not.toHaveBeenCalled();
+    });
+
+    it('notifies org admins when an unassigned visitor sends a message', async () => {
+      const { service, repo, gateway, events } = build();
+      const token = issueClientToken('tenant-1', 'conv-1', 'visitor-1');
+      repo.findBasicById.mockResolvedValue(conversation());
+      repo.addMessage.mockResolvedValue(message({ content: 'Second message' }));
+      repo.findOrgAdminUserIds.mockResolvedValue(['admin-user-1', 'admin-user-2']);
+
+      await service.sendPublicMessage('conv-1', token, { content: 'Second message' });
+
+      expect(gateway.emitMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ recipientUserIds: expect.arrayContaining(['admin-user-1']) }),
+      );
+      expect(events.emit).toHaveBeenCalledWith(
+        'chat.message.received',
+        expect.objectContaining({
+          recipientUserIds: expect.arrayContaining(['admin-user-1']),
+        }),
+      );
+    });
+
+    it('reopens a closed conversation when the visitor sends a new message', async () => {
+      const { service, repo } = build();
+      const token = issueClientToken('tenant-1', 'conv-1', 'visitor-1');
+      repo.findBasicById
+        .mockResolvedValueOnce(conversation({ status: 'closed' }))
+        .mockResolvedValueOnce(conversation({ status: 'open' }));
+      repo.addMessage.mockResolvedValue(message());
+      repo.findOrgAdminUserIds.mockResolvedValue([]);
+
+      await service.sendPublicMessage('conv-1', token, { content: 'Hello again' });
+
+      expect(repo.updateConversation).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ status: 'open' }),
+        }),
+      );
     });
 
     it('sends public visitor messages only with the matching conversation token', async () => {
       const { service, repo, gateway } = build();
-      const token = service.issueClientToken('tenant-1', 'conv-1', 'visitor-1');
+      const token = issueClientToken('tenant-1', 'conv-1', 'visitor-1');
       repo.findBasicById.mockResolvedValue(conversation());
       repo.addMessage.mockResolvedValue(message({ content: 'Second message' }));
-      repo.listParticipantUserIds.mockResolvedValue(['agent-user-1']);
+      repo.findOrgAdminUserIds.mockResolvedValue(['agent-user-1']);
 
       const result = await service.sendPublicMessage('conv-1', token, { content: 'Second message' });
 
@@ -314,7 +423,7 @@ describe('ChatService', () => {
 
     it('rejects public messages with a token for another conversation', async () => {
       const { service } = build();
-      const token = service.issueClientToken('tenant-1', 'other-conv', 'visitor-1');
+      const token = issueClientToken('tenant-1', 'other-conv', 'visitor-1');
 
       await expect(
         service.sendPublicMessage('conv-1', token, { content: 'Hello' }),
@@ -336,9 +445,7 @@ describe('ChatService', () => {
         CHAT_CLIENT_TOKEN_SECRET: '',
         JWT_PRIVATE_KEY: '',
       };
-      const { service } = build();
-
-      expect(() => service.issueClientToken('tenant-1', 'conv-1', 'visitor-1')).toThrow(
+      expect(() => issueClientToken('tenant-1', 'conv-1', 'visitor-1')).toThrow(
         'CHAT_CLIENT_TOKEN_SECRET is required in production',
       );
     });
@@ -350,11 +457,10 @@ describe('ChatService', () => {
         CHAT_CLIENT_TOKEN_SECRET: 'test-chat-secret',
         JWT_PRIVATE_KEY: '',
       };
-      const { service } = build();
 
-      const token = service.issueClientToken('tenant-1', 'conv-1', 'visitor-1');
+      const token = issueClientToken('tenant-1', 'conv-1', 'visitor-1');
 
-      expect(service.verifyClientToken(token)).toEqual({
+      expect(verifyClientToken(token)).toEqual({
         tenantId: 'tenant-1',
         conversationId: 'conv-1',
         clientIdentifier: 'visitor-1',

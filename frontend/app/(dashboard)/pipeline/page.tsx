@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
 
+import { StatusBadge } from '../../../components/ui';
 import { apiFetch } from '../../../lib/api';
 import { getSession, hasPermission } from '../../../lib/auth';
 import {
@@ -139,16 +140,12 @@ export default function PipelinePage() {
                       <Link href={`/inquiries/${card.id}`} className="font-medium text-teal-800 hover:underline">
                         {card.client_name}
                       </Link>
-                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${temperatureBadgeClass(card.temperature)}`}>
-                        {humanize(card.temperature)}
-                      </span>
+                      <StatusBadge size="compact" label={humanize(card.temperature)} className={temperatureBadgeClass(card.temperature)} />
                     </div>
                     <p className="mt-1 font-mono text-[10px] text-slate-400">{card.inquiry_code}</p>
                     <p className="mt-1 text-xs text-slate-500">{budgetLabel(card.budget_min, card.budget_max)}</p>
                     <div className="mt-2 flex items-center justify-between">
-                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${priorityBadgeClass(card.priority)}`}>
-                        {humanize(card.priority)}
-                      </span>
+                      <StatusBadge size="compact" label={humanize(card.priority)} className={priorityBadgeClass(card.priority)} />
                       <span className="truncate text-[10px] text-slate-400">{card.assigned_employee_name ?? 'Unassigned'}</span>
                     </div>
                   </div>

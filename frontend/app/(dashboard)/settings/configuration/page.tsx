@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 
+import { FormField } from '../../../../components/ui';
 import {
   fetchConfiguration,
   updateConfiguration,
@@ -60,7 +61,7 @@ export default function ConfigurationPage() {
       {saved ? <p className="mt-4 rounded bg-green-50 px-3 py-2 text-sm text-green-700">Saved.</p> : null}
 
       <div className="mt-6 grid gap-4 sm:grid-cols-2">
-        <Field label="Timezone">
+        <FormField label="Timezone">
           <select className="input" value={config.timezone} onChange={(e) => set('timezone', e.target.value)}>
             {TIMEZONES.map((t) => (
               <option key={t} value={t}>
@@ -68,8 +69,8 @@ export default function ConfigurationPage() {
               </option>
             ))}
           </select>
-        </Field>
-        <Field label="Currency">
+        </FormField>
+        <FormField label="Currency">
           <select className="input" value={config.currency} onChange={(e) => set('currency', e.target.value)}>
             {CURRENCIES.map((c) => (
               <option key={c} value={c}>
@@ -77,8 +78,8 @@ export default function ConfigurationPage() {
               </option>
             ))}
           </select>
-        </Field>
-        <Field label="Language">
+        </FormField>
+        <FormField label="Language">
           <select className="input" value={config.language} onChange={(e) => set('language', e.target.value)}>
             {LANGUAGES.map((l) => (
               <option key={l} value={l}>
@@ -86,8 +87,8 @@ export default function ConfigurationPage() {
               </option>
             ))}
           </select>
-        </Field>
-        <Field label="Date format">
+        </FormField>
+        <FormField label="Date format">
           <select
             className="input"
             value={config.date_format}
@@ -99,8 +100,8 @@ export default function ConfigurationPage() {
               </option>
             ))}
           </select>
-        </Field>
-        <Field label="Number format">
+        </FormField>
+        <FormField label="Number format">
           <select
             className="input"
             value={config.number_format}
@@ -112,21 +113,56 @@ export default function ConfigurationPage() {
               </option>
             ))}
           </select>
-        </Field>
+        </FormField>
       </div>
+
+      <section className="mt-8 rounded-xl border border-slate-200 bg-slate-50 p-4">
+        <h2 className="text-sm font-semibold text-slate-900">Live chat automation</h2>
+        <p className="mt-1 text-xs text-slate-600">
+          Controls how website chat is routed into your sales team and CRM.
+        </p>
+        <div className="mt-4 space-y-3">
+          <label className="flex items-center gap-2 text-sm text-slate-700">
+            <input
+              type="checkbox"
+              checked={config.chat.auto_assign_enabled}
+              onChange={(e) =>
+                set('chat', { ...config.chat, auto_assign_enabled: e.target.checked })
+              }
+            />
+            Auto-assign unassigned chats (round-robin to sales team)
+          </label>
+          <FormField label="Auto-assign delay (minutes)">
+            <input
+              type="number"
+              min={1}
+              max={60}
+              className="input"
+              value={config.chat.auto_assign_delay_minutes}
+              onChange={(e) =>
+                set('chat', {
+                  ...config.chat,
+                  auto_assign_delay_minutes: Number(e.target.value) || 5,
+                })
+              }
+            />
+          </FormField>
+          <label className="flex items-center gap-2 text-sm text-slate-700">
+            <input
+              type="checkbox"
+              checked={config.chat.auto_create_inquiry_on_phone}
+              onChange={(e) =>
+                set('chat', { ...config.chat, auto_create_inquiry_on_phone: e.target.checked })
+              }
+            />
+            Auto-create CRM inquiry when visitor shares a phone number
+          </label>
+        </div>
+      </section>
 
       <button type="button" onClick={onSave} disabled={saving} className="btn-primary mt-6">
         {saving ? 'Saving…' : 'Save changes'}
       </button>
     </div>
-  );
-}
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <label className="block">
-      <span className="mb-1 block text-sm font-medium text-slate-700">{label}</span>
-      {children}
-    </label>
   );
 }

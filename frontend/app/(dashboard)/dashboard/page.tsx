@@ -1,5 +1,6 @@
 'use client';
 
+import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
 
@@ -15,16 +16,45 @@ import {
 } from '../../../lib/analytics';
 import { getSession, hasPermission, isSuperAdmin, type AuthSession } from '../../../lib/auth';
 import { KPICard } from '../../../components/analytics/kpi-card';
-import { ChartCard, EmptyState, KpiSkeletonGrid } from '../../../components/analytics/chart-card';
+import { ChartCard, EmptyState, KpiSkeletonGrid, Skeleton } from '../../../components/analytics/chart-card';
 import { RangeFilter } from '../../../components/analytics/range-filter';
-import { FunnelChart } from '../../../components/analytics/funnel-chart';
-import { LeadSourceChart } from '../../../components/analytics/lead-source-chart';
-import { PropertyStatusChart } from '../../../components/analytics/property-status-chart';
-import { ConversionChart, MonthlyLeadsChart } from '../../../components/analytics/conversion-chart';
-import { EmployeePerformanceTable } from '../../../components/analytics/employee-performance-table';
-import { ActivityFeed } from '../../../components/analytics/activity-feed';
-import { SystemHealth, type HealthRow } from '../../../components/analytics/system-health';
 import { Icon, type IconName } from '../../../components/ui/icons';
+import type { HealthRow } from '../../../components/analytics/system-health';
+
+const chartFallback = () => <Skeleton className="h-48 w-full" />;
+
+const FunnelChart = dynamic(
+  () => import('../../../components/analytics/funnel-chart').then((m) => m.FunnelChart),
+  { loading: chartFallback },
+);
+const LeadSourceChart = dynamic(
+  () => import('../../../components/analytics/lead-source-chart').then((m) => m.LeadSourceChart),
+  { loading: chartFallback },
+);
+const PropertyStatusChart = dynamic(
+  () => import('../../../components/analytics/property-status-chart').then((m) => m.PropertyStatusChart),
+  { loading: chartFallback },
+);
+const ConversionChart = dynamic(
+  () => import('../../../components/analytics/conversion-chart').then((m) => m.ConversionChart),
+  { loading: chartFallback },
+);
+const MonthlyLeadsChart = dynamic(
+  () => import('../../../components/analytics/conversion-chart').then((m) => m.MonthlyLeadsChart),
+  { loading: chartFallback },
+);
+const EmployeePerformanceTable = dynamic(
+  () => import('../../../components/analytics/employee-performance-table').then((m) => m.EmployeePerformanceTable),
+  { loading: chartFallback },
+);
+const ActivityFeed = dynamic(
+  () => import('../../../components/analytics/activity-feed').then((m) => m.ActivityFeed),
+  { loading: chartFallback },
+);
+const SystemHealth = dynamic(
+  () => import('../../../components/analytics/system-health').then((m) => m.SystemHealth),
+  { loading: chartFallback },
+);
 
 export default function DashboardPage() {
   const [session, setSession] = useState<AuthSession | null>(null);
@@ -267,10 +297,6 @@ function OrgDashboard({ session }: { session: AuthSession }) {
   );
 }
 
-function isLaunchMode(): boolean {
-  return process.env.NEXT_PUBLIC_REOS_LAUNCH_MODE !== 'false';
-}
-
 // ===========================================================================
 // Shared bits
 // ===========================================================================
@@ -434,7 +460,7 @@ function QuickActions({ session }: { session: AuthSession }) {
       label: 'Live chat',
       helper: 'Respond to website & WhatsApp visitors',
       icon: 'chat',
-      show: !isLaunchMode() && hasPermission(session, 'chat.conversations.read'),
+      show: hasPermission(session, 'chat.conversations.read'),
     },
   ] as QuickAction[]).filter((action) => action.show);
 
@@ -484,13 +510,14 @@ function LaunchReadiness({ data, session }: { data: DashboardData; session: Auth
       href: '/employees',
       show: hasPermission(session, 'employees.read'),
     },
-    {
-      label: 'Complete Website Setup',
-      done: data.properties.published > 0,
-      progress: data.properties.published > 0 ? 'Public website has inventory' : 'Add brand, contact and SEO basics',
-      href: '/settings/website',
-      show: hasPermission(session, 'settings.website.manage'),
-    },
+    // Website setup — temporarily disabled
+    // {
+    //   label: 'Complete Website Setup',
+    //   done: data.properties.published > 0,
+    //   progress: data.properties.published > 0 ? 'Public website has inventory' : 'Add brand, contact and SEO basics',
+    //   href: '/settings/website',
+    //   show: hasPermission(session, 'settings.website.manage'),
+    // },
     {
       label: 'Capture first lead',
       done: data.leads.total > 0,
